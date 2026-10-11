@@ -232,10 +232,12 @@ export class InkStrokeSession {
   /**
    * One packet of pointer samples (a pointermove's coalesced events, oldest
    * first), and the browser's predictions of where the pen goes next. The stroke
-   * is drawn before this returns.
+   * is drawn before this returns. Returns how far ahead of the line the
+   * predicted tip was drawn, in CSS pixels, or 0 for none: a figure for the ink
+   * readout (`input-trace.ts`).
    */
-  move(samples: readonly InkPointerSample[], predicted: readonly InkPointerSample[] = NO_SAMPLES): void {
-    if (this.finished || samples.length === 0) return;
+  move(samples: readonly InkPointerSample[], predicted: readonly InkPointerSample[] = NO_SAMPLES): number {
+    if (this.finished || samples.length === 0) return 0;
 
     const tipPoints = this.tracker ? this.predictTipPoints(this.tracker, samples, predicted) : null;
 
@@ -266,11 +268,15 @@ export class InkStrokeSession {
       // no tip is standing: there is nothing to move or to take away, unless the
       // gate has just begun to hold a highlighter's samples.
       if (this.chisel && this.gate.holding) this.showOutline();
-      return;
+      return 0;
     }
     const tip = tipPoints ? this.tipThrough(tipPoints) : null;
     this.sink.drawLive(this.lastPath, this.lastPaint, tip);
     this.tipShown = tip !== null;
+    if (!tip) return 0;
+    const from = tip.path[0];
+    const to = tip.path[tip.path.length - 1];
+    return from.op === "M" && to.op === "L" ? Math.hypot(to.x - from.x, to.y - from.y) * this.scale : 0;
   }
 
   /**

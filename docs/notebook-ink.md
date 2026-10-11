@@ -527,19 +527,26 @@ with an `InkChange` from `history.ts`), when a gesture holds the sheet
   under a pixel so every canvas sits on whole device pixels
   (`inkDevicePixelSnap`, which js-draw's live ink shares until it goes).
 
-Still to come:
+Built in stage 4:
 
-- **`InkSurface`** (stage 4). Owns the model, input, renderer and history,
-  behind the handle `NotebookInkEditor` has today: undo, redo, clear,
-  hasInk, serialize and snapshot.
-- **The predicted tip's geometry**, drawn by stage 4's stroke session; the
-  renderer side is built.
-- **PDF detail and snapshots** under the scheduler (stage 7).
-- **Input.** Kept as is:
+- **`InkSurface`** (`surface.ts`). Owns the model, input, renderer and
+  history, behind the handle `NotebookInkEditor` has: undo, redo, clear,
+  hasInk and serialize.
+- **The stroke session** (`stroke-session.ts`): one stroke's lift-off gate,
+  smoother, pen or highlighter geometry and predicted tip. The tip runs the
+  browser's prediction up to 20 ms past the newest sample and 16 CSS pixels
+  (`NOTEBOOK_PREDICTED_TIP`, from 10 ms and 8 px on 11 October, when the
+  owner saw fast writing trail far behind the Pencil). On an iPad that
+  prediction is UIKit's own, passed on by WebKit.
+- **Input.** Kept as it was:
   - `NotebookInkSmoother`, `NotebookLiftOffGate`, the coalesced-sample bounds,
     the predicted tip;
   - `NotebookNibAngleTracker`, `NotebookInkPointerLifecycle`;
   - the palm guards and the pen's eraser end.
+
+Still to come:
+
+- **PDF detail and snapshots** under the scheduler (stage 7).
 
 ## Integration
 
@@ -570,11 +577,12 @@ Still to come:
     notebook began to open (its loading screen included); and after each pen
     stroke, how old the samples were when the handler ran, how long the ink
     work took per packet, how long until the next frame, the frames while the
-    pen was down, how many coalesced and predicted samples Safari sent, and the
-    lift. It is how delay and heaviness felt on an iPad get measured, since
-    desktop Chromium cannot stand in for Safari there. Off, it costs nothing;
-    on, it allocates nothing during a stroke and writes the stroke figures only
-    at the lift.
+    pen was down, how many coalesced and predicted samples Safari sent, how far
+    ahead its prediction reached, how far ahead of the line the tip was drawn
+    and how often, and the lift. It is how delay and heaviness felt on an iPad
+    get measured, since desktop Chromium cannot stand in for Safari there. Off,
+    it costs nothing; on, it allocates nothing during a stroke and writes the
+    stroke figures only at the lift.
   - **Nothing under the page.** An open notebook covers the screen with its
     own opaque surface, so the app's photo background and its text halo are
     switched off while it is open (`jami-notebook-open` on the body, set by

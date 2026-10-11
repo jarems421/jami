@@ -77,7 +77,8 @@ export type InkSurface = {
   endGesture(): void;
   whenVisibleDrawn(callback: () => void): () => void;
   beginStroke(input: { tool: InkStrokeTool; mapping: InkScreenMapping; first: InkPointerSample }): void;
-  moveStroke(samples: readonly InkPointerSample[], predicted?: readonly InkPointerSample[]): void;
+  /** Returns how far ahead of the line the predicted tip was drawn, in CSS pixels (0 for none). */
+  moveStroke(samples: readonly InkPointerSample[], predicted?: readonly InkPointerSample[]): number;
   /** `"empty"`: the stroke had nothing worth keeping. `"scribbled"`: it erased ink instead. */
   endStroke(scribble?: InkScribble | null): "committed" | "scribbled" | "empty";
   cancelStroke(): void;
@@ -200,7 +201,7 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
     },
 
     moveStroke(samples, predicted) {
-      stroke?.session.move(samples, predicted);
+      return stroke?.session.move(samples, predicted) ?? 0;
     },
 
     endStroke(scribble) {

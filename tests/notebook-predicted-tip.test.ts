@@ -83,11 +83,11 @@ describe("the predicted tip", () => {
         time: newest.time + ms,
       }))
     );
-    // 4 and 8ms ahead are used; from 12 on is past `maxAheadMs`.
-    expect(NOTEBOOK_PREDICTED_TIP.maxAheadMs).toBeLessThan(12);
+    // Up to 20ms ahead is used; 24 is past `maxAheadMs`.
+    expect(NOTEBOOK_PREDICTED_TIP.maxAheadMs).toBeLessThan(24);
     const reaches = ahead.map((point) => point.x - newest.x);
-    expect(reaches).toHaveLength(2);
-    [1.6, 3.2].forEach((expected, index) =>
+    expect(reaches).toHaveLength(5);
+    [1.6, 3.2, 4.8, 6.4, 8].forEach((expected, index) =>
       expect(reaches[index]).toBeCloseTo(expected, 6)
     );
   });

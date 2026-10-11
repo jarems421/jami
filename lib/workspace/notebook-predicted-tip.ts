@@ -13,7 +13,10 @@
  * pen is going, and replace them with the real samples a frame later. Web
  * pages get the same prediction from `PointerEvent.getPredictedEvents()`:
  * Chrome has had it for years, and Safari since 18.2 (iPadOS 18.2), which is
- * what makes it worth doing here.
+ * what makes it worth doing here. On an iPad it is the very same prediction:
+ * WebKit hands on UIKit's predicted touches for the Pencil
+ * (`predictedTouchesForTouch:` in `WKTouchEventsGestureRecognizer.mm`), which
+ * is what Apple's own apps draw ahead with.
  *
  * Two earlier attempts at closing this gap were removed, and this is shaped by
  * what sank each:
@@ -60,6 +63,15 @@ export type NotebookPredictedTipOptions = {
    * it under 3.5px, and under 2px at ordinary speeds. With an accurate
    * predictor the tip stays within half a pixel of the path either way, so
    * this only decides how badly a poor one can show.
+   *
+   * It was 10, chosen against that naive predictor. Safari's is UIKit's, and
+   * 10 threw away the half of it the owner could feel: writing fast, the ink
+   * was seen to trail far behind the Pencil. Replayed with a prediction true
+   * to 24ms and the frame on screen 30ms after the newest sample, 20ms brought
+   * the end of the ink from 18px behind a fast line (1300px/s at its peak) to
+   * 12, from 8 to 4 behind a line at 600px/s and through loops, with the tip
+   * never more than 0.3px off the path. A predictor that reaches only 10ms
+   * gains nothing from it and loses nothing.
    */
   maxAheadMs: number;
   /**
@@ -110,15 +122,15 @@ export type NotebookPredictedTipOptions = {
 /**
  * Chosen for handwriting, which is mostly turns, over straight lines.
  *
- * On a straight stroke at 400px/s this leads the line by about 3px; through an
- * 'm' it mostly stands down, leading by one or two. The tip is on for every
- * stylus stroke with no way to turn it off, so a poor predictor showing as a
- * flick at every turn would be the worse failure than a tip that could have
- * reached a little further.
+ * Through an 'm' the tip mostly stands down. The tip is on for every stylus
+ * stroke with no way to turn it off, so a poor predictor showing as a flick at
+ * every turn would be the worse failure than a tip that could have reached a
+ * little further -- which is why the turn and swerve limits stay where they
+ * were when the reach doubled (see `maxAheadMs`).
  */
 export const NOTEBOOK_PREDICTED_TIP: NotebookPredictedTipOptions = {
-  maxAheadMs: 10,
-  maxLengthPx: 8,
+  maxAheadMs: 20,
+  maxLengthPx: 16,
   speedAllowance: 1.5,
   minSpeedPxPerMs: 0.03,
   velocityWindowMs: 10,

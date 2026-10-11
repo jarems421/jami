@@ -96,10 +96,14 @@ describe("InkInputTrace", () => {
     const trace = new InkInputTrace(64, time.clock);
     time.at(1000);
     trace.begin();
-    // Frames every 16 ms; a packet lands 4 ms into each, with samples 6 to 14 ms old.
+    // Frames every 16 ms; a packet lands 4 ms into each, with samples 6 to 14 ms
+    // old. The first four come with predictions reaching 8 to 20 ms ahead (the
+    // last one's reach is ignored: it has none), and three draw a tip.
     for (let frame = 0; frame < 5; frame += 1) {
       const start = 1004 + frame * 16;
-      trace.packet(start - 6, start - 14, start, start + 2, 4, frame < 4 ? 1 : 0);
+      const ahead = [8, 12, 16, 20, 99][frame];
+      const tip = [3, 0, 5, 6, 0][frame];
+      trace.packet(start - 6, start - 14, start, start + 2, 4, frame < 4 ? 1 : 0, ahead, tip);
       time.frame(1016 + frame * 16);
     }
     // One slow frame.
@@ -119,6 +123,9 @@ describe("InkInputTrace", () => {
     expect(summary.framesOver25).toBe(1);
     expect(summary.coalescedPerPacket).toBe(4);
     expect(summary.predictedShare).toBeCloseTo(0.8, 6);
+    expect(summary.predictedAheadMs).toEqual({ p50: 16, p95: 20, max: 20 });
+    expect(summary.tipShare).toBeCloseTo(0.6, 6);
+    expect(summary.tipPx).toEqual({ p50: 5, p95: 6, max: 6 });
     expect(summary.liftMs).toBe(1.5);
     // The frame loop stops with the stroke.
     expect(time.waiting()).toBe(0);
@@ -128,11 +135,16 @@ describe("InkInputTrace", () => {
     const time = fakeClock();
     const trace = new InkInputTrace(3, time.clock);
     trace.begin();
-    for (let index = 0; index < 10; index += 1) trace.packet(0, 0, index, index + 1, 1, 0);
-    expect(trace.end(0).packets).toBe(3);
+    for (let index = 0; index < 10; index += 1) trace.packet(0, 0, index, index + 1, 1, 1, 12, 4);
+    const first = trace.end(0);
+    expect(first.packets).toBe(3);
+    expect(first.tipShare).toBe(1);
     trace.begin();
-    trace.packet(0, 0, 5, 6, 1, 0);
-    expect(trace.end(0).packets).toBe(1);
+    trace.packet(0, 0, 5, 6, 1, 0, Number.NaN, 0);
+    const second = trace.end(0);
+    expect(second.packets).toBe(1);
+    expect(second.predictedAheadMs).toEqual({ p50: 0, p95: 0, max: 0 });
+    expect(second.tipShare).toBe(0);
   });
 
   it("stops watching frames when a stroke is cancelled", () => {
@@ -189,7 +201,7 @@ describe("formatInkTrace", () => {
     const time = fakeClock();
     const trace = new InkInputTrace(8, time.clock);
     trace.begin();
-    trace.packet(0, 0, 8, 9, 2, 1);
+    trace.packet(0, 0, 8, 9, 2, 1, 16, 7.5);
     time.frame(16);
     time.frame(32);
     const text = formatInkTrace(trace.end(0.4), { tool: "pen, pen", scale: 2.5, devicePixelRatio: 2 });
@@ -199,5 +211,7 @@ describe("formatInkTrace", () => {
     expect(text).toContain("wait for next frame 7.0 / 7.0 / 7.0 ms");
     expect(text).toContain("frames (~63 Hz)");
     expect(text).toContain("samples per packet  2.0, predicted in 100% of packets");
+    expect(text).toContain("prediction reaches  16 / 16 / 16 ms");
+    expect(text).toContain("tip ahead of line   7.5 / 7.5 / 7.5 px, in 100% of packets");
   });
 });

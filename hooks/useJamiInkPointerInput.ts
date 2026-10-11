@@ -493,10 +493,21 @@ export function useJamiInkPointerInput({
             own.predict && typeof native.getPredictedEvents === "function"
               ? native.getPredictedEvents()
               : undefined;
-          surface.moveStroke(samples, predicted);
+          const tipPx = surface.moveStroke(samples, predicted);
           if (trace) {
             const oldest = samples.length > 0 ? samples[0].timeStamp : native.timeStamp;
-            trace.recorder.packet(native.timeStamp, oldest, startedAt, performance.now(), samples.length, predicted?.length ?? 0);
+            const newest = samples.length > 0 ? samples[samples.length - 1].timeStamp : native.timeStamp;
+            const farthest = predicted && predicted.length > 0 ? predicted[predicted.length - 1].timeStamp : Number.NaN;
+            trace.recorder.packet(
+              native.timeStamp,
+              oldest,
+              startedAt,
+              performance.now(),
+              samples.length,
+              predicted?.length ?? 0,
+              farthest - newest,
+              tipPx
+            );
           }
           own.last = native;
           noteScribbleSample(scribbleRef.current, own, event.clientX, event.clientY, event.timeStamp);

@@ -13,7 +13,9 @@
  *   (`timeStamp` against the clock): the browser's delivery, plus any task
  *   that kept the main thread busy;
  * - how long the handler takes, which is all the ink work, drawing included;
- * - how many coalesced and predicted samples came with it;
+ * - how many coalesced and predicted samples came with it, and how far past
+ *   the newest sample the browser's prediction reached;
+ * - how far ahead of the line the predicted tip was drawn, if it was;
  * - how long after the handler the next frame begins.
  *
  * And the frames themselves while the pen is down, and the lift. The display
@@ -40,6 +42,12 @@ export type InkTraceSummary = {
   frames: number;
   coalescedPerPacket: number;
   predictedShare: number;
+  /** How far past the newest sample the prediction reached, over the packets that had one. */
+  predictedAheadMs: InkTracePercentiles;
+  /** The share of packets that drew a predicted tip. */
+  tipShare: number;
+  /** How far ahead of the line the tip reached, in CSS pixels, over the packets that drew one. */
+  tipPx: InkTracePercentiles;
   liftMs: number;
 };
 
@@ -91,10 +99,14 @@ export class InkInputTrace {
   private readonly ends: Float64Array;
   private readonly coalesced: Float64Array;
   private readonly predicted: Float64Array;
+  private readonly predictedAhead: Float64Array;
+  private readonly tipReach: Float64Array;
   private readonly frameTimes: Float64Array;
   private readonly toFrame: Float64Array;
   private readonly intervals: Float64Array;
   private packets = 0;
+  private predictions = 0;
+  private tips = 0;
   private frames = 0;
   private started = 0;
   private frameHandle: number | null = null;
@@ -116,6 +128,8 @@ export class InkInputTrace {
     this.ends = new Float64Array(capacity);
     this.coalesced = new Float64Array(capacity);
     this.predicted = new Float64Array(capacity);
+    this.predictedAhead = new Float64Array(capacity);
+    this.tipReach = new Float64Array(capacity);
     this.frameTimes = new Float64Array(capacity);
     this.toFrame = new Float64Array(capacity);
     this.intervals = new Float64Array(capacity);
@@ -125,13 +139,29 @@ export class InkInputTrace {
   begin(): void {
     this.stopFrames();
     this.packets = 0;
+    this.predictions = 0;
+    this.tips = 0;
     this.frames = 0;
     this.started = this.clock.now();
     this.frameHandle = this.clock.requestFrame(this.onFrame);
   }
 
-  /** One packet: the newest and oldest sample times, when the handler started and ended. */
-  packet(newestTime: number, oldestTime: number, start: number, end: number, coalesced: number, predicted: number): void {
+  /**
+   * One packet: the newest and oldest sample times, when the handler started
+   * and ended, how many samples and predictions came with it, how far past the
+   * newest sample the last prediction was (ignored without one), and how far
+   * ahead of the line the tip was drawn, in CSS pixels (0 for no tip).
+   */
+  packet(
+    newestTime: number,
+    oldestTime: number,
+    start: number,
+    end: number,
+    coalesced: number,
+    predicted: number,
+    predictedAheadMs: number,
+    tipPx: number
+  ): void {
     const index = this.packets;
     if (index >= this.capacity) return;
     this.newestAge[index] = start - newestTime;
@@ -141,6 +171,14 @@ export class InkInputTrace {
     this.coalesced[index] = coalesced;
     this.predicted[index] = predicted;
     this.packets = index + 1;
+    if (predicted > 0 && Number.isFinite(predictedAheadMs)) {
+      this.predictedAhead[this.predictions] = predictedAheadMs;
+      this.predictions += 1;
+    }
+    if (tipPx > 0) {
+      this.tipReach[this.tips] = tipPx;
+      this.tips += 1;
+    }
   }
 
   /** The stroke has ended (the lift took `liftMs`): its figures. */
@@ -182,6 +220,9 @@ export class InkInputTrace {
       frames: Math.max(0, frames - 1),
       coalescedPerPacket: packets > 0 ? coalesced / packets : 0,
       predictedShare: packets > 0 ? withPrediction / packets : 0,
+      predictedAheadMs: inkTracePercentiles(this.predictedAhead, this.predictions),
+      tipShare: packets > 0 ? this.tips / packets : 0,
+      tipPx: inkTracePercentiles(this.tipReach, this.tips),
       liftMs,
     };
   }
@@ -190,6 +231,8 @@ export class InkInputTrace {
   cancel(): void {
     this.stopFrames();
     this.packets = 0;
+    this.predictions = 0;
+    this.tips = 0;
     this.frames = 0;
   }
 
@@ -271,7 +314,8 @@ const ms = (value: number) => (value >= 10 ? value.toFixed(0) : value.toFixed(1)
 export function formatInkFrameWindow(window: InkFrameWindow): string {
   return `frames, last ${(window.windowMs / 1000).toFixed(1)} s   ${ms(window.p50)} / ${ms(window.p95)} / ${ms(window.max)} ms, ${window.over25} of ${window.frames} over 25 ms`;
 }
-const spread = (value: InkTracePercentiles) => `${ms(value.p50)} / ${ms(value.p95)} / ${ms(value.max)} ms`;
+const spread = (value: InkTracePercentiles, unit = "ms") =>
+  `${ms(value.p50)} / ${ms(value.p95)} / ${ms(value.max)} ${unit}`;
 
 /** The figures as the readout shows them, one line each. */
 export function formatInkTrace(summary: InkTraceSummary, context: InkTraceContext): string {
@@ -285,6 +329,8 @@ export function formatInkTrace(summary: InkTraceSummary, context: InkTraceContex
     `wait for next frame ${spread(summary.toFrameMs)}`,
     `frames (~${hz} Hz)    ${spread(summary.frameMs)}, ${summary.framesOver25} of ${summary.frames} over 25 ms`,
     `samples per packet  ${summary.coalescedPerPacket.toFixed(1)}, predicted in ${(summary.predictedShare * 100).toFixed(0)}% of packets`,
+    `prediction reaches  ${spread(summary.predictedAheadMs)}`,
+    `tip ahead of line   ${spread(summary.tipPx, "px")}, in ${(summary.tipShare * 100).toFixed(0)}% of packets`,
     `lift                ${ms(summary.liftMs)} ms`,
   ].join("\n");
 }

@@ -530,7 +530,7 @@ describe("the predicted tip", () => {
   it("is a round-capped line from the end of the stroke through the predicted points", () => {
     const { session, draws } = stylus();
     const body = run(10); // ends at client (120, 200), at 40 ms
-    session.move(body, ahead(120));
+    const reach = session.move(body, ahead(120));
     const reference = new ReferencePen(FIRST, { thickness: 4, pressure: false, settings: NO_HOLD });
     for (const each of body) reference.add(each);
     reference.pen.geometry();
@@ -551,6 +551,8 @@ describe("the predicted tip", () => {
     });
     // The stroke itself is untouched by the tip.
     expect(draws[draws.length - 1].path).toEqual(reference.paintOf().path);
+    // How far ahead of the line it reached, in CSS pixels, for the readout.
+    expect(reach).toBeCloseTo(Math.hypot(52 - (end?.x ?? 0), 80 - (end?.y ?? 0)) * MAPPING.scale, 6);
   });
 
   it("is taken off the live layer by one more draw at the lift, and is not part of the result", () => {
@@ -575,7 +577,7 @@ describe("the predicted tip", () => {
     expect(fading.draws[fading.draws.length - 1].tip).toBeNull();
 
     const none = stylus();
-    none.session.move(run(10), []);
+    expect(none.session.move(run(10), [])).toBe(0);
     expect(none.draws[none.draws.length - 1].tip).toBeNull();
 
     const mouse = stylus({ predictTip: false });
