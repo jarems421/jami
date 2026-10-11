@@ -9,14 +9,9 @@ import {
   type TransitionEventHandler,
 } from "react";
 import { PAGE_EDGE_CLASS } from "@/components/workspace/NotebookPageBackground";
+import type { NotebookViewportGeometry } from "@/lib/workspace/notebook-viewport";
 
-export type NotebookViewportGeometry = {
-  pageHeight: number;
-  pageWidth: number;
-  pageX: number;
-  pageY: number;
-  swipeTravel: number;
-};
+export type { NotebookViewportGeometry };
 
 export type NotebookViewportPreview = {
   className: string;

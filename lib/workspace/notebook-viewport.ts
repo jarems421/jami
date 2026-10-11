@@ -52,6 +52,15 @@ export type NotebookViewportPanBounds = {
   maxY: number;
 };
 
+/** Where the sheets sit in the viewport, as `NotebookViewport` draws them. */
+export type NotebookViewportGeometry = {
+  pageHeight: number;
+  pageWidth: number;
+  pageX: number;
+  pageY: number;
+  swipeTravel: number;
+};
+
 export type NotebookViewportLayout = {
   frameSize: NotebookViewportSize;
   logicalPageSize: NotebookViewportSize;

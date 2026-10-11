@@ -23,6 +23,7 @@ import {
   getNotebookViewportLayout,
   isNotebookViewportZoomedIn,
   NOTEBOOK_PAN_GESTURE_SLOP,
+  type NotebookViewportGeometry,
   type NotebookViewportLayout,
 } from "@/lib/workspace/notebook-viewport";
 import {
@@ -121,6 +122,8 @@ type UseNotebookViewportControllerOptions = {
 
 export type NotebookViewportController = {
   layout: NotebookViewportLayout;
+  /** Where `NotebookViewport` draws the sheets, kept the same object until it changes. */
+  geometry: NotebookViewportGeometry;
   pageFit: NotebookViewportLayout["fitSize"];
   pageWidthPx: number;
   pageHeightPx: number;
@@ -192,6 +195,17 @@ export function useNotebookViewportController({
         pan: pagePan,
       }),
     [frameSize, pageHeight, pagePan, pageWidth, pageZoom]
+  );
+
+  const geometry = useMemo<NotebookViewportGeometry>(
+    () => ({
+      pageWidth: layout.pageSize.width,
+      pageHeight: layout.pageSize.height,
+      pageX: layout.pageOrigin.x,
+      pageY: layout.pageOrigin.y,
+      swipeTravel: layout.swipeTravel,
+    }),
+    [layout]
   );
 
   // The gesture handlers below must keep a stable identity — they sit on the
@@ -628,6 +642,7 @@ export function useNotebookViewportController({
 
   return {
     layout,
+    geometry,
     pageFit: layout.fitSize,
     pageWidthPx: layout.pageSize.width,
     pageHeightPx: layout.pageSize.height,

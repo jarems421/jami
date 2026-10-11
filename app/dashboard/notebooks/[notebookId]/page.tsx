@@ -945,13 +945,7 @@ export default function NotebookEditorPage() {
             trackRef={pageTrackRef}
             previewLayerRef={pagePreviewLayerRef}
             activeRef={pageSurfaceRef}
-            geometry={{
-              pageWidth: pageWidthPx,
-              pageHeight: pageHeightPx,
-              pageX: viewportLayout.pageOrigin.x,
-              pageY: viewportLayout.pageOrigin.y,
-              swipeTravel: pageTrackTravelDistance,
-            }}
+            geometry={viewport.geometry}
             previousPreview={swipePreviews.previous}
             nextPreview={swipePreviews.next}
             activeClassName={PAGE_COLOR_CLASS[pageColor]}
