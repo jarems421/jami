@@ -2,8 +2,13 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NotebookFloatingNotices from "@/components/workspace/NotebookFloatingNotices";
+
+const powerSaving = vi.hoisted(() => ({ visible: false, dismiss: vi.fn() }));
+vi.mock("@/hooks/useNotebookPowerSavingNotice", () => ({
+  useNotebookPowerSavingNotice: () => powerSaving,
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,6 +41,18 @@ describe("NotebookFloatingNotices", () => {
       "Loading this page’s drawing. Writing is paused until it arrives.",
     ]);
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
+  });
+
+  it("says when the device is saving power, first, with a way to put it away", () => {
+    powerSaving.visible = true;
+    powerSaving.dismiss.mockReset();
+    act(() => root.render(<NotebookFloatingNotices toolbarDock="bottom" touchInkHint inkLoading={false} />));
+    expect(notices()[0]).toMatch(/slowing writing down/);
+    const button = container.querySelector("button")!;
+    expect(button.textContent).toBe("Got it");
+    act(() => button.click());
+    expect(powerSaving.dismiss).toHaveBeenCalledTimes(1);
+    powerSaving.visible = false;
   });
 
   it("sits clear of the toolbar wherever it is docked", () => {

@@ -72,6 +72,17 @@ the owner on iPad.
 Safari holds web pages to 60 frames a second by default, so the floor on
 latency is the display pipeline, not the engine.
 
+In Low Power Mode, and when an iPad runs hot, Safari holds every page to 30
+frames a second, and no page can opt out. Measured on the owner's iPad (the
+`?inkstats=1` readout): the ink work stayed at a millisecond a packet while
+every frame was 33 ms, and writing, panning and dragging the toolbar all
+showed it. Scrolling elsewhere in the app, which the iPad does itself, does
+not. So the notebook looks at its own frame rate while it is open (a second's
+look shortly after opening, every minute, and on coming back to the tab) and,
+when it is steadily 30, tells the student that Low Power Mode is slowing
+writing down and where to turn it off (`lib/workspace/notebook-power-saving.ts`,
+`hooks/useNotebookPowerSavingNotice.ts`, shown by `NotebookFloatingNotices`).
+
 ### Measuring
 
 ```
