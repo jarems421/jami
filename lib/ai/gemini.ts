@@ -518,7 +518,38 @@ export async function uploadTemporaryGeminiVideo(input: { path: string; mimeType
   const ai = new GoogleGenAI({ apiKey });
   const file = await ai.files.upload({ file: input.path, config: { mimeType: input.mimeType, displayName: "Temporary Jami video import" } });
   if (!file.uri) throw new Error("gemini_upload_failed");
+  try {
+    await waitForGeminiFileActive(ai, file.name, file.state);
+  } catch (error) {
+    await deleteTemporaryGeminiVideo(file.name);
+    throw error;
+  }
   return { uri: file.uri, name: file.name };
+}
+
+const GEMINI_FILE_POLL_MS = 5_000;
+const GEMINI_FILE_ACTIVE_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * Gemini processes an uploaded video before a model may read it, and a
+ * request against a file still PROCESSING is refused. A long lecture can take
+ * minutes to become ACTIVE, so wait for it, within a bound.
+ */
+async function waitForGeminiFileActive(
+  ai: GoogleGenAI,
+  name: string | undefined,
+  initialState: string | undefined,
+  options: { pollMs?: number; timeoutMs?: number } = {}
+) {
+  const pollMs = options.pollMs ?? GEMINI_FILE_POLL_MS;
+  const deadline = Date.now() + (options.timeoutMs ?? GEMINI_FILE_ACTIVE_TIMEOUT_MS);
+  let state = initialState;
+  while (state !== "ACTIVE") {
+    if (state === "FAILED") throw new Error("gemini_file_processing_failed");
+    if (!name || Date.now() > deadline) throw new Error("gemini_file_processing_timeout");
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    state = (await ai.files.get({ name })).state;
+  }
 }
 
 export async function deleteTemporaryGeminiVideo(name?: string) {
