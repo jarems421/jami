@@ -13,7 +13,11 @@ export type Star = {
   createdAt: number;
   rewardKind?: "goal" | "onboarding";
   rewardLabel?: string;
+  /** The colour of a gifted figure's light. Earned stars are always white. */
+  tint?: StarTint;
 };
+
+export type StarTint = "pink";
 
 export type NormalizedStar = Star & {
   needsBackfill: boolean;
@@ -178,6 +182,7 @@ export function normalizeStar(star: {
   isLegacyStar?: boolean;
   rewardKind?: "goal" | "onboarding";
   rewardLabel?: string;
+  tint?: StarTint;
 }): NormalizedStar {
   const hasValidPosition =
     typeof star.position?.x === "number" &&
@@ -240,6 +245,7 @@ export function parseStarData(
       typeof data.rewardLabel === "string"
         ? data.rewardLabel.trim().slice(0, 120) || undefined
         : undefined,
+    ...(data.tint === "pink" ? { tint: "pink" as const } : {}),
   });
 }
 

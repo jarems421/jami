@@ -4,6 +4,7 @@ import {
   clampPercentage,
   getEffectiveStarVisualSize,
   type NormalizedStar,
+  type StarTint,
 } from "@/lib/constellation/stars";
 import { NORTHERN_STAR_BOX, NORTHERN_STAR_PATH } from "@/components/ui/NorthernStar";
 
@@ -82,8 +83,21 @@ const STAR_MASK_STYLE = {
  * are white in the middle and carry their colour in what they throw; these did
  * the opposite, and looked it.
  */
-const STAR_GRADIENT =
-  "radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.9) 12%, rgba(220, 224, 255, 0.3) 38%, rgba(196, 198, 255, 0) 66%)";
+/*
+ * A gifted figure may be tinted, and the same rule holds: the core stays
+ * white-hot and the colour lives in the light it throws. Each palette holds the
+ * colours, as "r, g, b", that the gradient, glow, bloom and sparkles use.
+ */
+type StarLight = { inner: string; mid: string; deep: string; outer: string; glow: string; sparkle: string };
+
+const STAR_LIGHT: Record<"white" | StarTint, StarLight> = {
+  white: { inner: "236, 238, 255", mid: "220, 224, 255", deep: "208, 214, 255", outer: "196, 198, 255", glow: "198, 202, 255", sparkle: "255, 255, 255" },
+  pink: { inner: "255, 232, 244", mid: "255, 190, 222", deep: "255, 164, 210", outer: "255, 140, 196", glow: "255, 150, 202", sparkle: "255, 226, 240" },
+};
+
+function getStarGradient(light: StarLight) {
+  return `radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.9) 12%, rgba(${light.mid}, 0.3) 38%, rgba(${light.outer}, 0) 66%)`;
+}
 
 /**
  * The light a star throws: a tight white core and a wide violet bloom.
@@ -104,13 +118,13 @@ const STAR_GRADIENT =
  * far the path was thinned. The centre's apparent weight was never mostly the
  * geometry. It is a third of what it was.
  */
-function getStarGlowFilter(glowStrength: number, starSize: number) {
+function getStarGlowFilter(glowStrength: number, starSize: number, light: StarLight) {
   const core = starSize * (0.05 + glowStrength * 0.04);
   const bloom = starSize * (0.36 + glowStrength * 0.28);
 
   return [
     `drop-shadow(0 0 ${core}px rgba(255, 255, 255, ${0.6 + glowStrength * 0.25}))`,
-    `drop-shadow(0 0 ${bloom}px rgba(198, 202, 255, ${0.34 + glowStrength * 0.2}))`,
+    `drop-shadow(0 0 ${bloom}px rgba(${light.glow}, ${0.34 + glowStrength * 0.2}))`,
   ].join(" ");
 }
 
@@ -206,11 +220,11 @@ function getTwinkleFloor(star: NormalizedStar) {
  */
 const BLOOM_BOX_RATIO = 3.2;
 
-function getBloomBackground(glowStrength: number) {
+function getBloomBackground(glowStrength: number, light: StarLight) {
   const alpha = 0.22 + glowStrength * 0.1;
   const at = (fraction: number) => (alpha * fraction).toFixed(3);
 
-  return `radial-gradient(ellipse 48% 48% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(236, 238, 255, ${at(0.5)}) 16%, rgba(220, 224, 255, ${at(0.24)}) 32%, rgba(208, 214, 255, ${at(0.1)}) 50%, rgba(196, 198, 255, ${at(0.03)}) 70%, rgba(196, 198, 255, 0) 100%)`;
+  return `radial-gradient(ellipse 48% 48% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(${light.inner}, ${at(0.5)}) 16%, rgba(${light.mid}, ${at(0.24)}) 32%, rgba(${light.deep}, ${at(0.1)}) 50%, rgba(${light.outer}, ${at(0.03)}) 70%, rgba(${light.outer}, 0) 100%)`;
 }
 
 /**
@@ -337,6 +351,7 @@ export default function ConstellationStar({
   // Was multiplied by a three-branch ternary whose every branch was 1.
   const starSize = visualSize ?? getEffectiveStarVisualSize(star);
   const sparkles = getSparkles(star, starSize, isBackground);
+  const light = STAR_LIGHT[star.tint ?? "white"];
   const className = `absolute select-none ${variant === "default" ? "constellation-star-enter" : ""} ${onDragStart ? "cursor-grab touch-none" : ""}`;
   const style = {
     left: `${star.position.x}%`,
@@ -447,13 +462,13 @@ export default function ConstellationStar({
           width: `${starSize * BLOOM_BOX_RATIO}px`,
           height: `${starSize * BLOOM_BOX_RATIO}px`,
           transform: "translate(-50%, -50%)",
-          background: getBloomBackground(glowStrength),
+          background: getBloomBackground(glowStrength, light),
         }}
       />
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: STAR_GRADIENT,
+          background: getStarGradient(light),
           /*
            * A background star is drawn the same as one in the sky.
            *
@@ -463,7 +478,7 @@ export default function ConstellationStar({
            * to be the same sky seen through the app, not a duller copy of it.
            */
           opacity: isPreview ? 0.92 : 0.86,
-          filter: getStarGlowFilter(glowStrength, starSize),
+          filter: getStarGlowFilter(glowStrength, starSize, light),
           // How far down this star's breath goes. The keyframe reads it, so
           // every star in the sky swings a different amount.
           ["--twinkle-floor" as string]: isPreview
@@ -489,7 +504,7 @@ export default function ConstellationStar({
             top: `${sparkle.top}%`,
             marginLeft: `${-sparkle.size / 2}px`,
             marginTop: `${-sparkle.size / 2}px`,
-            background: "rgba(255, 255, 255, 0.95)",
+            background: `rgba(${light.sparkle}, 0.95)`,
             // Matches the floor in constellation-sparkle: a sparkle is always
             // faintly lit, so this is where it sits before its cycle starts.
             opacity: 0.3,

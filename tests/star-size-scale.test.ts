@@ -75,3 +75,11 @@ describe("which scale a star's size is read on", () => {
     expect(sizeOf(500)).toBeCloseTo(52, 1);
   });
 });
+
+describe("star tint", () => {
+  it("keeps a pink tint and ignores anything else", () => {
+    expect(parseStarData("a", { tint: "pink" }).tint).toBe("pink");
+    expect(parseStarData("b", { tint: "gold" }).tint).toBeUndefined();
+    expect(parseStarData("c", {}).tint).toBeUndefined();
+  });
+});
