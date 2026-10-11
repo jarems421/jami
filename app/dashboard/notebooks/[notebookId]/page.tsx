@@ -18,7 +18,7 @@ import NotebookDrawingToolbar from "@/components/workspace/NotebookDrawingToolba
 import NotebookEditorConfirmDialog from "@/components/workspace/NotebookEditorConfirmDialog";
 import NotebookEditorFallback from "@/components/workspace/NotebookEditorFallback";
 import NotebookEditorHeader from "@/components/workspace/NotebookEditorHeader";
-import NotebookFloatingNotice from "@/components/workspace/NotebookFloatingNotice";
+import NotebookFloatingNotices from "@/components/workspace/NotebookFloatingNotices";
 import NotebookGraphEditorDialog from "@/components/workspace/NotebookGraphEditorDialog";
 import NotebookGraphLayer from "@/components/workspace/NotebookGraphLayer";
 import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
@@ -1050,16 +1050,11 @@ export default function NotebookEditorPage() {
             onNext={() => void turnByOffset(1)}
             onCreate={() => void createPageAtEnd()}
           />
-          {touchInkHintVisible ? (
-            <NotebookFloatingNotice toolbarDock={toolbarDock}>
-              Use Apple Pencil or stylus to write. Fingers move the page.
-            </NotebookFloatingNotice>
-          ) : null}
-          {selectedPageInkUnloaded && pageEditingEnabled ? (
-            <NotebookFloatingNotice toolbarDock={toolbarDock} role="status">
-              Loading this page&rsquo;s drawing. Writing is paused until it arrives.
-            </NotebookFloatingNotice>
-          ) : null}
+          <NotebookFloatingNotices
+            toolbarDock={toolbarDock}
+            touchInkHint={touchInkHintVisible}
+            inkLoading={selectedPageInkUnloaded && pageEditingEnabled}
+          />
         </div>
       </div>
       <NotebookEditorConfirmDialog
