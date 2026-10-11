@@ -1128,6 +1128,22 @@
     touch-action: pan-y;
   }
 
+  /*
+   * A zoomed notebook sheet pans with the iPad's own scrolling
+   * (`enableNotebookNativeScroll`): a finger on the margin, the sheet or its
+   * ink scrolls it, at the screen's own rate and with momentum, even in Low
+   * Power Mode, which holds what a page moves itself to 30 frames a second.
+   * No pinch-zoom here: pinching is the sheet's own gesture. The Pencil never
+   * scrolls, because the stylus guard cancels its touches; and what is
+   * dragged by a finger (text boxes, images, graphs, their handles) keeps its
+   * own `touch-none`.
+   */
+  [data-notebook-page-frame][data-notebook-native-scroll="true"],
+  [data-notebook-native-scroll="true"] .notebook-page-surface,
+  [data-notebook-native-scroll="true"] .notebook-ink-surface {
+    touch-action: pan-x pan-y;
+  }
+
   .notebook-thickness-slider {
     appearance: none;
     -webkit-appearance: none;

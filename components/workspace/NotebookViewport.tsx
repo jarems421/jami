@@ -9,7 +9,7 @@ import {
   type TransitionEventHandler,
 } from "react";
 import { PAGE_EDGE_CLASS } from "@/components/workspace/NotebookPageBackground";
-import type { NotebookViewportGeometry } from "@/lib/workspace/notebook-viewport";
+import type { NotebookViewportGeometry, NotebookViewportScroll } from "@/lib/workspace/notebook-viewport";
 
 export type { NotebookViewportGeometry };
 
@@ -36,8 +36,14 @@ type NotebookSheetProps = {
  * rather than to the sheet -- see `PAGE_COLOR_CLASS`. Naming a colour here as
  * well would leave two utilities of equal weight fighting over the same
  * property, settled by whichever Tailwind happened to emit last.
+ *
+ * Clipped with `overflow: clip`, not `hidden`: a sheet clipped by `hidden` is
+ * a scroll container of its own, and a finger on it scrolled nothing -- Chrome
+ * handed the pan to the sheet, which cannot scroll, instead of the scroller
+ * around it that pans a zoomed page natively. `clip` clips the same, rounded
+ * corners included, without being one.
  */
-const NOTEBOOK_SHEET_BASE_CLASS = `overflow-hidden rounded-sm shadow-none ${PAGE_EDGE_CLASS}`;
+const NOTEBOOK_SHEET_BASE_CLASS = `overflow-clip rounded-sm shadow-none ${PAGE_EDGE_CLASS}`;
 
 function getSheetStyle(
   geometry: NotebookViewportGeometry,
@@ -104,6 +110,13 @@ type Props = {
   overlay?: ReactNode;
   previewLayerRef: Ref<HTMLDivElement>;
   previousPreview?: NotebookViewportPreview | null;
+  /**
+   * The scroll area a zoomed sheet pans in with the browser's own scrolling,
+   * or null (at fit, or with `enableNotebookNativeScroll` off) for a sheet
+   * the gesture handlers move.
+   */
+  scroll?: NotebookViewportScroll | null;
+  scrollerRef?: Ref<HTMLDivElement>;
   trackRef: Ref<HTMLDivElement>;
 };
 
@@ -123,12 +136,15 @@ function NotebookViewport({
   overlay,
   previewLayerRef,
   previousPreview,
+  scroll = null,
+  scrollerRef,
   trackRef,
 }: Props) {
   return (
     <div
       ref={frameRef}
       data-notebook-page-frame
+      data-notebook-native-scroll={scroll ? "true" : undefined}
       /*
        * The page fills its frame.
        *
@@ -148,55 +164,70 @@ function NotebookViewport({
       onPointerDown={onFramePointerDown}
     >
       {overlay}
-      {activeContent !== null && geometry.pageWidth > 0 ? (
-        <div
-          ref={trackRef}
-          className="notebook-page-track absolute inset-0"
-          onTransitionEnd={onTrackTransitionEnd}
-          onTransitionCancel={onTrackTransitionCancel}
-        >
+      {/*
+        What scrolls, when a zoomed sheet is panned natively: the frame stays
+        put around it, so the overlay above stays where it is.
+      */}
+      <div
+        ref={scrollerRef}
+        data-notebook-scroller
+        className={
+          scroll
+            ? "absolute inset-0 overflow-auto overscroll-contain scrollbar-hide"
+            : "absolute inset-0 overflow-hidden"
+        }
+      >
+        {activeContent !== null && geometry.pageWidth > 0 ? (
           <div
-            ref={previewLayerRef}
-            aria-hidden="true"
-            className="invisible pointer-events-none absolute inset-0"
+            ref={trackRef}
+            className={`notebook-page-track absolute left-0 top-0 ${scroll ? "" : "h-full w-full"}`}
+            style={scroll ? { width: `${scroll.width}px`, height: `${scroll.height}px` } : undefined}
+            onTransitionEnd={onTrackTransitionEnd}
+            onTransitionCancel={onTrackTransitionCancel}
           >
-            {previousPreview ? (
-              <NotebookSheet
-                key={previousPreview.key}
-                className={`notebook-page-swipe-preview ${previousPreview.className}`}
-                dataNotebookSlot="previous"
-                geometry={geometry}
-                offsetX={-geometry.swipeTravel}
-              >
-                {previousPreview.content}
-              </NotebookSheet>
-            ) : null}
-            {nextPreview ? (
-              <NotebookSheet
-                key={nextPreview.key}
-                className={`notebook-page-swipe-preview ${nextPreview.className}`}
-                dataNotebookSlot="next"
-                geometry={geometry}
-                offsetX={geometry.swipeTravel}
-              >
-                {nextPreview.content}
-              </NotebookSheet>
-            ) : null}
+            <div
+              ref={previewLayerRef}
+              aria-hidden="true"
+              className="invisible pointer-events-none absolute inset-0"
+            >
+              {previousPreview ? (
+                <NotebookSheet
+                  key={previousPreview.key}
+                  className={`notebook-page-swipe-preview ${previousPreview.className}`}
+                  dataNotebookSlot="previous"
+                  geometry={geometry}
+                  offsetX={-geometry.swipeTravel}
+                >
+                  {previousPreview.content}
+                </NotebookSheet>
+              ) : null}
+              {nextPreview ? (
+                <NotebookSheet
+                  key={nextPreview.key}
+                  className={`notebook-page-swipe-preview ${nextPreview.className}`}
+                  dataNotebookSlot="next"
+                  geometry={geometry}
+                  offsetX={geometry.swipeTravel}
+                >
+                  {nextPreview.content}
+                </NotebookSheet>
+              ) : null}
+            </div>
+            <NotebookSheet
+              ref={activeRef}
+              className={`notebook-page-surface ${activeClassName}`}
+              dataNotebookPageSurface
+              dataNotebookSlot="active"
+              geometry={geometry}
+              onPointerMove={onActivePointerMove}
+              onPointerUp={onActivePointerUp}
+              onPointerCancel={onActivePointerCancel}
+            >
+              {activeContent}
+            </NotebookSheet>
           </div>
-          <NotebookSheet
-            ref={activeRef}
-            className={`notebook-page-surface ${activeClassName}`}
-            dataNotebookPageSurface
-            dataNotebookSlot="active"
-            geometry={geometry}
-            onPointerMove={onActivePointerMove}
-            onPointerUp={onActivePointerUp}
-            onPointerCancel={onActivePointerCancel}
-          >
-            {activeContent}
-          </NotebookSheet>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }

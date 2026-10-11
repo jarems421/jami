@@ -567,7 +567,25 @@ Still to come:
   - `inkFrame` is where the sheet sits in the frame that shows it (the numbers
     `getNotebookInkRenderWindow` takes). The snapped `inkWindow` does not change
     for a small pan, so the engine needs it to know the visible part of the
-    sheet once a pan settles. js-draw ignores it.
+    sheet once a pan settles. `useJamiInkSurface` reads the same numbers off
+    the page itself when it measures (the frame's rect against the sheet's),
+    since a natively scrolled sheet moves before the page's pan catches up.
+    js-draw ignores it.
+  - **Panning a zoomed sheet is the browser's own scrolling**
+    (`enableNotebookNativeScroll`, on; off is the fallback to the notebook's
+    own pan). Zoomed in, `NotebookViewport` puts the sheets in a scroller the
+    size of the frame plus the pan's bounds (`getNotebookViewportScroll`), the
+    sheet resting where scrolling to the start shows it furthest right and
+    down, so a scroll offset is the pan counted from the other side. A finger
+    scrolls at the screen's own rate and with momentum, Low Power Mode or not;
+    the Pencil never does (the stylus guard cancels its touches, and every
+    touch while ink is being drawn). Two fingers are refused to scrolling, so
+    the pinch, still the notebook's own, keeps its pointers; it holds the
+    scroller still and places the sheet in the scrolled content until it
+    commits. The controller follows the scroll with the live pan and commits
+    it 120 ms after the scroll settles. The sheet clips with `overflow: clip`:
+    clipped with `hidden` it was a scroll container of its own, and Chrome
+    gave the finger's pan to it rather than to the scroller.
 - **Saving.**
   - `NotebookInkData` becomes `js-draw-svg` (v2) or `jami-ink` (v3, with an
     SVG copy during the rollout window).

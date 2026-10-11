@@ -256,6 +256,61 @@ export function clampNotebookViewportOrigin(input: {
 }
 
 /**
+ * The scroll area a zoomed sheet pans in when the iPad's own scrolling moves it
+ * (`enableNotebookNativeScroll`): the frame plus however far the sheet may
+ * travel, with the sheet placed where scrolling right back to the start shows
+ * it furthest right and down. So a scroll offset is the same pan as ever,
+ * counted from the other side: `origin = sheet - offset`, over exactly the
+ * bounds a pan has.
+ *
+ * Null at fit, where the sheet sits in the middle and a sideways drag turns
+ * the page instead.
+ */
+export type NotebookViewportScroll = {
+  width: number;
+  height: number;
+  sheetX: number;
+  sheetY: number;
+};
+
+export function getNotebookViewportScroll(
+  layout: Pick<NotebookViewportLayout, "zoom" | "frameSize" | "panBounds">
+): NotebookViewportScroll | null {
+  if (!isNotebookViewportZoomedIn(layout.zoom)) return null;
+  const { frameSize, panBounds } = layout;
+  return {
+    width: frameSize.width + Math.max(0, panBounds.maxX - panBounds.minX),
+    height: frameSize.height + Math.max(0, panBounds.maxY - panBounds.minY),
+    sheetX: panBounds.maxX,
+    sheetY: panBounds.maxY,
+  };
+}
+
+/** The scroll offsets that show the sheet at `origin`. */
+export function getNotebookScrollOffset(
+  scroll: NotebookViewportScroll,
+  origin: NotebookViewportPoint
+): { left: number; top: number } {
+  return { left: scroll.sheetX - origin.x, top: scroll.sheetY - origin.y };
+}
+
+/**
+ * Where scroll offsets put the sheet, held inside its bounds: an iPad bounces
+ * past the ends of a scroll before settling back.
+ */
+export function getNotebookOriginForScroll(input: {
+  scroll: NotebookViewportScroll;
+  left: number;
+  top: number;
+  bounds: NotebookViewportPanBounds;
+}): NotebookViewportPoint {
+  return clampNotebookViewportOrigin({
+    origin: { x: input.scroll.sheetX - input.left, y: input.scroll.sheetY - input.top },
+    bounds: input.bounds,
+  });
+}
+
+/**
  * Calculates every sheet measurement from one fixed frame. Floating notebook
  * controls intentionally do not participate in this model.
  *

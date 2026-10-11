@@ -23,8 +23,9 @@ const SETTLE_MS = 120;
  * static underlay it shows meanwhile.
  *
  * The engine reads no layout, so this is the one place the sheet is measured:
- * a single `getBoundingClientRect()` of the host whenever the page or the part
- * of it on screen changes, when the window resizes and when a scroll settles.
+ * `getBoundingClientRect()` of the host (and of the frame around it, when it
+ * sits in one) whenever the page or the part of it on screen changes, when the
+ * window resizes and when a scroll settles.
  * Never while a stroke or an erase is in progress -- that waits for it to end --
  * and a scroll or resize marks the last measurement stale, so the next pen
  * contact measures once before it begins.
@@ -82,11 +83,23 @@ export function useJamiInkSurface({
     }
     owedRef.current = false;
     const { page, frame, renderWindow } = placeRef.current;
+    const rect = host.getBoundingClientRect();
+    // Where the sheet is in its frame, read off the page itself: a natively
+    // scrolled sheet has moved before the page's own pan catches up with it.
+    const frameElement = frame ? host.closest<HTMLElement>("[data-notebook-page-frame]") : null;
+    const frameRect = frameElement?.getBoundingClientRect() ?? null;
     const measured = inkSurfaceViewport({
-      rect: host.getBoundingClientRect(),
+      rect,
       page,
       devicePixelRatio: window.devicePixelRatio || 1,
-      frame,
+      frame: frameRect
+        ? {
+            pageX: rect.left - frameRect.left,
+            pageY: rect.top - frameRect.top,
+            frameWidth: frameRect.width,
+            frameHeight: frameRect.height,
+          }
+        : frame,
       window: renderWindow,
     });
     staleRef.current = measured === null;

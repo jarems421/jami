@@ -20,11 +20,15 @@ import {
 import {
   clampNotebookViewportOrigin,
   createNotebookPinchFrameQueue,
+  getNotebookOriginForScroll,
+  getNotebookScrollOffset,
   getNotebookViewportLayout,
+  getNotebookViewportScroll,
   isNotebookViewportZoomedIn,
   NOTEBOOK_PAN_GESTURE_SLOP,
   type NotebookViewportGeometry,
   type NotebookViewportLayout,
+  type NotebookViewportScroll,
 } from "@/lib/workspace/notebook-viewport";
 import {
   safelyReleasePointerCapture,
@@ -57,6 +61,13 @@ export type NotebookPinchZoomState = {
   pendingZoom: number;
   startPageHeight: number;
   startPageWidth: number;
+  /**
+   * The scroll offsets when the pinch began, when the iPad's own scrolling
+   * pans the sheet: the live transform places the sheet inside the scrolled
+   * content, so it is moved by them.
+   */
+  scrollX: number;
+  scrollY: number;
 };
 
 /**
@@ -118,12 +129,30 @@ type UseNotebookViewportControllerOptions = {
     event: ReactPointerEvent<HTMLElement>,
     options: NotebookTouchPointerEndOptions
   ) => void;
+  /**
+   * A zoomed sheet pans with the browser's own scrolling rather than a
+   * transform written per finger movement (`enableNotebookNativeScroll`).
+   */
+  nativeScroll?: boolean;
 };
+
+/** How long after the last scroll event a native pan counts as settled. */
+const NATIVE_SCROLL_SETTLE_MS = 120;
 
 export type NotebookViewportController = {
   layout: NotebookViewportLayout;
   /** Where `NotebookViewport` draws the sheets, kept the same object until it changes. */
   geometry: NotebookViewportGeometry;
+  /** The scroll area a zoomed sheet pans in, or null when it is not scrolled natively. */
+  scroll: NotebookViewportScroll | null;
+  /** Attaches the element that scrolls, for `NotebookViewport`. */
+  attachScroller: (element: HTMLDivElement | null) => void;
+  /** What `NotebookViewport` needs from here, to spread onto it. */
+  viewportProps: {
+    geometry: NotebookViewportGeometry;
+    scroll: NotebookViewportScroll | null;
+    scrollerRef: (element: HTMLDivElement | null) => void;
+  };
   pageFit: NotebookViewportLayout["fitSize"];
   pageWidthPx: number;
   pageHeightPx: number;
@@ -168,8 +197,13 @@ export function useNotebookViewportController({
   onPinchTakeover,
   onClearSwipeCandidate,
   onSwipeEnd,
+  nativeScroll = false,
 }: UseNotebookViewportControllerOptions): NotebookViewportController {
   const pinchZoomRef = useRef<NotebookPinchZoomState | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const attachScroller = useCallback((element: HTMLDivElement | null) => {
+    scrollerRef.current = element;
+  }, []);
   const panGestureRef = useRef<NotebookPanGesture | null>(null);
   const pinchCommitPendingRef = useRef(false);
   const pagePanLiveRef = useRef<NotebookPagePan>({ x: 0, y: 0 });
@@ -197,16 +231,27 @@ export function useNotebookViewportController({
     [frameSize, pageHeight, pagePan, pageWidth, pageZoom]
   );
 
+  const scroll = useMemo(
+    () => (nativeScroll ? getNotebookViewportScroll(layout) : null),
+    [layout, nativeScroll]
+  );
+
+  // Natively scrolled, the sheet sits still in the scrolled content and the
+  // scroll offsets do the panning.
   const geometry = useMemo<NotebookViewportGeometry>(
     () => ({
       pageWidth: layout.pageSize.width,
       pageHeight: layout.pageSize.height,
-      pageX: layout.pageOrigin.x,
-      pageY: layout.pageOrigin.y,
+      pageX: scroll ? scroll.sheetX : layout.pageOrigin.x,
+      pageY: scroll ? scroll.sheetY : layout.pageOrigin.y,
       swipeTravel: layout.swipeTravel,
     }),
-    [layout]
+    [layout, scroll]
   );
+  /** `scroll`, for the handlers; set before anything else reads it in a commit. */
+  const scrollRef = useRef<NotebookViewportScroll | null>(scroll);
+  /** The scroll offsets last applied for the committed pan, so a re-render does not apply them again. */
+  const appliedScrollRef = useRef<{ left: number; top: number } | null>(null);
 
   // The gesture handlers below must keep a stable identity — they sit on the
   // stylus hot path and are re-attached on every render otherwise. Holding the
@@ -260,8 +305,8 @@ export function useNotebookViewportController({
         startZoom: pinch.startZoom,
       });
       surface.style.transformOrigin = "0 0";
-      surface.style.transform = `translate3d(${liveTransform.x}px, ${
-        liveTransform.y
+      surface.style.transform = `translate3d(${liveTransform.x + pinch.scrollX}px, ${
+        liveTransform.y + pinch.scrollY
       }px, 0) scale(${liveTransform.scaleRatio})`;
       return liveTransform;
     },
@@ -297,14 +342,91 @@ export function useNotebookViewportController({
 
   const resetPageSurfaceTransform = useCallback(() => {
     pinchCommitPendingRef.current = false;
+    // A pinch holds native scrolling off while it runs.
+    if (scrollerRef.current) scrollerRef.current.style.overflow = "";
     const surface = pageSurfaceRef.current;
     if (!surface) return;
     surface.style.transformOrigin = "0 0";
-    surface.style.transform = `translate3d(${pagePanLiveRef.current.x}px, ${
-      pagePanLiveRef.current.y
-    }px, 0)`;
+    // The sheet's resting place: where it sits in the scrolled content, or the pan.
+    const rest = scrollRef.current
+      ? { x: scrollRef.current.sheetX, y: scrollRef.current.sheetY }
+      : pagePanLiveRef.current;
+    surface.style.transform = `translate3d(${rest.x}px, ${rest.y}px, 0)`;
     surface.style.willChange = "";
   }, [pageSurfaceRef]);
+
+  /*
+   * Native scrolling: the scroll offsets follow the committed pan whenever the
+   * pan or the scroll area changes for any reason but the scrolling itself (a
+   * pinch, a resize, the clamp at a new zoom). Before the pinch reset below,
+   * which reads where the sheet now rests.
+   */
+  useLayoutEffect(() => {
+    scrollRef.current = scroll;
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    if (!scroll) {
+      appliedScrollRef.current = null;
+      if (scroller.scrollLeft !== 0) scroller.scrollLeft = 0;
+      if (scroller.scrollTop !== 0) scroller.scrollTop = 0;
+      return;
+    }
+    const target = getNotebookScrollOffset(scroll, layout.pageOrigin);
+    const applied = appliedScrollRef.current;
+    if (applied && applied.left === target.left && applied.top === target.top) return;
+    appliedScrollRef.current = target;
+    if (Math.abs(scroller.scrollLeft - target.left) > 0.5) scroller.scrollLeft = target.left;
+    if (Math.abs(scroller.scrollTop - target.top) > 0.5) scroller.scrollTop = target.top;
+  }, [layout.pageOrigin, scroll]);
+
+  // The scrolling itself: the live pan follows every scroll event, and the
+  // committed pan follows once it settles, for everything that reads it (the
+  // ink's visible part, the PDF's detail, the floating controls). Attached
+  // while the sheet is scrolled, by which time the scroller is on the page.
+  const scrolling = scroll !== null;
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !scrolling) return;
+    let settle = 0;
+    const onScroll = () => {
+      const current = scrollRef.current;
+      if (!current || pinchZoomRef.current) return;
+      const origin = getNotebookOriginForScroll({
+        scroll: current,
+        left: scroller.scrollLeft,
+        top: scroller.scrollTop,
+        bounds: layoutRef.current.panBounds,
+      });
+      pagePanLiveRef.current = origin;
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => {
+        if (scrollRef.current !== current || pinchZoomRef.current) return;
+        const committed = layoutRef.current.pageOrigin;
+        // A scroll this controller made to show the committed pan: nothing new.
+        if (Math.abs(committed.x - origin.x) < 0.5 && Math.abs(committed.y - origin.y) < 0.5) return;
+        appliedScrollRef.current = getNotebookScrollOffset(current, origin);
+        setPagePan(origin);
+      }, NATIVE_SCROLL_SETTLE_MS);
+    };
+    /*
+     * Two fingers are a pinch, which is the sheet's own: refused to native
+     * scrolling, so their pointers keep arriving here. One finger scrolls;
+     * the Pencil never does (`installNotebookStylusTouchListeners`).
+     */
+    const holdForPinch = (event: TouchEvent) => {
+      if (scrollRef.current && event.touches.length >= 2 && event.cancelable) event.preventDefault();
+    };
+    const touchOptions: AddEventListenerOptions = { passive: false, capture: true };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    scroller.addEventListener("touchstart", holdForPinch, touchOptions);
+    scroller.addEventListener("touchmove", holdForPinch, touchOptions);
+    return () => {
+      window.clearTimeout(settle);
+      scroller.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("touchstart", holdForPinch, touchOptions);
+      scroller.removeEventListener("touchmove", holdForPinch, touchOptions);
+    };
+  }, [scrolling, setPagePan]);
 
   // Keep the last compositor pinch matrix in place until React has committed
   // the matching page dimensions. Resetting the scale before that commit
@@ -372,7 +494,12 @@ export function useNotebookViewportController({
     const centerY = (first.clientY + second.clientY) / 2;
     surface.style.willChange = "transform";
     surface.style.transformOrigin = "0 0";
+    // The pinch owns the sheet until it ends: native scrolling holds still.
+    const scrolled = Boolean(scrollRef.current && scrollerRef.current);
+    if (scrolled && scrollerRef.current) scrollerRef.current.style.overflow = "hidden";
     pinchZoomRef.current = {
+      scrollX: scrolled ? (scrollerRef.current?.scrollLeft ?? 0) : 0,
+      scrollY: scrolled ? (scrollerRef.current?.scrollTop ?? 0) : 0,
       startDistance: getPinchDistance(first, second),
       startZoom: layoutRef.current.zoom,
       startCenterX: centerX,
@@ -459,7 +586,8 @@ export function useNotebookViewportController({
       }
       // Offered rather than claimed: the gesture is only a pan once the finger
       // has actually travelled, so a tap still reaches the page underneath.
-      panGestureRef.current = isNotebookViewportZoomedIn(layoutRef.current.zoom)
+      // Natively scrolled, the browser pans and there is nothing to offer.
+      panGestureRef.current = isNotebookViewportZoomedIn(layoutRef.current.zoom) && !scrollRef.current
         ? {
             pointerId: event.pointerId,
             startX: event.clientX,
@@ -640,9 +768,17 @@ export function useNotebookViewportController({
     ]
   );
 
+  const viewportProps = useMemo(
+    () => ({ geometry, scroll, scrollerRef: attachScroller }),
+    [attachScroller, geometry, scroll]
+  );
+
   return {
     layout,
     geometry,
+    scroll,
+    attachScroller,
+    viewportProps,
     pageFit: layout.fitSize,
     pageWidthPx: layout.pageSize.width,
     pageHeightPx: layout.pageSize.height,

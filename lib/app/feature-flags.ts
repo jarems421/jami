@@ -15,7 +15,8 @@ export type FeatureFlagKey =
   | "enableTutorChatRecall"
   | "enableBilling"
   | "enableTutorChecks"
-  | "enableJamiInk";
+  | "enableJamiInk"
+  | "enableNotebookNativeScroll";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -116,6 +117,14 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * turning it off loses nothing.
    */
   enableJamiInk: true,
+  /*
+   * A zoomed notebook sheet pans with the browser's own scrolling, at the
+   * screen's own rate and with momentum, even in Low Power Mode, where what a
+   * page moves itself is held to 30 frames a second. Off, a finger drag moves
+   * the sheet through the notebook's own pan, as before: the fallback if
+   * scrolling misbehaves on a device.
+   */
+  enableNotebookNativeScroll: true,
 };
 
 /**
@@ -143,6 +152,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableBilling: process.env.NEXT_PUBLIC_ENABLE_BILLING,
   enableTutorChecks: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHECKS,
   enableJamiInk: process.env.NEXT_PUBLIC_ENABLE_JAMI_INK,
+  enableNotebookNativeScroll: process.env.NEXT_PUBLIC_ENABLE_NOTEBOOK_NATIVE_SCROLL,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -175,4 +185,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableBilling: isFeatureEnabled("enableBilling"),
   enableTutorChecks: isFeatureEnabled("enableTutorChecks"),
   enableJamiInk: isFeatureEnabled("enableJamiInk"),
+  enableNotebookNativeScroll: isFeatureEnabled("enableNotebookNativeScroll"),
 };

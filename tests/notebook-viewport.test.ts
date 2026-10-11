@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   clampNotebookViewportOrigin,
   getNotebookInkViewportScale,
+  getNotebookOriginForScroll,
+  getNotebookScrollOffset,
+  getNotebookViewportScroll,
   getNotebookViewportLayout,
   getNotebookViewportPanBounds,
   getNotebookViewportSwipeGap,
@@ -371,5 +374,48 @@ describe("zooming about a point", () => {
 
     expect(zoomNotebookViewportAbout({ layout: zoomedIn, zoom: 1 })).toEqual({ zoom: 1, pan: { x: 0, y: 0 } });
     expect(zoomNotebookViewportAbout({ layout: fitted, zoom: 1 })).toBeNull();
+  });
+});
+
+describe("a zoomed sheet scrolled natively", () => {
+  const zoomed = getNotebookViewportLayout({ frameWidth: 1180, frameHeight: 760, zoom: 2.5 });
+  const fitted = getNotebookViewportLayout({ frameWidth: 1180, frameHeight: 760, zoom: 1 });
+
+  it("has no scroll area at fit, where a sideways drag turns the page", () => {
+    expect(getNotebookViewportScroll(fitted)).toBeNull();
+  });
+
+  it("scrolls over exactly the bounds a pan has", () => {
+    const scroll = getNotebookViewportScroll(zoomed)!;
+    const { panBounds, frameSize } = zoomed;
+    // Scrolled right back to the start, the sheet is as far right and down as a pan takes it ...
+    expect(getNotebookOriginForScroll({ scroll, left: 0, top: 0, bounds: panBounds })).toEqual({
+      x: panBounds.maxX,
+      y: panBounds.maxY,
+    });
+    // ... and scrolled all the way, as far left and up.
+    expect(
+      getNotebookOriginForScroll({
+        scroll,
+        left: scroll.width - frameSize.width,
+        top: scroll.height - frameSize.height,
+        bounds: panBounds,
+      })
+    ).toEqual({ x: panBounds.minX, y: panBounds.minY });
+  });
+
+  it("turns a pan into scroll offsets and back", () => {
+    const scroll = getNotebookViewportScroll(zoomed)!;
+    const origin = { x: -310, y: -420 };
+    const offset = getNotebookScrollOffset(scroll, origin);
+    expect(getNotebookOriginForScroll({ scroll, ...offset, bounds: zoomed.panBounds })).toEqual(origin);
+  });
+
+  it("holds the sheet inside its bounds while an iPad bounces past the end of a scroll", () => {
+    const scroll = getNotebookViewportScroll(zoomed)!;
+    expect(getNotebookOriginForScroll({ scroll, left: -60, top: -40, bounds: zoomed.panBounds })).toEqual({
+      x: zoomed.panBounds.maxX,
+      y: zoomed.panBounds.maxY,
+    });
   });
 });

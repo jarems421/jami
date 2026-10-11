@@ -65,6 +65,14 @@ scroll sideways.** Long equations must scroll inside their own box.
 10. Highlight across a line, then erase part of the highlight. The rest keeps
     its shape, with no bridges or holes.
 11. Rotate the device mid-page. The page and the work survive.
+12. Pinch in on a page. One finger pans it the way the rest of the iPad
+    scrolls, with momentum, even with Low Power Mode on; the Pencil keeps
+    writing and never moves the page; a resting palm while writing does not
+    move it either; pinching in and out still zooms about your fingers; back
+    at fit, a sideways swipe turns the page again.
+13. With Low Power Mode on, open a notebook: within a couple of seconds it
+    says Low Power Mode is slowing writing down. Turn it off in Settings and
+    come back: the note goes.
 
 ## 3. Learn and flashcards
 

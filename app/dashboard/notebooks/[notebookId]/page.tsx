@@ -70,6 +70,7 @@ import {
 } from "@/hooks/useNotebookWorkspaceState";
 import { usePracticePaperRetake } from "@/hooks/usePracticePaperRetake";
 import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
+import { featureFlags } from "@/lib/app/feature-flags";
 import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
 import { notebookPageHasWork } from "@/lib/workspace/notebook-assistant";
 import {
@@ -286,6 +287,7 @@ export default function NotebookEditorPage() {
       pageSwipeRef.current = null;
     },
     onSwipeEnd: (event, options) => swipe.end(event, options),
+    nativeScroll: featureFlags.enableNotebookNativeScroll,
   });
   const {
     layout: viewportLayout,
@@ -945,7 +947,7 @@ export default function NotebookEditorPage() {
             trackRef={pageTrackRef}
             previewLayerRef={pagePreviewLayerRef}
             activeRef={pageSurfaceRef}
-            geometry={viewport.geometry}
+            {...viewport.viewportProps}
             previousPreview={swipePreviews.previous}
             nextPreview={swipePreviews.next}
             activeClassName={PAGE_COLOR_CLASS[pageColor]}

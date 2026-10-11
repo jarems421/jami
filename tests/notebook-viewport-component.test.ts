@@ -115,4 +115,35 @@ describe("NotebookViewport", () => {
     expect(html).toContain("data-notebook-page-frame");
     expect(html).not.toContain("data-notebook-sheet");
   });
+
+  it("scrolls a zoomed sheet natively inside the frame, the overlay staying put", () => {
+    const base = {
+      activeClassName: "bg-white",
+      activeContent: createElement("span", null, "Active"),
+      activeRef: createRef<HTMLDivElement>(),
+      frameRef: createRef<HTMLDivElement>(),
+      geometry: { pageWidth: 1800, pageHeight: 2480, pageX: 680, pageY: 880, swipeTravel: 466 },
+      onActivePointerCancel: () => undefined,
+      onActivePointerMove: () => undefined,
+      onActivePointerUp: () => undefined,
+      onTrackTransitionCancel: () => undefined,
+      onTrackTransitionEnd: () => undefined,
+      overlay: createElement("div", { "data-overlay": "true" }),
+      previewLayerRef: createRef<HTMLDivElement>(),
+      trackRef: createRef<HTMLDivElement>(),
+    };
+    const scrolled = renderToStaticMarkup(
+      createElement(NotebookViewport, { ...base, scroll: { width: 2480, height: 3240, sheetX: 680, sheetY: 880 } })
+    );
+    expect(scrolled).toContain('data-notebook-native-scroll="true"');
+    expect(scrolled).toMatch(/data-notebook-scroller="true" class="[^"]*overflow-auto/);
+    expect(scrolled).toContain("width:2480px;height:3240px");
+    expect(scrolled).toContain("translate3d(680px, 880px, 0)");
+    // The overlay is the frame's, outside what scrolls.
+    expect(scrolled.indexOf("data-overlay")).toBeLessThan(scrolled.indexOf("data-notebook-scroller"));
+
+    const fitted = renderToStaticMarkup(createElement(NotebookViewport, { ...base, scroll: null }));
+    expect(fitted).not.toContain("data-notebook-native-scroll");
+    expect(fitted).toMatch(/data-notebook-scroller="true" class="[^"]*overflow-hidden/);
+  });
 });
