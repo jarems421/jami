@@ -313,6 +313,14 @@ Node:
   straightening with aiming. `createInkPenBuilder` takes samples and returns
   path commands plus whether to fill or stroke them. Colour stays with the
   caller.
+- **`pen-outline.ts`.** A tapered stroke's outline: both edges and the round
+  ends, as one loop. Where the line turns too sharply for its width, the edges
+  are joined as a stroked path's are, round on the outside and through the
+  point on the inside, as at the point of a 'v' or a hook a Pencil makes
+  landing or lifting. Each end faces the way the stroke left it, measured a
+  half width along. Without that, a slip of a pixel or two left a pinched start
+  that looked cut off, a spike, or a fish-tail end
+  (`ink-geometry-pen-outline.test.ts`, 11 October).
 - **`chisel.ts`, `convex-union.ts`.** The highlighter: the nib swept along the
   path, one footprint per step, and their union as one loop at the lift. The
   precision eraser uses the union too.

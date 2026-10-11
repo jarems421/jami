@@ -11,7 +11,6 @@ import {
   STRAIGHTEN_MAXIMUM_BOW,
   STRAIGHTEN_MINIMUM_ARC,
   REVERSAL_BISECTOR_FLOOR,
-  QUARTER_ARC_HANDLE,
   GUIDE_ANGLE_STEP,
   GUIDE_ANGLE_WINDOW,
   STRAIGHTEN_MINIMUM_SPAN_RATIO,
@@ -21,6 +20,7 @@ import {
   UNMISTAKABLE_CORNER_DEGREES,
   CORNER_SLOWDOWN,
 } from "@/lib/ink/geometry/pen-tuning";
+import { cubic, line, move, penOutline } from "@/lib/ink/geometry/pen-outline";
 import {
   penHalfWidthsAlong,
   penWidthVaries,
@@ -120,95 +120,6 @@ export type InkPenBuilder = {
   liveTip(): InkPenTip | null;
   extent(): InkExtent;
 };
-
-const move = (at: Vec): InkPathCommand => ({ op: "M", x: at.x, y: at.y });
-const line = (to: Vec): InkPathCommand => ({ op: "L", x: to.x, y: to.y });
-const cubic = (control1: Vec, control2: Vec, to: Vec): InkPathCommand => ({
-  op: "C",
-  x1: control1.x,
-  y1: control1.y,
-  x2: control2.x,
-  y2: control2.y,
-  x: to.x,
-  y: to.y,
-});
-
-/**
- * Cubic Beziers through every point, C1 by construction.
- *
- * The same Catmull-Rom the centreline is drawn with, in a form the two edges
- * of a tapered stroke can also use. Their tangents come from their own
- * neighbours rather than the centreline's, because an offset edge turns
- * through a different angle than the line it was offset from -- sharper on
- * the inside of a bend, gentler on the outside.
- */
-function cubicsThrough(pts: Vec[]): InkPathCommand[] {
-  const at = (index: number) => pts[Math.min(Math.max(index, 0), pts.length - 1)];
-  const direction = (index: number) => {
-    const arriving = at(index).minus(at(index - 1));
-    const leaving = at(index + 1).minus(at(index));
-    if (arriving.magnitude() === 0) return leaving;
-    if (leaving.magnitude() === 0) return arriving;
-    const bisector = arriving.normalized().plus(leaving.normalized());
-    return bisector.magnitude() < REVERSAL_BISECTOR_FLOOR ? leaving : bisector;
-  };
-
-  const commands: InkPathCommand[] = [];
-  for (let index = 0; index < pts.length - 1; index += 1) {
-    const from = at(index);
-    const to = at(index + 1);
-    const length = to.distanceTo(from);
-    const reachOut = armReach(
-      length,
-      index > 0 ? from.distanceTo(at(index - 1)) : null
-    );
-    const reachIn = armReach(
-      length,
-      index + 2 < pts.length ? at(index + 2).distanceTo(to) : null
-    );
-    const armOut = direction(index);
-    const armIn = direction(index + 1);
-    commands.push(
-      cubic(
-        armOut.magnitude() > 0
-          ? from.plus(armOut.normalized().times(reachOut))
-          : from,
-        armIn.magnitude() > 0 ? to.minus(armIn.normalized().times(reachIn)) : to,
-        to
-      )
-    );
-  }
-  return commands;
-}
-
-/**
- * The round end of a stroke: a half circle from one edge to the other, as two
- * quarter-circle cubics.
- *
- * Drawn rather than left to a line cap because a tapered stroke is a filled
- * outline, and an outline has no caps to set -- the ends are simply part of
- * the shape.
- */
-function semicircle(
-  centre: Vec,
-  from: Vec,
-  outward: Vec,
-  radius: number
-): InkPathCommand[] {
-  const spoke = from.minus(centre);
-  if (radius <= 0 || spoke.magnitude() === 0 || outward.magnitude() === 0) {
-    return [];
-  }
-  const unit = spoke.normalized();
-  const away = outward.normalized();
-  const handle = radius * QUARTER_ARC_HANDLE;
-  const mid = centre.plus(away.times(radius));
-  const to = centre.minus(unit.times(radius));
-  return [
-    cubic(from.plus(away.times(handle)), mid.plus(unit.times(handle)), mid),
-    cubic(mid.minus(unit.times(handle)), to.plus(away.times(handle)), to),
-  ];
-}
 
 export function createInkPenBuilder(
   startPoint: InkPenSample,
@@ -757,8 +668,9 @@ export function createInkPenBuilder(
       const halfWidths = halfWidthsAlong(sampledWidths, shape.length);
       const last = shape.length - 1;
       /*
-       * Which way each edge point is pushed out from the centreline: square
-       * to the same direction the centreline itself is drawn in.
+       * The way the centreline runs through each point, which its edge points
+       * are pushed square to: the same direction the centreline itself is
+       * drawn in.
        *
        * This used the chord between the two immediate neighbours, which is
        * exactly what the centreline stopped using, for two reasons it
@@ -768,51 +680,28 @@ export function createInkPenBuilder(
        * towards the longer side of a turn. Either way one edge point was
        * pushed off sideways and the outline poked out at a smooth turn --
        * by up to 1.6px on a tight u-turn, at every corner setting, because
-       * this never consulted the corners at all. At a real corner the push
-       * is along the bisector of the two strokes that meet there.
+       * this never consulted the corners at all. A real corner is joined
+       * instead (`penOutline`).
        */
-      const normalAt = (index: number) => {
+      const alongAt = (index: number) => {
         const arriving = tangentAt(index, false);
         const leaving = tangentAt(index, true);
-        let along = leaving;
         if (arriving.magnitude() > 0 && leaving.magnitude() > 0) {
           const bisector = arriving.normalized().plus(leaving.normalized());
-          along = bisector.magnitude() < REVERSAL_BISECTOR_FLOOR ? leaving : bisector;
-        } else if (leaving.magnitude() === 0) {
-          along = arriving;
+          return bisector.magnitude() < REVERSAL_BISECTOR_FLOOR ? leaving : bisector;
         }
-        if (along.magnitude() === 0) return Vec.of(0, 1);
-        const unit = along.normalized();
-        return Vec.of(-unit.y, unit.x);
+        return leaving.magnitude() === 0 ? arriving : leaving;
       };
-
-      const normals = shape.map((_, index) => normalAt(index));
-      const left = shape.map((point, index) =>
-        point.plus(normals[index].times(halfWidths[index]))
-      );
-      const right = shape.map((point, index) =>
-        point.minus(normals[index].times(halfWidths[index]))
-      );
 
       // The end cap is a half circle of this radius about the last point.
       lastTip = { x: shape[last].x, y: shape[last].y, width: halfWidths[last] * 2 };
-
-      // Out along one edge, round the end, back along the other, round the
-      // start. One closed loop: a stroke made of separate subpaths is welded
-      // into a zig-zag by everything downstream that closes a path.
       return {
-        path: [
-          move(left[0]),
-          ...cubicsThrough(left),
-          ...semicircle(
-            shape[last],
-            left[last],
-            at(last).minus(at(last - 1)),
-            halfWidths[last]
-          ),
-          ...cubicsThrough([...right].reverse()),
-          ...semicircle(shape[0], right[0], at(0).minus(at(1)), halfWidths[0]),
-        ],
+        path: penOutline({
+          shape,
+          halfWidths,
+          corners,
+          along: shape.map((_, index) => alongAt(index)),
+        }),
         paint: { kind: "fill" },
       };
     }
