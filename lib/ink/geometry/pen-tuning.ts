@@ -155,8 +155,23 @@ export const STRAIGHTEN_MAXIMUM_BACKTRACK = 0.12;
  * Measured on a 300px stroke: a 50px squiggle scores about 0.06 here, a 40px
  * arc about 0.63. Nothing sits near the middle, so the threshold has room to be
  * wrong by a lot and still be right.
+ *
+ * Only asked of a stroke that strays far enough to be a curve at all
+ * (`STRAIGHTEN_MINIMUM_ARC`): the score is the same for a bend of any depth.
  */
 export const STRAIGHTEN_MAXIMUM_BOW = 0.32;
+
+/**
+ * How far from its line, as a fraction of its length, a stroke must bow before
+ * it can be a deliberate curve rather than a line drawn by hand.
+ *
+ * The bow test cannot see depth: a line bent two pixels one way scores like an
+ * arc. And a line drawn freehand does bend one way, the wrist swinging it
+ * round -- a flat line most of all, which is the one people draw most -- so
+ * holding still at the end of nearly every horizontal line was refused. A
+ * shallow bend is a line; past this, a curve is left alone.
+ */
+export const STRAIGHTEN_MINIMUM_ARC = 0.08;
 
 /**
  * The eight angles a snapped line is drawn towards, and how near it has to be.

@@ -133,6 +133,24 @@ describe("the pen geometry", () => {
       expect(pen.straighten()).toBeNull();
     });
 
+    /** A flat stroke 300 px long, bowed `depth` px to one side all the way along. */
+    const bowed = (depth: number) =>
+      Array.from({ length: 40 }, (_, index) => {
+        const t = index / 39;
+        return sample(30 + t * 300, 60 + Math.sin(t * Math.PI) * depth, 5, index * 8);
+      });
+
+    it("snaps a flat line bent the way a wrist bends it", () => {
+      // 10 px over 300: never crossing its line, so it scores as an arc, but
+      // too shallow to be one.
+      expect(draw(bowed(10)).straighten()).not.toBeNull();
+      expect(draw(bowed(20)).straighten()).not.toBeNull();
+    });
+
+    it("leaves a shallow but deliberate curve alone", () => {
+      expect(draw(bowed(36)).straighten()).toBeNull();
+    });
+
     it("leaves a curve as it was drawn", () => {
       const pen = draw(arc(40));
       expect(pen.straighten()).toBeNull();

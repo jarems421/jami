@@ -150,45 +150,28 @@ export function positionNotebookEraserCursor(input: {
 }
 
 /**
- * How still a hand actually is, and how long it has to stay that way.
+ * How still a hand actually is, and how long it has to stay that way, before a
+ * stroke snaps straight (`InkHoldDetector`, and js-draw's detector behind the
+ * fallback).
  *
- * js-draw asks for an average speed under 8.5 screen pixels a second before it
- * will call a pen stationary. That is under a seventh of a pixel per frame --
- * far below what a hand resting a stylus on glass does. Every time the tremor
- * crosses it the timer starts again, so the snap can take several seconds to
- * arrive or never arrive at all, which reads as "hold it longer" rather than as
- * a threshold nobody can meet.
- *
- * The wait is longer than js-draw's half second on purpose. Half a second of
- * stillness happens in the middle of ordinary writing; a full second is a
- * deliberate pause, and it is the pause -- not the shape of the stroke -- that
- * is really being asked about.
+ * Half a second, held within eight screen pixels. A full second was tried and
+ * felt broken on the iPad: the snap seemed to come when it wanted to, and
+ * mostly not at all. What stops a snap in the middle of a word is not a long
+ * wait but the shape test (`straightenedShape`): a stroke that has doubled back
+ * on itself, as handwriting does, is never taken for a line.
  */
 export const NOTEBOOK_STRAIGHTEN_HOLD = {
   /**
-   * Screen pixels a second, averaged. Room for a hand, not for a stroke.
-   *
-   * This was the broken one: 8.5 is under a seventh of a pixel per frame and a
-   * hand resting a stylus on glass never gets there, so the timer restarted on
-   * every tremor and the snap arrived late or not at all.
+   * Screen pixels a second, averaged: js-draw's own test, for the fallback
+   * editor only. Jami Ink's detector judges drift alone (see
+   * `lib/ink-dom/hold-detector.ts` for why).
    */
   maxSpeed: 25,
   /**
-   * How far the tip may drift over the hold, in screen pixels.
-   *
-   * Left near js-draw's, and that matters more than it looks: with the timer
-   * running for a second, this is what decides how slowly somebody can be
-   * writing and still trip the snap by accident. Ten pixels of drift over a
-   * second means anything above ten pixels a second is safe. Raising it to
-   * sixteen, as this briefly was, doubled the band of speeds that could snap
-   * mid-word -- and a snap mid-word does not just tidy the stroke, it turns the
-   * rest of it into a line that swings around after the pen.
+   * How far the tip may drift from where it stopped, in screen pixels: room for
+   * a hand pressing down on the glass, not for a stroke. Writing slower than
+   * sixteen pixels a second for half a second is a pause, not writing.
    */
-  maxRadius: 10,
-  /**
-   * Longer than js-draw's half second on purpose. Half a second of stillness
-   * happens in the middle of ordinary writing; a second is a deliberate pause,
-   * and it is the pause being asked about rather than the shape of the stroke.
-   */
-  minTimeSeconds: 1,
+  maxRadius: 8,
+  minTimeSeconds: 0.5,
 };

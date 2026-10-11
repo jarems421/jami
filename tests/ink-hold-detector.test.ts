@@ -1,35 +1,54 @@
 import { describe, expect, it, vi } from "vitest";
 import { InkHoldDetector } from "@/lib/ink-dom/hold-detector";
+import { NOTEBOOK_STRAIGHTEN_HOLD } from "@/lib/workspace/notebook-ink-contact";
 import { InkFakeClock } from "./support/ink-fake-timers";
 
-/** The notebook's hold: 25 px/s, 10 px of drift, one second. */
+/** The notebook's hold: within 8 px for half a second. */
 function detectorAt(clock: InkFakeClock, x = 0, y = 0) {
   const onHold = vi.fn();
   const detector = new InkHoldDetector(x, y, clock.time, onHold, clock.timers);
   return { detector, onHold };
 }
 
+describe("the notebook's hold", () => {
+  it("is half a second within eight screen pixels", () => {
+    expect(NOTEBOOK_STRAIGHTEN_HOLD).toMatchObject({ minTimeSeconds: 0.5, maxRadius: 8 });
+  });
+});
+
 describe("the hold detector's timer", () => {
-  it("fires after one second even if the pen never moves again", () => {
+  it("fires after half a second even if the pen never moves again", () => {
     const clock = new InkFakeClock();
     const { onHold } = detectorAt(clock);
-    clock.advanceTo(999);
+    clock.advanceTo(499);
     expect(onHold).not.toHaveBeenCalled();
-    clock.advanceTo(1000);
+    clock.advanceTo(500);
     expect(onHold).toHaveBeenCalledTimes(1);
   });
 
-  it("waits a full second from the last movement, not from the pen landing", () => {
+  it("waits half a second from where the pen stopped, not from the pen landing", () => {
     const clock = new InkFakeClock();
     const { detector, onHold } = detectorAt(clock);
-    // Writing fast (10 px every 100 ms) until 800 ms.
+    // Writing at 100 px a second until 800 ms.
     for (let t = 100; t <= 800; t += 100) {
       clock.advanceTo(t);
       expect(detector.move(t / 10, 0, t)).toBe(false);
     }
-    clock.advanceTo(1799);
+    clock.advanceTo(1299);
     expect(onHold).not.toHaveBeenCalled();
-    clock.advanceTo(1800);
+    clock.advanceTo(1300);
+    expect(onHold).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds through a resting hand's tremor at the Pencil's full rate", () => {
+    const clock = new InkFakeClock();
+    const { detector, onHold } = detectorAt(clock);
+    // A third of a pixel either way every 4 ms: tens of pixels a second
+    // sample to sample, which restarted the old detector's clock every time.
+    for (let t = 4; t <= 520; t += 4) {
+      clock.advanceTo(t);
+      detector.move((t / 4) % 2 === 0 ? 0.33 : -0.33, 0.2, t);
+    }
     expect(onHold).toHaveBeenCalledTimes(1);
   });
 
@@ -46,47 +65,44 @@ describe("the hold detector's timer", () => {
 });
 
 describe("the hold detector's verdict on each move", () => {
-  it("says moving until the pen has been still for a full second", () => {
+  it("says moving until the pen has been still for half a second, then held", () => {
     const clock = new InkFakeClock();
     const { detector } = detectorAt(clock);
     const verdicts: boolean[] = [];
-    // Tremor: a fifth of a pixel either way, every 100 ms.
-    for (let step = 1; step <= 12; step += 1) {
+    for (let step = 1; step <= 8; step += 1) {
       const t = step * 100;
       clock.advanceTo(t);
       verdicts.push(detector.move(step % 2 === 0 ? 0 : 0.2, 0, t));
     }
-    expect(verdicts.slice(0, 9)).toEqual(Array(9).fill(false));
-    expect(verdicts.slice(9)).toEqual([true, true, true]);
+    expect(verdicts).toEqual([false, false, false, false, true, true, true, true]);
   });
 
   it("starts counting again when the pen drifts past the radius", () => {
     const clock = new InkFakeClock();
-    const { detector } = detectorAt(clock);
-    clock.advanceTo(100);
-    expect(detector.move(0.2, 0, 100)).toBe(false);
-    clock.advanceTo(500);
-    // 11 px is past the 10 px radius: a new hold begins here.
-    expect(detector.move(11, 0, 500)).toBe(false);
-    const verdicts: boolean[] = [];
-    for (let t = 600; t <= 1700; t += 100) {
-      clock.advanceTo(t);
-      verdicts.push(detector.move(11, 0, t));
-    }
-    // The average speed of the jump decays over a few samples, which restart the
-    // hold each time; stillness then has to last a second from the last restart.
-    expect(verdicts.indexOf(true)).toBeGreaterThan(5);
-    expect(verdicts.slice(verdicts.indexOf(true))).not.toContain(false);
-    expect(verdicts[verdicts.length - 1]).toBe(true);
+    const { detector, onHold } = detectorAt(clock);
+    clock.advanceTo(300);
+    expect(detector.move(7, 0, 300)).toBe(false);
+    clock.advanceTo(400);
+    // 9 px from where it stopped is past the 8 px radius: a new hold begins here.
+    expect(detector.move(9, 0, 400)).toBe(false);
+    clock.advanceTo(899);
+    expect(detector.move(9.5, 0, 899)).toBe(false);
+    expect(onHold).not.toHaveBeenCalled();
+    clock.advanceTo(900);
+    expect(onHold).toHaveBeenCalledTimes(1);
+    expect(detector.move(9.5, 0, 900)).toBe(true);
   });
 
-  it("does not read samples sharing a timestamp as a burst of speed", () => {
+  it("holds again after moving on, but only once per stop", () => {
     const clock = new InkFakeClock();
-    const { detector } = detectorAt(clock);
-    // A duplicate timestamp is treated as a second apart, so half a pixel is
-    // half a pixel a second, far under the 25 px/s limit.
-    expect(detector.move(0.5, 0, 0)).toBe(false);
-    clock.advanceTo(1200);
-    expect(detector.move(0.5, 0, 1200)).toBe(true);
+    const { detector, onHold } = detectorAt(clock);
+    clock.advanceTo(500);
+    expect(onHold).toHaveBeenCalledTimes(1);
+    clock.advanceTo(2000);
+    expect(onHold).toHaveBeenCalledTimes(1);
+    clock.advanceTo(2100);
+    detector.move(40, 0, 2100);
+    clock.advanceTo(2600);
+    expect(onHold).toHaveBeenCalledTimes(2);
   });
 });

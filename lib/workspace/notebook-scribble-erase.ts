@@ -112,15 +112,32 @@ const MIN_MEAN_SPEED_ON_SCREEN_PER_MS = 0.35;
  * A loop drawn around something is not a scribble.
  *
  * A quick circle passes every test above: it reverses twice along its axis,
- * its legs overlap, and its path is about 2.22 times its diagonal. What gives
- * it away is how it turns. A circle keeps turning the same way, about 360
- * degrees in all; a zigzag's turns alternate and cancel. So a stroke that has
- * turned one way through a loop, but not through two, is left alone: circling
- * a word, overshooting the join included. A coiled scribble that loops on at
- * every pass turns past this and is still recognised.
+ * its legs overlap, and its path is about 2.22 times its diagonal. A circle
+ * keeps turning the same way, about 360 degrees in all, where a zigzag's turns
+ * alternate and cancel -- but a hand scribbling fast curls its turns the same
+ * way too, so three passes of a loopy scribble turn just as far as a circle.
+ * Turning was the whole test at first, and it threw those scribbles out.
+ *
+ * What tells them apart is the passes. A scribble's run most of its length,
+ * three or more of them; a circle has two, and the overshoot past where it
+ * began is short. So a stroke that has turned one way through about one loop
+ * is a scribble only with three passes of at least `LOOP_LONG_LEG_SHARE` of
+ * its length, and only when it is clearly longer than it is tall: a round
+ * loop is a circle (`LOOP_ROUND_ASPECT`). Past `LOOP_MAX_TURN_DEGREES` it has
+ * looped round more than anyone circles a word, and is judged as any scribble
+ * is.
+ *
+ * Measured on hand-shaped strokes (looping and zigzag scribbles of three to
+ * six passes, uneven passes, drifting; circles and ellipses from every
+ * starting point): every scribble of four passes or more and four in five of
+ * three passes are recognised, and no circle drawn once round with up to a
+ * fifth of a turn's overshoot is.
  */
 const LOOP_MIN_TURN_DEGREES = 300;
 const LOOP_MAX_TURN_DEGREES = 630;
+const LOOP_LONG_LEG_SHARE = 0.75;
+const LOOP_MIN_LONG_LEGS = 3;
+const LOOP_ROUND_ASPECT = 0.6;
 /**
  * Turning is read between points this far apart, so hand tremor cannot add
  * to it, and a turn sharper than this in one step is a reversal, whose sign
@@ -427,8 +444,21 @@ export function detectNotebookScribble(
     overlaps.reduce((total, value) => total + value, 0) / overlaps.length;
   if (meanOverlap < MIN_LEG_OVERLAP) return null;
 
+  // About one loop: a circle round something, or a scribble whose turns curl
+  // the same way. A scribble's passes each run most of its length; a circle
+  // has two such passes, and the overshoot past where it began is short.
   const turned = Math.abs(netTurningDegrees(samples));
-  if (turned >= LOOP_MIN_TURN_DEGREES && turned < LOOP_MAX_TURN_DEGREES) return null;
+  if (turned >= LOOP_MIN_TURN_DEGREES && turned < LOOP_MAX_TURN_DEGREES) {
+    // A round loop has no long way: along whichever axis fits it best, a
+    // circle with some overshoot shows three long passes too.
+    const minorExtent = extentOf(samples.map((sample) => sample.y * axis.x - sample.x * axis.y));
+    if (minorExtent >= majorExtent * LOOP_ROUND_ASPECT) return null;
+    let longLegs = 0;
+    for (const leg of legs) {
+      if (Math.abs(along[leg.end] - along[leg.start]) >= majorExtent * LOOP_LONG_LEG_SHARE) longLegs += 1;
+    }
+    if (longLegs < LOOP_MIN_LONG_LEGS) return null;
+  }
 
   const hull = grownHull(
     convexHull(samples),

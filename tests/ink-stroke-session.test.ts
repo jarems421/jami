@@ -599,12 +599,12 @@ describe("straightening on hold", () => {
     return { session, clock, ...recorded };
   }
 
-  it("snaps a line one second after the pen stops, and draws it at once", () => {
+  it("snaps a line half a second after the pen stops, and draws it at once", () => {
     const { clock, draws } = guidedPen();
     const drawsBefore = draws.length;
-    clock.advanceTo(lastTime + 999);
+    clock.advanceTo(lastTime + 499);
     expect(draws).toHaveLength(drawsBefore);
-    clock.advanceTo(lastTime + 1001);
+    clock.advanceTo(lastTime + 501);
     expect(draws).toHaveLength(drawsBefore + 1);
 
     const reference = new ReferencePen(FIRST, { thickness: 4, pressure: false, settings: GUIDED });
@@ -620,8 +620,8 @@ describe("straightening on hold", () => {
 
   it("goes on aiming the snapped line, and the lift keeps the aimed line", () => {
     const { session, clock, draws } = guidedPen();
-    clock.advanceTo(lastTime + 1001);
-    const aim = sample(200, 230, lastTime + 1100);
+    clock.advanceTo(lastTime + 501);
+    const aim = sample(200, 230, lastTime + 600);
     clock.advanceTo(aim.timeStamp);
     session.move([aim]);
 
@@ -644,7 +644,7 @@ describe("straightening on hold", () => {
 
   it("lifts a snapped line that was never moved as that line", () => {
     const { session, clock, draws } = guidedPen();
-    clock.advanceTo(lastTime + 1001);
+    clock.advanceTo(lastTime + 501);
     const snapped = draws[draws.length - 1];
     const result = session.lift();
     expect(result?.path).toBe(snapped.path);

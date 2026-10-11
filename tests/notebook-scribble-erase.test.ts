@@ -332,6 +332,30 @@ describe("detectNotebookScribble", () => {
       }
     });
 
+    it("still recognises a fast scribble whose turns all curl the same way, from three passes", () => {
+      // A hand swinging back and forth with its height swinging a quarter
+      // turn behind: every turn curls the same way, so three passes turn as
+      // far as a circle does. What gives it away is that each pass runs the
+      // length of the word.
+      for (const passes of [3, 4]) {
+        for (const height of [24, 40]) {
+          const corners: Array<[number, number]> = [];
+          const steps = 40 * passes;
+          for (let step = 0; step <= steps; step += 1) {
+            const angle = (Math.PI * passes * step) / steps - Math.PI / 2;
+            corners.push([300 + 80 * Math.sin(angle), 300 + (height / 2) * Math.sin(angle + Math.PI / 2)]);
+          }
+          expect(detectNotebookScribble(trace(corners, 1.2))).not.toBeNull();
+        }
+      }
+    });
+
+    it("leaves a round circle alone even when it runs well past where it began", () => {
+      for (const startDegrees of [0, 30, 60, 90, 120, 150]) {
+        expect(detectNotebookScribble(loop({ rx: 80, ry: 80, turns: 1.3, startDegrees }))).toBeNull();
+      }
+    });
+
     it("still recognises a coiled scribble that loops on every pass", () => {
       // Narrow loops advancing along a word, as some people scribble.
       const corners: Array<[number, number]> = [];

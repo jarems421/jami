@@ -9,6 +9,7 @@ import {
   STRAIGHTEN_TOLERANCE,
   STRAIGHTEN_MAXIMUM_BACKTRACK,
   STRAIGHTEN_MAXIMUM_BOW,
+  STRAIGHTEN_MINIMUM_ARC,
   REVERSAL_BISECTOR_FLOOR,
   QUARTER_ARC_HANDLE,
   GUIDE_ANGLE_STEP,
@@ -538,7 +539,7 @@ export function createInkPenBuilder(
     const bow = worstStray
       ? Math.abs(signedTotal / shape.length) / worstStray
       : 0;
-    if (bow > STRAIGHTEN_MAXIMUM_BOW) return null;
+    if (worstStray > span * STRAIGHTEN_MINIMUM_ARC && bow > STRAIGHTEN_MAXIMUM_BOW) return null;
     return { from, to };
   };
 

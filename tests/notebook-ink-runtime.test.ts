@@ -16,23 +16,20 @@ describe("relaxNotebookStraightenHold", () => {
     expect(NOTEBOOK_STRAIGHTEN_HOLD.maxSpeed).toBeGreaterThan(8.5);
 
     /*
-     * And does not buy that by making the snap easy to trip while writing.
+     * Quick enough to feel like a response, and still a pause.
      *
-     * With the timer running for a second, the drift allowance is what decides
-     * how slowly somebody can be writing and still snap by accident: staying
-     * inside it for the whole second is only possible below `maxRadius` pixels
-     * a second. That band was briefly doubled, and a snap mid-word does not
-     * merely tidy the stroke -- everything drawn after it becomes a line
-     * swinging around after the pen.
+     * A second was tried and felt broken on the iPad. The drift allowance over
+     * the hold decides how slowly somebody can be writing and still snap: only
+     * below `maxRadius / minTimeSeconds` pixels a second, which at sixteen is a
+     * pen stopped rather than one writing slowly. What keeps a pause in the
+     * middle of a word from snapping is the shape test, which never takes a
+     * stroke that has doubled back on itself for a line.
      */
     const accidentalBelow =
       NOTEBOOK_STRAIGHTEN_HOLD.maxRadius / NOTEBOOK_STRAIGHTEN_HOLD.minTimeSeconds;
-    expect(accidentalBelow).toBeLessThanOrEqual(11);
-    // Longer than js-draw's half second, on purpose: half a second of
-    // stillness happens in the middle of ordinary writing, and it is the pause
-    // that is being asked about rather than the shape of the stroke.
-    expect(NOTEBOOK_STRAIGHTEN_HOLD.minTimeSeconds).toBeGreaterThanOrEqual(0.75);
-    expect(NOTEBOOK_STRAIGHTEN_HOLD.minTimeSeconds).toBeLessThanOrEqual(2);
+    expect(accidentalBelow).toBeLessThanOrEqual(16);
+    expect(NOTEBOOK_STRAIGHTEN_HOLD.minTimeSeconds).toBeGreaterThanOrEqual(0.4);
+    expect(NOTEBOOK_STRAIGHTEN_HOLD.minTimeSeconds).toBeLessThanOrEqual(0.6);
   });
 
   it("replaces the config once the stroke has begun", () => {
