@@ -1,4 +1,10 @@
 export const NOTEBOOK_EDITOR_LOCK_BODY_CLASS = "jami-notebook-editor-active";
+/**
+ * On the body while a notebook (not a revision session or an exam sheet) is
+ * open. A notebook covers the screen with its own opaque surface, so the
+ * stylesheet switches off the photo background under it (see app/globals.css).
+ */
+export const NOTEBOOK_OPEN_BODY_CLASS = "jami-notebook-open";
 export const NOTEBOOK_TEXT_EDITOR_SELECTOR =
   ".notebook-text-editor, [data-notebook-text-editor='true']";
 export const NOTEBOOK_STYLUS_ACTION_SELECTOR = [

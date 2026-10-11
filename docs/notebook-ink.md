@@ -535,14 +535,24 @@ Still to come:
     pointer (the pen's eraser end), palm and touch left to the page, capture and
     cancel safeguards, and the eraser ring. The tool is fixed when the pen lands,
     so a style change mid-stroke needs no deferral.
-  - **Timing on the device** (`lib/ink-dom/input-trace.ts`). Opening a notebook
-    with `?inkstats=1` (kept for the tab until `?inkstats=0`) shows, after each
-    pen stroke, how old the samples were when the handler ran, how long the ink
+  - **Timing on the device** (`lib/ink-dom/input-trace.ts`,
+    `components/workspace/InkStatsOverlay.tsx`). Opening a notebook with
+    `?inkstats=1` (kept for the tab until `?inkstats=0`) shows the frames of
+    the last two seconds, pen or no pen, and the worst two seconds since the
+    notebook began to open (its loading screen included); and after each pen
+    stroke, how old the samples were when the handler ran, how long the ink
     work took per packet, how long until the next frame, the frames while the
     pen was down, how many coalesced and predicted samples Safari sent, and the
-    lift. It is how delay felt on an iPad gets measured, since desktop
-    Chromium cannot stand in for Safari there. Off, it costs nothing; on, it
-    allocates nothing during a stroke and writes the readout only at the lift.
+    lift. It is how delay and heaviness felt on an iPad get measured, since
+    desktop Chromium cannot stand in for Safari there. Off, it costs nothing;
+    on, it allocates nothing during a stroke and writes the stroke figures only
+    at the lift.
+  - **Nothing under the page.** An open notebook covers the screen with its
+    own opaque surface, so the app's photo background and its text halo are
+    switched off while it is open (`jami-notebook-open` on the body, set by
+    `useNotebookEditorShell`; the rule is in `app/globals.css`), and the header
+    has no backdrop blur. On an iPad every layer under the page is composited
+    with every frame of ink, pan and toolbar drag, seen or not.
   - `inkFrame` is where the sheet sits in the frame that shows it (the numbers
     `getNotebookInkRenderWindow` takes). The snapped `inkWindow` does not change
     for a small pan, so the engine needs it to know the visible part of the

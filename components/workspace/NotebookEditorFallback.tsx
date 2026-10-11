@@ -2,6 +2,7 @@
 
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, EmptyState, Skeleton } from "@/components/ui";
+import { InkStatsOverlay, useInkStatsEnabled } from "@/components/workspace/InkStatsOverlay";
 
 /** What the notebook route shows when there is no notebook to edit yet, or at all. */
 export default function NotebookEditorFallback({
@@ -12,6 +13,7 @@ export default function NotebookEditorFallback({
   state: "loading" | "failed" | "missing";
   onRetry: () => void;
 }) {
+  const inkStats = useInkStatsEnabled();
   if (state === "loading") {
     return (
       <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="3xl">
@@ -19,6 +21,7 @@ export default function NotebookEditorFallback({
           <Skeleton className="h-40 rounded-2xl" />
           <Skeleton className="h-[34rem] rounded-2xl" />
         </div>
+        {inkStats ? <InkStatsOverlay opening /> : null}
       </AppPage>
     );
   }

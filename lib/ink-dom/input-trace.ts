@@ -18,6 +18,8 @@
  *
  * And the frames themselves while the pen is down, and the lift. The display
  * pipeline after a frame (compositing, the screen) is not visible from a page.
+ * A live line above it (`InkFrameMeter`) gives the frames of the last couple
+ * of seconds whatever is happening, pen or no pen.
  *
  * Nothing is allocated while a stroke is written: the buffers are made once
  * and the frame loop reuses one callback. Strokes longer than the buffers keep
@@ -197,7 +199,78 @@ export class InkInputTrace {
   }
 }
 
+export type InkFrameWindow = InkTracePercentiles & { frames: number; over25: number; windowMs: number };
+
+/**
+ * The readout's live line: the frames over the last couple of seconds, pen or
+ * no pen, so how smooth the notebook is while it opens, sits idle, pans or has
+ * its toolbar dragged can be read on the device too. On an iPad a frame waits
+ * for the one before to be composited, so a page that is heavy to draw shows
+ * here as long frames even when no script is running.
+ */
+export class InkFrameMeter {
+  private readonly intervals: Float64Array;
+  private count = 0;
+  private last = 0;
+  private windowStart = 0;
+  private handle: number | null = null;
+  private readonly onFrame = () => {
+    const now = this.clock.now();
+    if (this.last > 0 && this.count < this.intervals.length) {
+      this.intervals[this.count] = now - this.last;
+      this.count += 1;
+    }
+    this.last = now;
+    if (now - this.windowStart >= this.windowMs) {
+      this.report(this.window(now - this.windowStart));
+      this.count = 0;
+      this.windowStart = now;
+    }
+    this.handle = this.clock.requestFrame(this.onFrame);
+  };
+
+  constructor(
+    private readonly report: (window: InkFrameWindow) => void,
+    private readonly windowMs = 2000,
+    private readonly clock: InkTraceClock = browserClock
+  ) {
+    this.intervals = new Float64Array(1024);
+  }
+
+  start(): void {
+    this.stop();
+    this.count = 0;
+    this.last = 0;
+    this.windowStart = this.clock.now();
+    this.handle = this.clock.requestFrame(this.onFrame);
+  }
+
+  /**
+   * Stops measuring. With `flush`, a window cut short is reported first, so a
+   * screen gone in under a window (a notebook's loading screen) still counts.
+   */
+  stop(flush = false): void {
+    if (this.handle !== null) this.clock.cancelFrame(this.handle);
+    this.handle = null;
+    if (flush && this.count > 0) {
+      this.report(this.window(this.clock.now() - this.windowStart));
+      this.count = 0;
+    }
+  }
+
+  private window(elapsed: number): InkFrameWindow {
+    let over25 = 0;
+    for (let index = 0; index < this.count; index += 1) if (this.intervals[index] > 25) over25 += 1;
+    return { ...inkTracePercentiles(this.intervals, this.count), frames: this.count, over25, windowMs: elapsed };
+  }
+}
+
 const ms = (value: number) => (value >= 10 ? value.toFixed(0) : value.toFixed(1));
+
+/** The live line, as the readout shows it. */
+export function formatInkFrameWindow(window: InkFrameWindow): string {
+  return `frames, last ${(window.windowMs / 1000).toFixed(1)} s   ${ms(window.p50)} / ${ms(window.p95)} / ${ms(window.max)} ms, ${window.over25} of ${window.frames} over 25 ms`;
+}
 const spread = (value: InkTracePercentiles) => `${ms(value.p50)} / ${ms(value.p95)} / ${ms(value.max)} ms`;
 
 /** The figures as the readout shows them, one line each. */

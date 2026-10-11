@@ -2,10 +2,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  formatInkFrameWindow,
   formatInkTrace,
+  InkFrameMeter,
   InkInputTrace,
   inkInputTraceEnabled,
   inkTracePercentiles,
+  type InkFrameWindow,
   type InkTraceClock,
 } from "@/lib/ink-dom/input-trace";
 
@@ -139,6 +142,45 @@ describe("InkInputTrace", () => {
     expect(time.waiting()).toBe(1);
     trace.cancel();
     expect(time.waiting()).toBe(0);
+  });
+});
+
+describe("InkFrameMeter", () => {
+  it("reports the frames of each window, pen or no pen, until stopped", () => {
+    const time = fakeClock();
+    const windows: InkFrameWindow[] = [];
+    const meter = new InkFrameMeter((window) => windows.push(window), 100, time.clock);
+    time.at(0);
+    meter.start();
+    // 16 ms frames with one 50 ms stall, over just past one window.
+    let now = 0;
+    for (const gap of [16, 16, 16, 50, 16, 16]) {
+      now += gap;
+      time.frame(now);
+    }
+    expect(windows).toHaveLength(1);
+    expect(windows[0]).toMatchObject({ frames: 4, over25: 1, max: 50, p50: 16, windowMs: 114 });
+    expect(formatInkFrameWindow(windows[0])).toBe("frames, last 0.1 s   16 / 50 / 50 ms, 1 of 4 over 25 ms");
+
+    meter.stop();
+    expect(time.waiting()).toBe(0);
+  });
+
+  it("reports a window cut short when stopped with a flush, so a brief loading screen still counts", () => {
+    const time = fakeClock();
+    const windows: InkFrameWindow[] = [];
+    const meter = new InkFrameMeter((window) => windows.push(window), 2000, time.clock);
+    time.at(0);
+    meter.start();
+    time.frame(16);
+    time.frame(80);
+    time.frame(96);
+    meter.stop(true);
+    expect(windows).toEqual([expect.objectContaining({ frames: 2, over25: 1, max: 64, windowMs: 96 })]);
+
+    // Nothing measured since: a second flush reports nothing.
+    meter.stop(true);
+    expect(windows).toHaveLength(1);
   });
 });
 

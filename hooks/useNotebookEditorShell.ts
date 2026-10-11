@@ -8,6 +8,7 @@ import {
   isNotebookSelectableTextTarget,
   isNotebookTextEditingTarget,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
+  NOTEBOOK_OPEN_BODY_CLASS,
   shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
 
@@ -52,7 +53,7 @@ export function useNotebookEditorShell() {
     if (themeColorMeta) {
       themeColorMeta.content = notebookSurfaceColor;
     }
-    document.body.classList.add(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
+    document.body.classList.add(NOTEBOOK_EDITOR_LOCK_BODY_CLASS, NOTEBOOK_OPEN_BODY_CLASS);
 
     const preventIfOutsideTextEditor = (event: Event) => {
       if (!shouldSuppressNotebookNativeEvent(event.target)) return;
@@ -75,7 +76,7 @@ export function useNotebookEditorShell() {
 
     return () => {
       releaseViewportZoomBlock();
-      document.body.classList.remove(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
+      document.body.classList.remove(NOTEBOOK_EDITOR_LOCK_BODY_CLASS, NOTEBOOK_OPEN_BODY_CLASS);
       root.style.background = previousRootBackground;
       document.body.style.background = previousBodyBackground;
       if (themeColorMeta && previousThemeColor !== undefined) {

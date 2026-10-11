@@ -3231,6 +3231,22 @@ html.photo-background-enabled [class*="bg-accent"] {
 }
 
 /*
+ * An open notebook covers the screen with its own opaque surface, so nothing of
+ * the photo can be seen behind it. It is switched off rather than left there:
+ * an iPad composites every layer under the page with every frame of ink, pan
+ * and toolbar drag, seen or not. The halo goes too. It is for text standing on
+ * the photo, and in a notebook it blurred every word, typed notes on the page
+ * included. (`jami-notebook-open` is set by `useNotebookEditorShell`.)
+ */
+html.photo-background-enabled body.jami-notebook-open::after {
+  display: none;
+}
+
+html.photo-background-enabled body.jami-notebook-open {
+  text-shadow: none;
+}
+
+/*
  * Solid panels over a background.
  *
  * The student's choice (`panels-solid`, from lib/app/panel-style.ts): the photo

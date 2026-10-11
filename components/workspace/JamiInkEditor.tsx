@@ -1,6 +1,6 @@
 "use client";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import { InkStatsOverlay, useInkStatsEnabled } from "@/components/workspace/InkStatsOverlay";
 import { NotebookEraserCursor } from "@/components/workspace/NotebookEraserCursor";
 import type {
   NotebookInkEditorHandle,
@@ -9,22 +9,9 @@ import type {
 import { useJamiInkPointerInput } from "@/hooks/useJamiInkPointerInput";
 import { useJamiInkSurface } from "@/hooks/useJamiInkSurface";
 import { useNotebookInkEditorCallbacks } from "@/hooks/useNotebookInkEditorCallbacks";
-import { InkInputTrace, inkInputTraceEnabled } from "@/lib/ink-dom/input-trace";
+import { InkInputTrace } from "@/lib/ink-dom/input-trace";
 import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
-
-const noSubscription = () => () => {};
-
-/** Whether this tab asked for the ink timing readout (`?inkstats=1`); never on the server. */
-function readInkTraceEnabled(): boolean {
-  let storage: Storage | null = null;
-  try {
-    storage = window.sessionStorage;
-  } catch {
-    // Storage can be blocked; the query string alone still works.
-  }
-  return inkInputTraceEnabled(window.location.search, storage);
-}
 
 /**
  * A notebook page's ink on Jami Ink (`docs/notebook-ink.md`), behind
@@ -111,7 +98,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
       lifecycleRef,
       reportInteraction,
     });
-    const traceEnabled = useSyncExternalStore(noSubscription, readInkTraceEnabled, () => false);
+    const traceEnabled = useInkStatsEnabled();
     const readoutRef = useRef<HTMLDivElement | null>(null);
     const trace = useMemo(
       () => (traceEnabled ? { recorder: new InkInputTrace(), readoutRef } : null),
@@ -186,19 +173,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
         {activeTool === "eraser" ? (
           <NotebookEraserCursor ref={eraserCursorRef} diameter={pointerInput.eraserCursorDiameter} />
         ) : null}
-        {trace
-          ? createPortal(
-              <div
-                ref={readoutRef}
-                aria-hidden="true"
-                data-ink-stats="true"
-                className="pointer-events-none fixed left-2 top-2 z-[100] whitespace-pre rounded-md bg-black/75 px-2 py-1.5 font-mono text-2xs leading-snug text-white"
-              >
-                Ink timing: write a stroke with the pen.
-              </div>,
-              document.body
-            )
-          : null}
+        {trace ? <InkStatsOverlay readoutRef={readoutRef} /> : null}
       </div>
     );
   }

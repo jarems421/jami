@@ -50,7 +50,7 @@ export default function NotebookEditorHeader({
   practicePaper,
 }: NotebookEditorHeaderProps) {
   return (
-    <header className="z-40 shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-e1 backdrop-blur-xl">
+    <header className="z-40 shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-e1">
       <div className="flex min-w-0 items-center gap-2">
         <Link
           href={`/dashboard/folders/${notebook.folderId}`}
