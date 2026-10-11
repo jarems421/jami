@@ -4,6 +4,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { mapVideoCardJobData, VIDEO_CARD_REVIEW_CEILING } from "@/lib/ai/video-card-jobs";
 import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import { refundAiBudget } from "@/services/ai/budgets";
+import { failVideoCardJobIfStalled } from "@/services/ai/video-card-job-stall.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
@@ -14,7 +15,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401);
   const { jobId } = await params; if (!valid(jobId)) return failure("Job not found", 404);
   const snapshot = await getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId).get();
-  return snapshot.exists ? Response.json(mapVideoCardJobData(jobId, snapshot.data() ?? {})) : failure("Job not found", 404);
+  if (!snapshot.exists) return failure("Job not found", 404);
+  const data = await failVideoCardJobIfStalled(snapshot.ref, snapshot.data() ?? {});
+  return Response.json(mapVideoCardJobData(jobId, data));
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {

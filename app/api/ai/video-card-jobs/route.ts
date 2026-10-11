@@ -15,6 +15,7 @@ import {
 import { isSourceFileMimeType } from "@/lib/material/source-files";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+import { failVideoCardJobIfStalled } from "@/services/ai/video-card-job-stall.server";
 import { generateVideoCardWorkflow } from "@/workflows/video-card-generation";
 
 export const runtime = "nodejs";
@@ -75,7 +76,10 @@ async function sweepExpiredImports(db: ReturnType<typeof getAdminDb>, uid: strin
 export async function GET(request: NextRequest) {
   const uid = await authenticateRequest(request); if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const snapshot = await getAdminDb().collection("users").doc(uid).collection("videoCardJobs").orderBy("updatedAt", "desc").limit(10).get();
-  return Response.json({ jobs: snapshot.docs.map((doc) => mapVideoCardJobData(doc.id, doc.data())) });
+  const jobs = await Promise.all(snapshot.docs.map(async (doc) =>
+    mapVideoCardJobData(doc.id, await failVideoCardJobIfStalled(doc.ref, doc.data()))
+  ));
+  return Response.json({ jobs });
 }
 
 export async function POST(request: NextRequest) {

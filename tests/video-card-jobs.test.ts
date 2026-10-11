@@ -4,9 +4,11 @@ import {
   formatVideoTimestamp,
   getVideoCoverageSelectivity,
   getVideoSamplingFps,
+  isStalledVideoCardJob,
   mapVideoCardJobData,
   parseVideoCardLimit,
   VIDEO_CARD_REVIEW_CEILING,
+  VIDEO_JOB_QUEUED_STALL_MS,
 } from "@/lib/ai/video-card-jobs";
 
 const original = { ...process.env };
@@ -105,5 +107,21 @@ describe("video card routing", () => {
       sourceKind: "text",
       coverage: "thorough",
     })).toMatchObject({ sourceKind: "text", coverage: "thorough" });
+  });
+});
+
+describe("stalled imports", () => {
+  const now = 1_000_000_000;
+  const old = now - VIDEO_JOB_QUEUED_STALL_MS - 1;
+
+  it("calls a job stuck in the queue past the limit stalled", () => {
+    expect(isStalledVideoCardJob({ status: "queued", createdAt: old }, now)).toBe(true);
+  });
+
+  it("leaves a fresh queued job, a started job and a finished job alone", () => {
+    expect(isStalledVideoCardJob({ status: "queued", createdAt: now - 60_000 }, now)).toBe(false);
+    expect(isStalledVideoCardJob({ status: "queued", createdAt: old, providerStartedAt: old + 1 }, now)).toBe(false);
+    expect(isStalledVideoCardJob({ status: "running", createdAt: old }, now)).toBe(false);
+    expect(isStalledVideoCardJob({ status: "ready", createdAt: old }, now)).toBe(false);
   });
 });

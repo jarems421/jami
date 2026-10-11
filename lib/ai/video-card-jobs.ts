@@ -273,6 +273,24 @@ export function mapVideoCardJobData(id: string, raw: Record<string, unknown>): V
   };
 }
 
+/**
+ * How long an import may sit queued before it is called stuck.
+ *
+ * A healthy workflow moves a job to "running" within seconds, before it reads
+ * anything, so however long the video, a job still queued after this never
+ * started. Without a limit the student watches 5% forever.
+ */
+export const VIDEO_JOB_QUEUED_STALL_MS = 10 * 60_000;
+
+export function isStalledVideoCardJob(raw: Record<string, unknown>, now: number) {
+  return (
+    raw.status === "queued" &&
+    !raw.providerStartedAt &&
+    typeof raw.createdAt === "number" &&
+    now - raw.createdAt > VIDEO_JOB_QUEUED_STALL_MS
+  );
+}
+
 export function formatVideoTimestamp(seconds?: number) {
   if (seconds === undefined || !Number.isFinite(seconds)) return "";
   const rounded = Math.max(0, Math.floor(seconds));

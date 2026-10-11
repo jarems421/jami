@@ -94,10 +94,17 @@ export const nextConfig: NextConfig = {
     "/api/internal/exam-questions/ingest/**": ["./node_modules/pdfjs-dist/wasm/**"],
     // Generated papers are typeset in the workflow step. The body font, pdfkit's
     // metrics and MathJax's glyph ranges are all read by path at render time.
+    // MathJax also reaches its default font through the `#default-font/*`
+    // import alias in its package.json, which tracing does not follow: without
+    // the whole SVG font the step function cannot load, and every workflow --
+    // not only papers -- sits queued (10 Oct 2026).
     "/.well-known/workflow/v1/step": [
       "./node_modules/pdfjs-dist/standard_fonts/LiberationSans-*.ttf",
       "./node_modules/pdfkit/js/data/**",
-      "./node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/**",
+      "./node_modules/@mathjax/mathjax-newcm-font/package.json",
+      "./node_modules/@mathjax/mathjax-newcm-font/mjs/package.json",
+      "./node_modules/@mathjax/mathjax-newcm-font/mjs/{common,svg}.js",
+      "./node_modules/@mathjax/mathjax-newcm-font/mjs/svg/**/*.js",
     ],
   },
   async headers() {
