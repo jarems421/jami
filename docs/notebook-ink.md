@@ -342,13 +342,22 @@ Built (stage 3), flat files in `lib/ink/`:
 
 Still to come:
 
-- **Incremental geometry.** The builders recompute the whole curve on every
-  preview. The incremental form returns newly frozen segments and the unstable
-  tail, with corners and easing looking only a bounded window behind the tip.
-  Some of the pen's geometry depends on the whole stroke, so this would change
-  how ink looks, which is the owner's decision. Stage 3 does not do it: live
-  ink redraws the whole stroke on every packet, which keeps today's look and
-  measured well inside the per-packet gate.
+- **Ink that stays put.** The owner saw curves being reshaped behind the pen
+  while writing slowly; replayed, ink 8 to 16px behind the pen moved by over a
+  pixel. Since 11 October the pen's geometry no longer depends on the whole
+  stroke, so ink well behind the pen does not change (0.04px at most, 12px
+  behind, in `ink-geometry-pen.test.ts`):
+  - a pencil writing with pressure is drawn as its tapered outline from the
+    first sample (`tapered`), rather than as a plain line that switched to the
+    outline a few packets in;
+  - kept points are at most 6px apart (`MAXIMUM_SPAN_RATIO`, from 24), so the
+    curve still settling behind the pen is short;
+  - widths are shaped against the average so far, not the whole stroke's;
+  - a corner verdict is kept once everything it reads has been drawn.
+  Paths have about twice the curves. The builders still recompute the curve
+  on every packet, which measures well inside the per-packet gate; returning
+  only the newly settled segments is left for the performance stage, if the
+  gates ever need it.
 - **`tools/`.** All pure:
   - the stroke and precision erasers (outline items clipped with
     `polygon-clipping`);

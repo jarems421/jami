@@ -8,6 +8,7 @@ import {
   type InkPenFeel,
   type InkPenSample,
 } from "@/lib/ink/geometry/pen";
+import { inkFlattenPath } from "@/lib/ink/flatten";
 import type { InkPathCommand } from "@/lib/ink/model";
 
 /**
@@ -182,6 +183,73 @@ describe("the pen geometry", () => {
       expect(aim(false)?.y).toBeCloseTo(wobble[0].y + 9, 6);
       expect(aim(true)?.y).toBeLessThan(wobble[0].y + 9);
     });
+  });
+});
+
+describe("ink once drawn", () => {
+  /** A slow, pressured hand: loops like an 'e', with a little tremor, 240 samples a second. */
+  function slowLoops(count = 420): InkPenSample[] {
+    let seed = 11;
+    const wobble = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return (seed / 2147483648 - 0.5) * 0.6;
+    };
+    return Array.from({ length: count }, (_, index) => {
+      const t = index / (count - 1);
+      return sample(
+        200 + t * 120 + 14 * Math.cos(t * 6 * Math.PI) + wobble(),
+        200 - 14 * Math.sin(t * 6 * Math.PI) + wobble(),
+        2 + 2 * Math.sin(t * Math.PI) + 0.3 * Math.sin(t * 23),
+        index * (1000 / 240)
+      );
+    });
+  }
+
+  const polyline = (path: InkPathCommand[]) => inkFlattenPath(path, 0.05).flatMap((line) => line.points);
+  function distanceToPolyline(point: { x: number; y: number }, line: { x: number; y: number }[]) {
+    let best = Infinity;
+    for (let index = 1; index < line.length; index += 1) {
+      const a = line[index - 1];
+      const b = line[index];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lengthSquared = dx * dx + dy * dy;
+      const t = lengthSquared > 0 ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared)) : 0;
+      best = Math.min(best, Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy)));
+    }
+    return best;
+  }
+
+  it("does not change shape well behind the pen as the stroke goes on", () => {
+    const samples = slowLoops();
+    const pen = createInkPenBuilder(samples[0], { feel: FEEL, pixelSize: 1, tapered: true });
+    let before = polyline(pen.geometry().path);
+    let worst = 0;
+    for (let index = 1; index < samples.length; index += 1) {
+      pen.addPoint(samples[index]);
+      // Safari's packets: four samples at a time.
+      if (index % 4 !== 0) continue;
+      const after = polyline(pen.geometry().path);
+      const tip = samples[index];
+      for (const point of before) {
+        if (Math.hypot(point.x - tip.x, point.y - tip.y) < 12) continue;
+        worst = Math.max(worst, distanceToPolyline(point, after));
+      }
+      before = after;
+    }
+    // About 0.04px now. Curves up to 24px long bending into shape behind the
+    // pen moved it by 0.15px here, and by over a pixel in the session, where a
+    // pressured stroke also turned from a plain line into its outline.
+    expect(worst).toBeLessThan(0.08);
+  });
+
+  it("is its tapered outline from the first samples when it writes with pressure", () => {
+    const samples = slowLoops(12);
+    const pen = createInkPenBuilder(samples[0], { feel: FEEL, pixelSize: 1, tapered: true });
+    for (const next of samples.slice(1)) {
+      pen.addPoint(next);
+      expect(pen.geometry().paint).toEqual({ kind: "fill" });
+    }
   });
 });
 

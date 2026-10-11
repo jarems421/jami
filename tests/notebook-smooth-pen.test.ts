@@ -393,20 +393,14 @@ describe("the smooth pen", () => {
     const points = arc();
     const smooth = buildStroke(points).getParts()[0].path.parts.length;
 
-    const fitted = jsDraw.makeFreehandLineBuilder(points[0], viewport);
-    for (const next of points.slice(1)) fitted.addPoint(next);
-    const built = fitted.build();
-    if (!(built instanceof jsDraw.Stroke)) throw new Error("stroke");
-    const fitter = built.getParts()[0].path.parts.length;
-
     // Passing through every sample would be perfectly smooth and roughly 200
     // curves, reparsed on every page load. Dropping the samples that lie on
-    // the line their neighbours already describe is what keeps it small.
-    expect(smooth).toBeLessThan(points.length / 6);
-    // The fitter is not the benchmark here: on a noiseless arc it is at its
-    // best and real input never is. This only guards against the spline
-    // running away by an order of magnitude.
-    expect(smooth).toBeLessThan(fitter * 8);
+    // the line their neighbours already describe is what keeps it small; what
+    // is left is set by MAXIMUM_SPAN_RATIO, a curve at least every 6px so that
+    // ink behind the pen stops changing shape (79 for this arc's 471px). The
+    // bound is also the guard against the spline running away.
+    expect(smooth).toBeLessThan(points.length * 0.6);
+    expect(smooth).toBeLessThanOrEqual(Math.ceil(((Math.PI * 150) / 6) * 1.35));
   });
 
   /**
@@ -433,8 +427,10 @@ describe("the smooth pen", () => {
 
     const path = buildStroke(samples).getParts()[0].path;
 
-    // Kept 150 curves when the test sat under the noise; 35 once above it.
-    expect(path.parts.length).toBeLessThan(60);
+    // Reading the noise keeps a curve at nearly every sample, 600 here. Above
+    // it, the count is set by MAXIMUM_SPAN_RATIO, a curve at least every 6px
+    // of this 623px line: about 110.
+    expect(path.parts.length).toBeLessThan(150);
 
     let worstStray = 0;
     const consider = (p: Point2) => {

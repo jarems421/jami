@@ -68,6 +68,14 @@ export type InkPenOptions = {
   feel: InkPenFeel;
   /** The size of one screen pixel in page units; the thresholds scale with it. */
   pixelSize: number;
+  /**
+   * Drawn as its tapered outline from the first sample on, as a pen writing
+   * with pressure always is. Without it a stroke is drawn as one plain stroked
+   * line until its width is seen to vary, then switches to the outline -- and
+   * that switch, a few packets into every pressured stroke, moved the ink
+   * already drawn by a pixel or more.
+   */
+  tapered?: boolean;
 };
 
 /** How a pen path is painted: filled as an outline, or stroked at one width. */
@@ -204,7 +212,7 @@ function semicircle(
 
 export function createInkPenBuilder(
   startPoint: InkPenSample,
-  { feel, pixelSize }: InkPenOptions
+  { feel, pixelSize, tapered = false }: InkPenOptions
 ): InkPenBuilder {
   /**
    * Each sample's width, pulled towards the stroke's own average.
@@ -410,7 +418,25 @@ export function createInkPenBuilder(
    * concentrated at the one point, with the straight arms either side near
    * zero.
    */
+  /**
+   * Corner verdicts already settled, in step with `points`.
+   *
+   * A verdict reads the turn out to two points ahead and the curvature of the
+   * point after, so it can change while those are still arriving. Once they
+   * are all kept nothing can change it, and it is kept as it stands: a curve
+   * the pen has gone well past never becomes a corner, or a corner a curve,
+   * because of what is drawn after it.
+   */
+  const settledCorners: boolean[] = [];
   const cornersAlong = (shape: Vec[]) => {
+    const verdicts = judgeCornersAlong(shape);
+    for (let index = settledCorners.length; index + 3 < points.length; index += 1) {
+      settledCorners.push(verdicts[index]);
+    }
+    for (let index = 0; index < settledCorners.length; index += 1) verdicts[index] = settledCorners[index];
+    return verdicts;
+  };
+  const judgeCornersAlong = (shape: Vec[]) => {
     const { turns, curvatures } = turnsAlong(shape);
     const peaks = pending ? [...arrivalPeaks, segmentPeak] : arrivalPeaks;
     /** Whether the pen slowed into this point -- see `CORNER_SLOWDOWN`. */
@@ -727,7 +753,7 @@ export function createInkPenBuilder(
      * and half the geometry to store and reparse.
      */
     const sampledWidths = pressureShaped(shapeWidths());
-    if (penWidthVaries(sampledWidths)) {
+    if (tapered || penWidthVaries(sampledWidths)) {
       const halfWidths = halfWidthsAlong(sampledWidths, shape.length);
       const last = shape.length - 1;
       /*

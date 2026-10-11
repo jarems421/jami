@@ -105,7 +105,8 @@ class ReferencePen {
         width: this.widthOf(first.pressure),
         time: first.timeStamp,
       },
-      { feel: getNotebookPenFeelFromSettings(settings), pixelSize: 1 / MAPPING.scale }
+      // Tapered from the first sample when it writes with pressure, as the session's pen is.
+      { feel: getNotebookPenFeelFromSettings(settings), pixelSize: 1 / MAPPING.scale, tapered: input.pressure }
     );
   }
 
@@ -189,9 +190,41 @@ describe("a pen stroke draws what js-draw's pen pipeline draws", () => {
     // 0.12 is above the lift-off ceiling (0.08), so the gate lets it through.
     const first = sample(100, 200, 0, 0.12);
     const session = new InkStrokeSession({ tool: penTool({ pressure: true, thickness: 10 }), mapping: MAPPING, sink, first });
-    for (const packet of packets(wave(30, () => 0.12), 5)) session.move(packet);
+    const body = wave(30, () => 0.12);
+    for (const packet of packets(body, 5)) session.move(packet);
+    // The reference pen floors at 0.3 itself: drawing the same path is drawing at 0.3 of the nib.
+    const reference = new ReferencePen(first, { thickness: 10, pressure: true, settings: NO_HOLD });
+    for (const each of body) reference.add(each);
+    expect(draws[draws.length - 1].path).toEqual(reference.paintOf().path);
+    // Pressured, it is the tapered outline even though the pressure never varied.
+    expect(draws[draws.length - 1].paint.fill).toEqual(BLACK);
+  });
+
+  it("draws a pressured stroke tapered from its first packet, so its start never changes shape", () => {
+    const { sink, draws } = recordingSink();
+    const session = new InkStrokeSession({
+      tool: penTool({ pressure: true, thickness: 6 }),
+      mapping: MAPPING,
+      sink,
+      first: sample(100, 200, 0, 0.5),
+    });
+    for (const packet of packets(wave(12, (index) => 0.4 + index * 0.02), 2)) session.move(packet);
+    for (const draw of draws) expect(draw.paint.fill).toEqual(BLACK);
+  });
+
+  it("draws one width when pressure is turned down to nothing, whatever the pencil reports", () => {
+    const { sink, draws } = recordingSink();
+    const settings = { ...NO_HOLD, pressurePercent: 0 };
+    const session = new InkStrokeSession({
+      tool: penTool({ pressure: true, thickness: 6, settings }),
+      mapping: MAPPING,
+      sink,
+      first: sample(100, 200, 0, 0.9),
+    });
+    session.move(wave(20, (index) => 0.2 + 0.7 * ((index * 7) % 10) / 10));
     const paint = draws[draws.length - 1].paint;
-    expect(paint.stroke?.width).toBeCloseTo(0.3 * 10, 10);
+    expect(paint.fill).toBeNull();
+    expect(paint.stroke?.width).toBeCloseTo(3, 10);
   });
 
   it("ignores pressure when it is off, whatever the pen reports", () => {

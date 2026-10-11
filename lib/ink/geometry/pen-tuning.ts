@@ -44,8 +44,19 @@ export const SHAPE_TOLERANCE_RATIO = 0.4;
  * letters are what suffer -- an 'o' is a long gentle curve at that scale, and
  * it comes back flattened. Forcing a point at least this often bounds how far
  * that can run.
+ *
+ * It also bounds how much ink behind the pen is still being reshaped. The
+ * stretch from the last kept point to the pen is one curve, redrawn on every
+ * packet, and the curve before it settles only once the next point is kept: at
+ * 24px a stroke was drawn as a long chord that bent into shape a moment later,
+ * which on the iPad looked like curves being morphed while writing slowly.
+ * Replayed as slow, pressured handwriting ('e', 'o', 'l', 'm', a line),
+ * ink 8px behind the pen moved by up to 1.1px at 24; at 6 it moves by under
+ * 0.2px (under 0.1 bar the bottom of an 'm'), and the drawn line sits closer
+ * to the hand's path too (0.20px off on average, from 0.37). The price is
+ * about twice the curves per stroke.
  */
-export const MAXIMUM_SPAN_RATIO = 24;
+export const MAXIMUM_SPAN_RATIO = 6;
 
 /**
  * How much of a segment each control arm takes, as a fraction of that

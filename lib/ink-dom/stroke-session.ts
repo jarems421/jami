@@ -182,7 +182,10 @@ export class InkStrokeSession {
       (sample) => sample.timeStamp
     );
 
-    this.usePressure = tool.kind === "pen" && tool.pressure;
+    // Pressure turned down to nothing in the pen's settings is one width, not
+    // pressure averaged into one: the stroke is a plain line from its start.
+    this.usePressure =
+      tool.kind === "pen" && tool.pressure && getNotebookPenFeelFromSettings(settings).pressureResponse > 0;
     // One screen pixel in page units, as js-draw's `getSizeOfPixelOnCanvas`.
     const pixelSize = 1 / this.scale;
     const start = {
@@ -194,7 +197,9 @@ export class InkStrokeSession {
     if (tool.kind === "pen") {
       this.pen = createInkPenBuilder(
         { ...start, time: first.timeStamp },
-        { feel: getNotebookPenFeelFromSettings(settings), pixelSize }
+        // A pencil writing with pressure is drawn tapered from its first
+        // sample, so the stroke does not change shape a moment after it starts.
+        { feel: getNotebookPenFeelFromSettings(settings), pixelSize, tapered: this.usePressure }
       );
       // A see-through colour would darken where the tip and the line overlap.
       this.tracker = tool.predictTip && tool.color.a >= 1 ? new NotebookPredictedTip() : null;
