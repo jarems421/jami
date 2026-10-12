@@ -370,8 +370,9 @@ Still to come:
   - the stroke and precision erasers (outline items clipped with
     `polygon-clipping`);
   - scribble-erase;
+  - shape recognition, and sizing a snapped shape while the pen is down
+    (`shape-recognition.ts`; see Shapes on hold);
   - lasso selection;
-  - shape recognition;
   - ruler geometry.
 
 ### `lib/ink-dom/`: the browser engine, imperative and outside React
@@ -656,9 +657,35 @@ Still to come:
     from the tool popover.
   - Images and graphs gain an optional `rotation`, read as 0 when absent. Text
     boxes move and resize but stay upright.
-- **Shapes on hold.** "Straighten on hold" becomes "Shapes on hold". Holding
-  still at the end of a stroke snaps it to a recognised shape, stored as a
-  `shape` item. While the pen stays down it can adjust the shape.
+- **Shapes on hold (done, 12 October).** The pen's "Hold still at the end of a
+  stroke" setting is Off, Lines or Shapes; Shapes is the default, and the old
+  "Straighten and level" reads as it.
+  - A line is judged by the pen and aimed at it, as before (`pen.ts`).
+    Anything else is tried as a shape (`lib/ink/tools/shape-recognition.ts`):
+    - a stroke that closes on itself, or comes within a quarter of its size
+      of doing so late in it, is fitted as an ellipse and as a polygon of
+      three to six sides, and the closer fit wins;
+    - an open stroke that runs straight to a tip and turns back into a head
+      on both sides is an arrow.
+  - Close calls are tidied: an oval or rectangle within 8 degrees of upright
+    is made upright, a triangle's near-flat side flat, near-equal sides or
+    axes equal (a circle, a square, an equilateral triangle).
+  - It refuses letters (too small), open curves, a figure of eight (it does
+    not turn round exactly once) and lumpy loops. A sweep of 200 hands per
+    shape recognised every circle, oval, square, rectangle, triangle,
+    pentagon and arrow, and left at least 98% of figures of eight, scribbles
+    and blobs alone.
+  - While the pen stays down the shape follows it: it scales and turns about
+    its middle (an arrow about its tail) so the point under the pen stays
+    under it. A turn under 3 degrees is drift and ignored, eased into the
+    full turn by 10, so a levelled shape stays level and never jumps. An
+    arrow leans towards the nearest 45 degrees, as a line does.
+  - It lifts as a `shape` item, drawn live with that item's own path and
+    paint, so the lift changes no pixel. Undo takes it back to the stroke as
+    drawn, and a second undo removes that.
+  - Pen only; the highlighter never snaps. The exam working sheet straightens
+    lines and nothing more (`shapesOnHold` is a notebook page's prop alone),
+    and js-draw, the fallback, straightens lines only.
 - **Ruler.**
   - Fingers that start on the ruler move and turn it instead of panning.
   - It has an angle readout with detents, and the pen within 16 px of an edge
@@ -714,8 +741,8 @@ fallback to js-draw.
    thumbnails and previews, the static page and the editors (see Saving and
    Migration). The exam sheet keeps SVG until its rules allow the encoding,
    and swipe bitmaps moved to stage 7.
-6. **New tools.** Lasso, shapes on hold and the ruler. The owner's second iPad
-   round.
+6. **New tools.** Shapes on hold (done), then the ruler and the lasso. The
+   owner's second iPad round.
 7. **Performance.**
    - A worker renderer, only if the gates need it.
    - PDF detail under the engine scheduler.

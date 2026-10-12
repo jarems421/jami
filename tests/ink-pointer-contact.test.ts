@@ -22,7 +22,7 @@ const nibAngle = () => 1.2;
 
 describe("inkStrokeToolFor", () => {
   it("builds the pen from the selected colour, width and settings, as the stylus it is drawn with", () => {
-    const tool = inkStrokeToolFor({ tool: "pen", pointerType: "pen", style, device: ipad, nibAngle });
+    const tool = inkStrokeToolFor({ tool: "pen", pointerType: "pen", style, device: ipad, nibAngle, shapesOnHold: true });
     expect(tool).toEqual({
       kind: "pen",
       color: { r: 0x11, g: 0x18, b: 0x27, a: 1 },
@@ -30,16 +30,34 @@ describe("inkStrokeToolFor", () => {
       pressure: true,
       settings: NOTEBOOK_PEN_SETTINGS_DEFAULT,
       predictTip: true,
+      shapes: true,
     });
   });
 
+  it("snaps shapes on a hold only where the page allows them and the settings ask for them", () => {
+    const pen = (shapesOnHold: boolean, straightenOnHold: "off" | "lines" | "shapes") =>
+      inkStrokeToolFor({
+        tool: "pen",
+        pointerType: "pen",
+        style: { ...style, penSettings: { ...NOTEBOOK_PEN_SETTINGS_DEFAULT, straightenOnHold } },
+        device: ipad,
+        nibAngle,
+        shapesOnHold,
+      });
+    expect(pen(true, "shapes")).toMatchObject({ shapes: true });
+    // The exam working sheet: lines straighten, nothing becomes a shape.
+    expect(pen(false, "shapes")).toMatchObject({ shapes: false });
+    expect(pen(true, "lines")).toMatchObject({ shapes: false });
+    expect(pen(true, "off")).toMatchObject({ shapes: false });
+  });
+
   it("reads no pressure from a mouse, and predicts no tip for it", () => {
-    const tool = inkStrokeToolFor({ tool: "pen", pointerType: "mouse", style, device: desktop, nibAngle });
+    const tool = inkStrokeToolFor({ tool: "pen", pointerType: "mouse", style, device: desktop, nibAngle, shapesOnHold: true });
     expect(tool).toMatchObject({ kind: "pen", pressure: false, predictTip: false });
   });
 
   it("builds the highlighter translucent, with the live nib angle", () => {
-    const tool = inkStrokeToolFor({ tool: "highlighter", pointerType: "pen", style, device: ipad, nibAngle });
+    const tool = inkStrokeToolFor({ tool: "highlighter", pointerType: "pen", style, device: ipad, nibAngle, shapesOnHold: true });
     expect(tool).toMatchObject({
       kind: "highlighter",
       thickness: 18,

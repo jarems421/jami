@@ -77,4 +77,11 @@ export type NotebookInkEditorProps = NotebookInkStyle &
     readOnly?: boolean;
     /** Scribbling out with the pen deletes the strokes it covers. */
     scribbleToErase?: boolean;
+    /**
+     * Holding the pen still may snap a stroke to a shape, not only a line, when
+     * the pen's settings ask for shapes. Notebook pages only: the exam working
+     * sheet straightens lines and nothing more (AGENTS.md, Jami Ink). Jami Ink
+     * only; js-draw straightens lines alone.
+     */
+    shapesOnHold?: boolean;
   };

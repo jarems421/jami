@@ -137,15 +137,16 @@ describe("the advanced pen settings", () => {
 
   it("offers the three answers to holding still, one at a time", () => {
     render();
-    expect(button("Straighten and level").getAttribute("aria-checked")).toBe(
-      "true"
-    );
+    expect(button("Shapes").getAttribute("aria-checked")).toBe("true");
+    expect(container.textContent).toContain("circles, ovals, rectangles, triangles and arrows");
+
+    click(button("Lines"));
+    expect(button("Lines").getAttribute("aria-checked")).toBe("true");
+    expect(container.textContent).toContain("at your own angle");
 
     click(button("Off"));
     expect(button("Off").getAttribute("aria-checked")).toBe("true");
-    expect(button("Straighten and level").getAttribute("aria-checked")).toBe(
-      "false"
-    );
+    expect(button("Shapes").getAttribute("aria-checked")).toBe("false");
     expect(container.textContent).toContain("Strokes are always left as drawn");
   });
 
@@ -162,9 +163,7 @@ describe("the advanced pen settings", () => {
     click(reset);
 
     expect(slider("Pressure").value).toBe("50");
-    expect(button("Straighten and level").getAttribute("aria-checked")).toBe(
-      "true"
-    );
+    expect(button("Shapes").getAttribute("aria-checked")).toBe("true");
     // Smoothing is not an advanced setting, so reset leaves it alone; the
     // corners go back to their own default, whatever Smoothing says.
     expect(slider("Corner sharpness").value).toBe(

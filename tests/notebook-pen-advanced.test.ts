@@ -257,7 +257,7 @@ describe("advanced pen settings", () => {
     // Holding still asks for one favour, not two: a line snapped to an angle
     // nobody drew is the part people object to.
     expect(
-      getNotebookPenFeelFromSettings(settings({ straightenOnHold: "guided" }))
+      getNotebookPenFeelFromSettings(settings({ straightenOnHold: "shapes" }))
         .snapToGuides
     ).toBe(true);
     expect(
@@ -335,7 +335,11 @@ describe("advanced pen settings", () => {
     expect(clamped.cornerSharpnessPercent).toBe(0);
     expect(clamped.trackingPercent).toBe(50);
     expect(clamped.pressurePercent).toBe(100);
-    expect(clamped.straightenOnHold).toBe("guided");
+    expect(clamped.straightenOnHold).toBe("shapes");
+
+    // Straighten and level, the old default every device saved, grew into shapes.
+    expect(clampNotebookPenSettings({ straightenOnHold: "guided" as never }).straightenOnHold).toBe("shapes");
+    expect(clampNotebookPenSettings({ straightenOnHold: "lines" }).straightenOnHold).toBe("lines");
 
     // Nothing stored is the default pen, corners included.
     expect(clampNotebookPenSettings({}).cornerSharpnessPercent).toBe(

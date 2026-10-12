@@ -5,6 +5,7 @@ import { createInkChiselBuilder } from "@/lib/ink/geometry/chisel";
 import { createInkPenBuilder } from "@/lib/ink/geometry/pen";
 import { importJsDrawSvg } from "@/lib/ink/import-js-draw-svg";
 import { inkItemLayer, type InkColor, type InkPaint, type InkPathCommand } from "@/lib/ink/model";
+import { inkShapePath } from "@/lib/ink/shapes";
 import {
   HIGHLIGHTER_SETTLE_MS,
   InkStrokeSession,
@@ -72,6 +73,7 @@ function penTool(overrides: Partial<Extract<InkStrokeTool, { kind: "pen" }>> = {
     pressure: false,
     settings: NO_HOLD,
     predictTip: false,
+    shapes: false,
     ...overrides,
   };
 }
@@ -756,6 +758,103 @@ describe("straightening on hold", () => {
     const drawsBefore = draws.length;
     clock.advanceTo(2000);
     expect(draws).toHaveLength(drawsBefore);
+  });
+
+  it("lifts a snapped line as a line, with the stroke as it was drawn before it snapped", () => {
+    const { session, clock, draws } = guidedPen();
+    const drawn = draws[draws.length - 1];
+    clock.advanceTo(lastTime + 501);
+    const snapped = draws[draws.length - 1];
+    const result = session.lift();
+    expect(result?.snapped?.shape).toEqual({
+      type: "line",
+      from: { x: (snapped.path[0] as { x: number }).x, y: (snapped.path[0] as { y: number }).y },
+      to: { x: (snapped.path[1] as { x: number }).x, y: (snapped.path[1] as { y: number }).y },
+    });
+    expect(result?.snapped?.width).toBe(snapped.paint.stroke?.width);
+    expect(result?.snapped?.color).toEqual(BLACK);
+    expect(result?.snapped?.drawn).toEqual({ path: drawn.path, paint: drawn.paint });
+  });
+
+  it("lifts a stroke that never snapped with nothing snapped", () => {
+    const { session } = guidedPen();
+    expect(session.lift()?.snapped).toBeUndefined();
+  });
+});
+
+describe("snapping to a shape on hold", () => {
+  /** A circle round the page point (140, 130), radius 50: once round and a little past where it began. */
+  const circle = Array.from({ length: 48 }, (_unused, index) => {
+    const angle = ((index + 1) / 46) * 2 * Math.PI;
+    return sample(300 + 100 * Math.cos(angle), 300 + 100 * Math.sin(angle), (index + 1) * 4.2);
+  });
+  const circleStart = sample(400, 300, 0);
+  const lastTime = circle[circle.length - 1].timeStamp;
+
+  function drawCircle(shapes: boolean) {
+    const clock = new InkFakeClock();
+    const recorded = recordingSink();
+    const session = new InkStrokeSession({
+      tool: penTool({ settings: GUIDED, shapes }),
+      mapping: MAPPING,
+      sink: recorded.sink,
+      first: circleStart,
+      timers: clock.timers,
+    });
+    for (const each of circle) {
+      clock.advanceTo(each.timeStamp);
+      session.move([each]);
+    }
+    return { session, clock, ...recorded };
+  }
+
+  it("snaps a circle held still to a round one, drawn at the pen's one width", () => {
+    const { clock, draws } = drawCircle(true);
+    const drawsBefore = draws.length;
+    clock.advanceTo(lastTime + 501);
+    expect(draws).toHaveLength(drawsBefore + 1);
+    const shown = draws[draws.length - 1];
+    // Not the pressure's half of the 4-unit nib: the average width, 2.
+    expect(shown.paint).toEqual(penInkPaint({ kind: "stroke", width: 2 }, BLACK));
+    expect(shown.tip).toBeNull();
+    const ellipse = inkShapePath({ type: "ellipse", cx: 140, cy: 130, rx: 50, ry: 50, rotation: 0 }, 2);
+    expect(shown.path).toHaveLength(ellipse.length);
+    // Four quarter arcs from the right-hand end, round the circle as drawn.
+    shown.path.forEach((command, index) => {
+      const expected = ellipse[index];
+      if (command.op === "Z" || expected.op === "Z") return expect(command.op).toBe(expected.op);
+      expect(Math.hypot(command.x - expected.x, command.y - expected.y)).toBeLessThan(3);
+    });
+  });
+
+  it("sizes the shape with the pen while it stays down, and lifts it with the stroke as drawn", () => {
+    const { session, clock, draws } = drawCircle(true);
+    const drawn = draws[draws.length - 1];
+    clock.advanceTo(lastTime + 501);
+    // Out from the middle, well past the hold's reach.
+    for (let step = 1; step <= 12; step += 1) {
+      const each = sample(400 + step * 5, 300, lastTime + 501 + step * 8);
+      clock.advanceTo(each.timeStamp);
+      session.move([each]);
+    }
+    const result = session.lift();
+    const shape = result?.snapped?.shape;
+    expect(shape?.type).toBe("ellipse");
+    if (shape?.type !== "ellipse") return;
+    expect(shape.rx).toBe(shape.ry);
+    expect(shape.rx).toBeGreaterThan(65);
+    expect(Math.hypot(shape.cx - 140, shape.cy - 130)).toBeLessThan(3);
+    expect(result?.path).toBe(draws[draws.length - 1].path);
+    expect(result?.path).toEqual(inkShapePath(shape, 2));
+    expect(result?.snapped?.drawn).toEqual({ path: drawn.path, paint: drawn.paint });
+  });
+
+  it("leaves a circle as drawn where shapes are not allowed", () => {
+    const { session, clock, draws } = drawCircle(false);
+    const drawsBefore = draws.length;
+    clock.advanceTo(lastTime + 2000);
+    expect(draws).toHaveLength(drawsBefore);
+    expect(session.lift()?.snapped).toBeUndefined();
   });
 });
 

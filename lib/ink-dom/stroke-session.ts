@@ -1,6 +1,8 @@
 import { createInkChiselBuilder, type InkChiselBuilder } from "@/lib/ink/geometry/chisel";
 import { createInkPenBuilder, type InkPenBuilder } from "@/lib/ink/geometry/pen";
-import type { InkColor, InkLayer, InkPaint, InkPathCommand } from "@/lib/ink/model";
+import type { InkColor, InkLayer, InkPaint, InkPathCommand, InkPoint, InkShapeGeometry } from "@/lib/ink/model";
+import { inkShapePath } from "@/lib/ink/shapes";
+import { adjustInkShape, recognizeInkShape, type InkRecognizedShape } from "@/lib/ink/tools/shape-recognition";
 import { browserInkTimers, InkHoldDetector, type InkTimers } from "@/lib/ink-dom/hold-detector";
 import type { InkLiveTip, InkRenderer } from "@/lib/ink-dom/renderer";
 import { inkColorForTool } from "@/lib/ink-dom/stroke-color";
@@ -42,6 +44,13 @@ import {
  * the stroke ends exactly on the ink live ink last drew, and `lift()` returns
  * that very path and paint. Committing it is the surface's job.
  *
+ * A pen held still at the end of a stroke snaps it: to a straight line, which
+ * the pen builder judges and then aims at the pen (`straighten` in `pen.ts`),
+ * or, when the tool allows shapes, to a circle, an oval, a polygon or an arrow
+ * (`shape-recognition.ts`), which the pen then sizes and turns until it lifts.
+ * The lift keeps what was snapped and the stroke as it was drawn before, which
+ * undoing the snap brings back.
+ *
  * The highlighter shows its footprints while it moves, but what is saved is
  * their traced outline (`build()`), whose edge pixels differ from the
  * footprints'. So its last live movement draws the outline: as soon as the pen
@@ -75,6 +84,11 @@ export type InkStrokeTool =
       settings: NotebookPenSettings;
       /** Whether to draw a tip ahead of the pen: only a stylus does. */
       predictTip: boolean;
+      /**
+       * Whether holding still may snap a stroke that is not a line to a shape.
+       * Lines snap whenever the settings' hold does.
+       */
+      shapes: boolean;
     }
   | {
       kind: "highlighter";
@@ -87,7 +101,21 @@ export type InkStrokeTool =
 
 export type InkLiveSink = Pick<InkRenderer, "beginLive" | "drawLive" | "cancelLive">;
 
-export type InkStrokeResult = { layer: InkLayer; path: InkPathCommand[]; paint: InkPaint };
+export type InkStrokeResult = {
+  layer: InkLayer;
+  path: InkPathCommand[];
+  paint: InkPaint;
+  /**
+   * Set when holding still snapped the stroke: the line or shape it became,
+   * which `path` and `paint` draw, and the stroke as it was drawn before.
+   */
+  snapped?: {
+    shape: InkShapeGeometry;
+    color: InkColor;
+    width: number;
+    drawn: { path: InkPathCommand[]; paint: InkPaint };
+  };
+};
 
 export type InkStrokeSessionInput = {
   tool: InkStrokeTool;
@@ -129,6 +157,14 @@ function hasGeometry(path: readonly InkPathCommand[]): boolean {
   return path.length > 1 && start.op === "M" && Number.isFinite(start.x) && Number.isFinite(start.y);
 }
 
+/** A straightened line, from the two-point path the pen draws it as. */
+function lineOf(path: readonly InkPathCommand[]): InkShapeGeometry | null {
+  const [from, to] = path;
+  return path.length === 2 && from.op === "M" && to.op === "L"
+    ? { type: "line", from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y } }
+    : null;
+}
+
 export class InkStrokeSession {
   private readonly layer: InkLayer;
   private readonly color: InkColor;
@@ -149,6 +185,18 @@ export class InkStrokeSession {
   private readonly trackerSample: NotebookPredictedTipSample = { x: 0, y: 0, time: 0 };
   private readonly trackerSamples: readonly NotebookPredictedTipSample[] = [this.trackerSample];
   private hold: InkHoldDetector | null = null;
+  /** Holding still may make the stroke a shape, not only a line. */
+  private readonly shapes: boolean;
+  /** One screen pixel, in page units. */
+  private readonly pixelSize: number;
+  /** The shape holding still made the stroke, as the pen has sized and turned it since. */
+  private held: { shape: InkRecognizedShape; at: InkPoint; geometry: InkShapeGeometry; width: number } | null =
+    null;
+  /** The stroke as drawn when holding still snapped it: what undoing the snap brings back. */
+  private drawn: { path: InkPathCommand[]; paint: InkPaint } | null = null;
+  /** The newest point of the stroke, in page units: where the pen is when it holds still. */
+  private penX: number;
+  private penY: number;
   private readonly timers: InkTimers;
   /** The highlighter's wait for the pen to stop, if one is pending. */
   private settleTimer: number | null = null;
@@ -188,11 +236,15 @@ export class InkStrokeSession {
       tool.kind === "pen" && tool.pressure && getNotebookPenFeelFromSettings(settings).pressureResponse > 0;
     // One screen pixel in page units, as js-draw's `getSizeOfPixelOnCanvas`.
     const pixelSize = 1 / this.scale;
+    this.pixelSize = pixelSize;
+    this.shapes = tool.kind === "pen" && tool.shapes;
     const start = {
       x: (first.clientX - this.left) / this.scale,
       y: (first.clientY - this.top) / this.scale,
       width: this.widthOf(first.pressure),
     };
+    this.penX = start.x;
+    this.penY = start.y;
 
     if (tool.kind === "pen") {
       this.pen = createInkPenBuilder(
@@ -239,7 +291,8 @@ export class InkStrokeSession {
   move(samples: readonly InkPointerSample[], predicted: readonly InkPointerSample[] = NO_SAMPLES): number {
     if (this.finished || samples.length === 0) return 0;
 
-    const tipPoints = this.tracker ? this.predictTipPoints(this.tracker, samples, predicted) : null;
+    // A shape is being sized and turned, not drawn: there is no line to lead.
+    const tipPoints = this.tracker && !this.held ? this.predictTipPoints(this.tracker, samples, predicted) : null;
 
     let added = false;
     for (let index = 0; index < samples.length; index += 1) {
@@ -250,7 +303,11 @@ export class InkStrokeSession {
     }
 
     if (added) {
-      if (this.pen) {
+      if (this.held) {
+        const held = this.held;
+        held.geometry = adjustInkShape(held.shape, held.at, { x: this.penX, y: this.penY }, this.pixelSize);
+        this.lastPath = inkShapePath(held.geometry, held.width);
+      } else if (this.pen) {
         const geometry = this.pen.geometry();
         this.lastPath = geometry.path;
         this.lastPaint = penInkPaint(geometry.paint, this.color);
@@ -314,7 +371,18 @@ export class InkStrokeSession {
         this.tipShown = false;
       }
     }
-    return { layer: this.layer, path: this.lastPath, paint: this.lastPaint };
+    const snapped = this.snapped();
+    return snapped
+      ? { layer: this.layer, path: this.lastPath, paint: this.lastPaint, snapped }
+      : { layer: this.layer, path: this.lastPath, paint: this.lastPaint };
+  }
+
+  /** What holding still made the stroke, as the lift keeps it, or null if it was never snapped. */
+  private snapped(): NonNullable<InkStrokeResult["snapped"]> | null {
+    const stroke = this.lastPaint.stroke;
+    if (!this.drawn || !stroke) return null;
+    const shape = this.held ? this.held.geometry : lineOf(this.lastPath);
+    return shape ? { shape, color: stroke.color, width: stroke.width, drawn: this.drawn } : null;
   }
 
   cancel(): void {
@@ -388,19 +456,39 @@ export class InkStrokeSession {
 
     const x = (settled.x - this.left) / this.scale;
     const y = (settled.y - this.top) / this.scale;
+    this.penX = x;
+    this.penY = y;
+    // A shape follows the pen now; the stroke under it is finished.
+    if (this.held) return true;
     const width = this.widthOf(sample.pressure);
     if (this.pen) this.pen.addPoint({ x, y, width, time: timeStamp });
     else if (this.chisel) this.chisel.addPoint({ x, y, width });
     return true;
   }
 
-  /** The pen has been held still: snap the stroke to a line, if it is one, and show it at once. */
+  /**
+   * The pen has been held still: snap the stroke to a line if it is one, or
+   * else to a shape if it is one and shapes are allowed, and show it at once.
+   * Once only: holding still again later changes nothing.
+   */
   private holdStill(): void {
-    if (this.finished || !this.pen) return;
+    if (this.finished || !this.pen || this.drawn) return;
+    const drawn = { path: this.lastPath, paint: this.lastPaint };
     const line = this.pen.straighten();
-    if (!line) return;
-    this.lastPath = line.path;
-    this.lastPaint = penInkPaint(line.paint, this.color);
+    if (line) {
+      this.lastPath = line.path;
+      this.lastPaint = penInkPaint(line.paint, this.color);
+    } else {
+      const width = this.pen.width();
+      const shape = this.shapes
+        ? recognizeInkShape(this.pen.extent().points, { width, pixelSize: this.pixelSize })
+        : null;
+      if (!shape) return;
+      this.held = { shape, at: { x: this.penX, y: this.penY }, geometry: shape.geometry, width };
+      this.lastPath = inkShapePath(shape.geometry, width);
+      this.lastPaint = penInkPaint({ kind: "stroke", width }, this.color);
+    }
+    this.drawn = drawn;
     this.sink.drawLive(this.lastPath, this.lastPaint);
     this.tipShown = false;
   }

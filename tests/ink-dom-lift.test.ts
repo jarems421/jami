@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { InkItem, InkPaint, InkPathCommand } from "@/lib/ink/model";
+import { inkShapePath } from "@/lib/ink/shapes";
 import { isInkLiveStroke, sameInkPaint } from "@/lib/ink-dom/lift";
 
 const black = { r: 17, g: 24, b: 39, a: 1 };
@@ -39,6 +40,22 @@ describe("isInkLiveStroke", () => {
     expect(isInkLiveStroke(outline({ path: path.map((command) => ({ ...command })), paint: { ...fill } }), "pen", live)).toBe(
       true
     );
+  });
+
+  it("accepts a stroke snapped to a shape, which live ink drew as the shape's own path and paint", () => {
+    const shape: InkItem = {
+      kind: "shape",
+      id: "s",
+      layer: "pen",
+      color: black,
+      width: 3,
+      shape: { type: "polygon", corners: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 20, y: 30 }] },
+    };
+    if (shape.kind !== "shape") return;
+    const drawn = { commands: inkShapePath(shape.shape, 3), paint: stroke };
+    expect(isInkLiveStroke(shape, "pen", drawn)).toBe(true);
+    expect(isInkLiveStroke({ ...shape, width: 3.5 }, "pen", drawn)).toBe(false);
+    expect(isInkLiveStroke(shape, "highlighter", drawn)).toBe(false);
   });
 
   it("refuses anything that would not draw the same pixels", () => {

@@ -196,6 +196,7 @@ export function useNotebookLiveInkLayer({
       inkFrame,
       eraserMode,
       scribbleToErase,
+      shapesOnHold: true,
       penColor,
       penSettings,
       penThickness: getPenWidthFromPercent(penThicknessPercent),

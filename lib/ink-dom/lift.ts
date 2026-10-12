@@ -8,6 +8,7 @@
 import { inkColorsEqual } from "@/lib/ink/color";
 import type { InkColor, InkItem, InkLayer, InkPaint, InkPathCommand } from "@/lib/ink/model";
 import { sameInkPath } from "@/lib/ink/path-change";
+import { inkShapePaint, inkShapePath } from "@/lib/ink/shapes";
 
 function sameColor(a: InkColor | null, b: InkColor | null): boolean {
   return a === b || (a !== null && b !== null && inkColorsEqual(a, b));
@@ -27,16 +28,18 @@ export function sameInkPaint(a: InkPaint, b: InkPaint): boolean {
   );
 }
 
-/** Whether `item` is the live stroke as last drawn on `layer`. */
+/**
+ * Whether `item` is the live stroke as last drawn on `layer`: an outline drawn
+ * with its own path and paint, or a stroke snapped to a shape on a hold, which
+ * live ink drew as the shape's own path and paint.
+ */
 export function isInkLiveStroke(
   item: InkItem,
   layer: InkLayer,
   live: { commands: readonly InkPathCommand[]; paint: InkPaint }
 ): boolean {
-  return (
-    item.kind === "outline" &&
-    item.layer === layer &&
-    sameInkPaint(item.paint, live.paint) &&
-    sameInkPath(item.path, live.commands)
-  );
+  if (item.kind === "unknown" || item.layer !== layer) return false;
+  return item.kind === "outline"
+    ? sameInkPaint(item.paint, live.paint) && sameInkPath(item.path, live.commands)
+    : sameInkPaint(inkShapePaint(item), live.paint) && sameInkPath(inkShapePath(item.shape, item.width), live.commands);
 }

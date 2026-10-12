@@ -4,6 +4,7 @@ import {
   inkClearChange,
   inkDiffChange,
   inkRemoveChange,
+  inkReplaceChange,
   InkHistory,
   invertInkChange,
   type InkChange,
@@ -16,6 +17,7 @@ import {
   type InkDocument,
   type InkOutlineItem,
   type InkPoint,
+  type InkShapeItem,
 } from "@/lib/ink/model";
 import { InkSpatialIndex } from "@/lib/ink/spatial-index";
 import { planInkScribbleErase } from "@/lib/ink/tools/scribble-erase";
@@ -44,7 +46,9 @@ import {
  *
  * - **A stroke** is an `InkStrokeSession` drawing on the renderer's live layer.
  *   At the lift the surface commits exactly what live ink last drew (the same
- *   path and paint objects), so the lift changes no pixel. A scribble over
+ *   path and paint objects), so the lift changes no pixel. A stroke snapped to
+ *   a line or a shape on a hold is committed as that shape, and undoes in two
+ *   steps: first back to the stroke as drawn, then away. A scribble over
  *   existing ink instead removes what it covered, as one undo step, and the
  *   scribble itself never enters the document.
  * - **An erase** (`surface-erase.ts`) edits the page packet by packet so ink
@@ -228,18 +232,35 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
 
       const result = current.session.lift();
       if (!result) return "empty";
-      const item: InkOutlineItem = {
+      const outline = (path: InkOutlineItem["path"], paint: InkOutlineItem["paint"]): InkOutlineItem => ({
         kind: "outline",
         id: createInkItemId(),
         layer: result.layer,
-        path: result.path,
-        paint: result.paint,
+        path,
+        paint,
+      });
+      const commit = (change: InkChange) => {
+        doc = applyInkChange(doc, change);
+        syncIndex(change);
+        renderer.commitLive(doc, change);
       };
-      const change = inkAddChange(doc, [item]);
-      doc = applyInkChange(doc, change);
-      syncIndex(change);
-      renderer.commitLive(doc, change);
-      recorded(change);
+      if (!result.snapped) {
+        const change = inkAddChange(doc, [outline(result.path, result.paint)]);
+        commit(change);
+        recorded(change);
+        return "committed";
+      }
+      // Snapped on a hold: the shape goes on the page at once, and into the
+      // history as two steps, the stroke as drawn and then the snap, so one
+      // undo brings back what was drawn and a second takes it away.
+      const { shape, color, width, drawn } = result.snapped;
+      const drawnItem = outline(drawn.path, drawn.paint);
+      const shapeItem: InkShapeItem = { kind: "shape", id: createInkItemId(), layer: "pen", color, width, shape };
+      const drew = inkAddChange(doc, [drawnItem]);
+      const snap = inkReplaceChange(applyInkChange(doc, drew), new Map([[drawnItem.id, [shapeItem]]]));
+      commit(inkAddChange(doc, [shapeItem]));
+      history.push(drew);
+      recorded(snap);
       return "committed";
     },
 

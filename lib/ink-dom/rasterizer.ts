@@ -22,7 +22,7 @@
 
 import { formatInkColor } from "@/lib/ink/color";
 import type { InkBox, InkItem, InkPaint, InkPathCommand } from "@/lib/ink/model";
-import { inkShapePath } from "@/lib/ink/shapes";
+import { inkShapePaint, inkShapePath } from "@/lib/ink/shapes";
 
 /** The parts of a 2D context the rasteriser uses. */
 export type InkContext2D = Pick<
@@ -107,13 +107,6 @@ export function buildInkPath(commands: readonly InkPathCommand[], factory: InkPa
 /** How an item is painted: its path and paint, ready to draw. */
 export type InkDrawable = { path: InkPath2D; paint: InkPaint };
 
-const ROUND_STROKE = { cap: "round", join: "round" } as const;
-
-/** The paint of a parametric shape: stroked, round, at its width. */
-function shapePaint(item: Extract<InkItem, { kind: "shape" }>): InkPaint {
-  return { fill: null, stroke: { color: item.color, width: item.width, ...ROUND_STROKE }, opacity: 1 };
-}
-
 /**
  * Paths for items, built once per item and kept for as long as the item is.
  * Items are immutable (see `model.ts`), so the object is the key.
@@ -129,7 +122,7 @@ export class InkDrawableCache {
     if (item.kind === "outline") {
       drawable = { path: buildInkPath(item.path, this.factory).path, paint: item.paint };
     } else if (item.kind === "shape") {
-      drawable = { path: buildInkPath(inkShapePath(item.shape, item.width), this.factory).path, paint: shapePaint(item) };
+      drawable = { path: buildInkPath(inkShapePath(item.shape, item.width), this.factory).path, paint: inkShapePaint(item) };
     }
     this.cache.set(item, drawable);
     return drawable;
@@ -141,6 +134,7 @@ export class InkDrawableCache {
    */
   seed(item: InkItem, path: InkPath2D): void {
     if (item.kind === "outline") this.cache.set(item, { path, paint: item.paint });
+    else if (item.kind === "shape") this.cache.set(item, { path, paint: inkShapePaint(item) });
   }
 }
 

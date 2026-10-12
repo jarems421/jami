@@ -57,6 +57,13 @@ scroll sideways.** Long equations must scroll inside their own box.
    erased, and the highlighter leaves the middle of the circle clear.
    Draw a slightly wobbly or bowed line, flat and at an angle, and keep the pen
    still at its end: within about half a second it snaps straight.
+6a. With the pen's hold set to Shapes (the default), draw a rough circle, an
+   oval, a rectangle, a triangle and an arrow, keeping the pen still at the
+   end of each: each snaps to its shape, a near-level one level. Keep the pen
+   down and move it: the shape grows, shrinks and turns with it, and a nudge
+   does not tilt a level one. Undo once: the stroke as you drew it comes back;
+   undo again: it goes. A small 'o', a 'C' and a figure of eight stay as
+   drawn. On an exam working sheet a held circle is left as drawn.
 7. On a phone, a notebook shows "Notebook editing works best on iPad or
    desktop." with "Continue anyway"; typed notes still work.
 

@@ -11,14 +11,7 @@ import {
   NOTEBOOK_STRAIGHTEN_MODES,
   resetNotebookPenAdvancedSettings,
   type NotebookPenSettings,
-  type NotebookStraightenOnHold,
 } from "@/lib/workspace/notebook-pen-feel";
-
-const STRAIGHTEN_SHORT: Record<NotebookStraightenOnHold, string> = {
-  off: "Off",
-  lines: "Straighten",
-  guided: "Straighten + level",
-};
 
 /**
  * The pen settings behind Smoothing.
@@ -106,7 +99,7 @@ export default function NotebookPenAdvancedSettings({
                     : "app-chip"
                 }`}
               >
-                {STRAIGHTEN_SHORT[mode]}
+                {getNotebookStraightenLabel(mode).name}
               </button>
             ))}
           </div>

@@ -50,6 +50,8 @@ export function inkStrokeToolFor(input: {
   device: { maxTouchPoints: number; platform: string; userAgent: string };
   /** Which way the highlighter's flat edge faces, asked once per accepted sample. */
   nibAngle: () => number;
+  /** The page lets holding still snap shapes, not only lines (`shapesOnHold`). */
+  shapesOnHold: boolean;
 }): InkStrokeTool {
   const { style } = input;
   if (input.tool === "pen") {
@@ -66,6 +68,7 @@ export function inkStrokeToolFor(input: {
       settings: style.penSettings,
       // A stylus only. A mouse is not writing, and touch never draws.
       predictTip: input.pointerType === "pen",
+      shapes: input.shapesOnHold && style.penSettings.straightenOnHold === "shapes",
     };
   }
   return {

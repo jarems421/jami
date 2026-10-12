@@ -54,6 +54,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
       penThickness,
       readOnly = false,
       scribbleToErase = false,
+      shapesOnHold = false,
     },
     forwardedRef
   ) {
@@ -116,6 +117,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
       style,
       readOnly,
       scribbleToErase,
+      shapesOnHold,
       reportInteraction,
       page: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
       trace,

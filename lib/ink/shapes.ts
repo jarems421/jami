@@ -1,4 +1,4 @@
-import type { InkPathCommand, InkPoint, InkShapeGeometry } from "@/lib/ink/model";
+import type { InkPaint, InkPathCommand, InkPoint, InkShapeGeometry, InkShapeItem } from "@/lib/ink/model";
 
 /** Quarter-circle Bézier handle length as a fraction of the radius. */
 const ELLIPSE_KAPPA = 0.5522847498307936;
@@ -72,6 +72,15 @@ function ellipsePath(
     quarter([kx, -ry], [rx, -ky], [rx, 0]),
     { op: "Z" },
   ];
+}
+
+/**
+ * How a shape is painted: stroked, never filled, round at its width. The very
+ * paint a pen stroke of that width is drawn live with (`penInkPaint`), which is
+ * what lets a stroke snapped to a shape lift without a pixel changing.
+ */
+export function inkShapePaint(item: Pick<InkShapeItem, "color" | "width">): InkPaint {
+  return { fill: null, stroke: { color: item.color, width: item.width, cap: "round", join: "round" }, opacity: 1 };
 }
 
 /**

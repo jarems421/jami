@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { InkChange } from "@/lib/ink/history";
 import type { InkDocument, InkItem, InkOutlineItem, InkPaint, InkPathCommand } from "@/lib/ink/model";
+import { inkShapePaint, inkShapePath } from "@/lib/ink/shapes";
 import type { InkLiveTip, InkRenderer } from "@/lib/ink-dom/renderer";
 import { inkColorForTool, type InkPointerSample, type InkStrokeTool } from "@/lib/ink-dom/stroke-session";
 import { createInkSurface, type InkSurface } from "@/lib/ink-dom/surface";
@@ -90,7 +91,7 @@ function setup() {
     createRenderer: () => fake.renderer,
     timers: clock.timers,
   });
-  return { surface, fake, changes, history };
+  return { surface, fake, changes, history, clock };
 }
 
 function load(surface: InkSurface, ...items: InkItem[]): void {
@@ -108,6 +109,7 @@ const PEN: InkStrokeTool = {
   pressure: false,
   settings: { ...NOTEBOOK_PEN_SETTINGS_DEFAULT, straightenOnHold: "off" },
   predictTip: false,
+  shapes: false,
 };
 
 /** A short wavy stroke along the page. */
@@ -268,6 +270,69 @@ describe("pen strokes", () => {
     surface.cancelStroke();
     surface.undo();
     expect(surface.historyState()).toEqual({ undoDepth: 0, redoDepth: 1 });
+  });
+});
+
+describe("strokes snapped on a hold", () => {
+  const SHAPES: InkStrokeTool = { ...PEN, settings: NOTEBOOK_PEN_SETTINGS_DEFAULT, shapes: true };
+
+  /** A circle round (300, 300), held still at its end until it snaps. */
+  function drawHeldCircle(surface: InkSurface, clock: InkFakeClock): void {
+    surface.beginStroke({ tool: SHAPES, mapping: MAPPING, first: sample(400, 300, 0) });
+    for (let index = 1; index <= 48; index += 1) {
+      const angle = (index / 46) * 2 * Math.PI;
+      const each = sample(300 + 100 * Math.cos(angle), 300 + 100 * Math.sin(angle), index * 4.2);
+      clock.advanceTo(each.timeStamp);
+      surface.moveStroke([each]);
+    }
+    clock.advanceTo(48 * 4.2 + 501);
+  }
+
+  it("goes on the page as the shape live ink drew, in one commit and two undo steps", () => {
+    const { surface, fake, changes, clock } = setup();
+    load(surface);
+    drawHeldCircle(surface, clock);
+    const shown = fake.draws[fake.draws.length - 1];
+    expect(surface.endStroke()).toBe("committed");
+
+    expect(fake.committed).toHaveLength(1);
+    const { change } = fake.committed[0];
+    expect(change.removed).toHaveLength(0);
+    expect(change.added).toHaveLength(1);
+    const item = change.added[0].item;
+    expect(item.kind).toBe("shape");
+    if (item.kind !== "shape") return;
+    expect(item.shape.type).toBe("ellipse");
+    expect(inkShapePath(item.shape, item.width)).toEqual(shown.path);
+    expect(inkShapePaint(item)).toEqual(shown.paint);
+    expect(changes.count).toBe(1);
+    expect(surface.historyState()).toEqual({ undoDepth: 2, redoDepth: 0 });
+  });
+
+  it("undoes back to the stroke as it was drawn, then away, and redoes both", () => {
+    const { surface, fake, clock } = setup();
+    load(surface);
+    drawHeldCircle(surface, clock);
+    // The last freehand draw, before the snap replaced it.
+    const drawn = fake.draws[fake.draws.length - 2];
+    surface.endStroke();
+    const shape = fake.shown.items[0];
+
+    surface.undo();
+    expect(fake.shown.items).toHaveLength(1);
+    const back = fake.shown.items[0];
+    expect(back.kind).toBe("outline");
+    if (back.kind !== "outline") return;
+    expect(back.path).toBe(drawn.path);
+    expect(back.paint).toBe(drawn.paint);
+
+    surface.undo();
+    expect(fake.shown.items).toHaveLength(0);
+    surface.redo();
+    expect(fake.shown.items[0]).toBe(back);
+    surface.redo();
+    expect(fake.shown.items[0]).toBe(shape);
+    expect(surface.historyState()).toEqual({ undoDepth: 2, redoDepth: 0 });
   });
 });
 

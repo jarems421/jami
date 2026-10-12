@@ -50,6 +50,7 @@ type SurfacePointerHandler = (event: ReactPointerEvent<HTMLDivElement>) => void;
 type LiveInputs = NotebookInkStyle & {
   readOnly: boolean;
   scribbleToErase: boolean;
+  shapesOnHold: boolean;
   page: {
     onPointerDown: SurfacePointerHandler;
     onPointerMove: SurfacePointerHandler;
@@ -89,6 +90,7 @@ export function useJamiInkPointerInput({
   style,
   readOnly,
   scribbleToErase,
+  shapesOnHold,
   reportInteraction,
   page,
   trace = null,
@@ -103,6 +105,8 @@ export function useJamiInkPointerInput({
   readOnly: boolean;
   /** Scribbling out with the pen deletes the strokes it covers. */
   scribbleToErase: boolean;
+  /** Holding the pen still may snap shapes, not only lines. */
+  shapesOnHold: boolean;
   reportInteraction: (active: boolean) => void;
   /** The page's handlers, for pointers ink does not take. */
   page: LiveInputs["page"];
@@ -112,9 +116,9 @@ export function useJamiInkPointerInput({
   const { surfaceRef, loadedRef, getMapping, measureNow, peekMapping, settle } = engine;
   const { activeTool, eraserThickness } = style;
 
-  const liveRef = useRef<LiveInputs>({ ...style, readOnly, scribbleToErase, page });
+  const liveRef = useRef<LiveInputs>({ ...style, readOnly, scribbleToErase, shapesOnHold, page });
   useLayoutEffect(() => {
-    liveRef.current = { ...style, readOnly, scribbleToErase, page };
+    liveRef.current = { ...style, readOnly, scribbleToErase, shapesOnHold, page };
   });
 
   const activeRef = useRef<ActiveContact | null>(null);
@@ -256,7 +260,14 @@ export function useJamiInkPointerInput({
         };
       } else {
         surface.beginStroke({
-          tool: inkStrokeToolFor({ tool, pointerType: event.pointerType, style: live, device: navigator, nibAngle }),
+          tool: inkStrokeToolFor({
+            tool,
+            pointerType: event.pointerType,
+            style: live,
+            device: navigator,
+            nibAngle,
+            shapesOnHold: live.shapesOnHold,
+          }),
           mapping,
           first: native,
         });

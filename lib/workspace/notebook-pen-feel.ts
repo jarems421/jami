@@ -281,12 +281,14 @@ export function saveNotebookPenSmoothingPreference(percent: number) {
 /**
  * What happens when the pen is held still at the end of a stroke.
  *
- * `guided` is the behaviour that was hard-coded: the stroke snaps straight and
- * the line is then pulled towards the nearest 45 degrees. `lines` snaps but
- * leaves the angle exactly as drawn, for anyone who wants a tidied line without
- * it also being levelled. `off` never replaces what was drawn.
+ * `shapes` snaps a line straight and pulls it towards the nearest 45 degrees,
+ * and snaps a circle, an oval, a polygon or an arrow to its shape, levelled the
+ * same way -- where shapes are allowed: the exam working sheet only straightens
+ * lines. `lines` snaps lines alone and leaves their angle exactly as drawn, for
+ * anyone who wants a tidied line without it also being levelled. `off` never
+ * replaces what was drawn.
  */
-export const NOTEBOOK_STRAIGHTEN_MODES = ["off", "lines", "guided"] as const;
+export const NOTEBOOK_STRAIGHTEN_MODES = ["off", "lines", "shapes"] as const;
 export type NotebookStraightenOnHold =
   (typeof NOTEBOOK_STRAIGHTEN_MODES)[number];
 
@@ -331,7 +333,7 @@ export const NOTEBOOK_PEN_SETTINGS_DEFAULT: NotebookPenSettings = {
   cornerSharpnessPercent: NOTEBOOK_CORNER_SHARPNESS_DEFAULT,
   trackingPercent: 50,
   pressurePercent: 50,
-  straightenOnHold: "guided",
+  straightenOnHold: "shapes",
 };
 
 export const NOTEBOOK_PEN_SETTINGS_STORAGE_KEY = "jami:notebook-pen-settings";
@@ -388,6 +390,7 @@ export function clampNotebookPenSettings(
   const smoothingPercent = clampNotebookPenSmoothing(
     settings?.smoothingPercent ?? NOTEBOOK_PEN_SMOOTHING_DEFAULT
   );
+  const hold: unknown = settings?.straightenOnHold;
 
   return {
     smoothingPercent,
@@ -402,9 +405,16 @@ export function clampNotebookPenSettings(
     ),
     trackingPercent: percent(settings?.trackingPercent, 50),
     pressurePercent: percent(settings?.pressurePercent, 50),
-    straightenOnHold: isNotebookStraightenOnHold(settings?.straightenOnHold)
-      ? settings.straightenOnHold
-      : NOTEBOOK_PEN_SETTINGS_DEFAULT.straightenOnHold,
+    /*
+     * `guided`, lines straightened and levelled, was the default before shapes
+     * came, and every device that saved its settings saved it. Shapes is what
+     * it grew into, and it reads as that.
+     */
+    straightenOnHold: isNotebookStraightenOnHold(hold)
+      ? hold
+      : hold === "guided"
+        ? "shapes"
+        : NOTEBOOK_PEN_SETTINGS_DEFAULT.straightenOnHold,
   };
 }
 
@@ -471,7 +481,7 @@ export function getNotebookPenFeelFromSettings(
       atDefault: 1,
       hundred: 1.6,
     }),
-    snapToGuides: safe.straightenOnHold === "guided",
+    snapToGuides: safe.straightenOnHold === "shapes",
   };
 }
 
@@ -611,13 +621,14 @@ export function getNotebookStraightenLabel(
   }
   if (mode === "lines") {
     return {
-      name: "Straighten",
+      name: "Lines",
       description: "Hold still to snap a rough line straight, at your own angle",
     };
   }
   return {
-    name: "Straighten and level",
-    description: "Snaps straight, then nudges towards the nearest 45 degrees",
+    name: "Shapes",
+    description:
+      "Hold still to snap lines, circles, ovals, rectangles, triangles and arrows, levelled when they are close",
   };
 }
 

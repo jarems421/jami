@@ -82,6 +82,7 @@ function Harness({ style, readOnly, scribbleToErase, trace = null }: HarnessProp
     style,
     readOnly,
     scribbleToErase,
+    shapesOnHold: true,
     reportInteraction,
     page,
     trace,

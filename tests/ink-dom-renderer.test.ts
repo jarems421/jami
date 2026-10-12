@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyInkChange, inkAddChange, inkRemoveChange } from "@/lib/ink/history";
 import type { InkDocument, InkItem, InkLayer, InkPaint, InkPathCommand } from "@/lib/ink/model";
+import { inkShapePaint, inkShapePath } from "@/lib/ink/shapes";
 import { createInkRenderer, type InkLiveTip, type InkRenderer, type InkViewport } from "@/lib/ink-dom/renderer";
 import { callsOf, FakePath2D, installFakeCanvas, type FakeCanvasEnvironment } from "./support/fake-canvas";
 
@@ -223,6 +224,33 @@ describe("createInkRenderer", () => {
     const adopted = dryCanvases("pen").filter((element) => live.includes(element));
     expect(adopted).toHaveLength(live.length);
     adopted.forEach((element, index) => expect(element).toBe(live[index]));
+  });
+
+  it("hands the live tiles over for a stroke snapped to a shape, as for any stroke", () => {
+    make();
+    renderer.setViewport(FITTED);
+    const doc: InkDocument = { version: 3, items: [line("p", "pen", 30, 30)] };
+    renderer.setDocument(doc);
+    pump();
+    renderer.resetStats();
+
+    const shape: InkItem = {
+      kind: "shape",
+      id: "circle",
+      layer: "pen",
+      color: black,
+      width: 3,
+      shape: { type: "ellipse", cx: 300, cy: 300, rx: 120, ry: 120, rotation: 0 },
+    };
+    renderer.beginLive("pen");
+    renderer.drawLive(inkShapePath(shape.shape, shape.width), inkShapePaint(shape));
+    const live = liveCanvases();
+    expect(live.length).toBeGreaterThan(0);
+    renderer.commitLive(applyInkChange(doc, inkAddChange(doc, [shape])), inkAddChange(doc, [shape]));
+
+    expect(renderer.stats.canvasAllocations).toBe(0);
+    const adopted = dryCanvases("pen").filter((element) => live.includes(element));
+    expect(adopted).toHaveLength(live.length);
   });
 
   it("paints the committed item afresh when it is not what live ink drew", () => {
