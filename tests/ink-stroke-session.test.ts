@@ -636,12 +636,12 @@ describe("straightening on hold", () => {
     return { session, clock, ...recorded };
   }
 
-  it("snaps a line half a second after the pen stops, and draws it at once", () => {
+  it("snaps a line 0.4 seconds after the pen stops, and draws it at once", () => {
     const { clock, draws } = guidedPen();
     const drawsBefore = draws.length;
-    clock.advanceTo(lastTime + 499);
+    clock.advanceTo(lastTime + 399);
     expect(draws).toHaveLength(drawsBefore);
-    clock.advanceTo(lastTime + 501);
+    clock.advanceTo(lastTime + 401);
     expect(draws).toHaveLength(drawsBefore + 1);
 
     const reference = new ReferencePen(FIRST, { thickness: 4, pressure: false, settings: GUIDED });
@@ -688,25 +688,29 @@ describe("straightening on hold", () => {
     expect(result?.paint).toBe(snapped.paint);
   });
 
-  it("does not add the moves of a pen that is being held", () => {
+  it("holds through a resting hand's tremor, then follows the pen from the first real move", () => {
     const { session, clock, draws } = guidedPen();
-    // Tremor every 100 ms after the stroke. The average speed of the stroke
-    // takes a few samples to die away, then a second of stillness is needed.
+    // Tremor every 100 ms after the stroke, a fifth of a pixel either way.
     const tremor = (step: number) => sample(200 + (step % 2 === 0 ? 0 : 0.2), 200, lastTime + step * 100);
-    let step = 1;
-    for (; step < 15; step += 1) {
+    for (let step = 1; step <= 3; step += 1) {
       clock.advanceTo(tremor(step).timeStamp);
       session.move([tremor(step)]);
     }
-    // The hold fires on the 15th sample; from then on moves are not added.
-    clock.advanceTo(tremor(15).timeStamp);
-    const snappedAt = draws.length;
-    expect(draws[snappedAt - 1].path).toHaveLength(2);
-    for (step = 15; step < 19; step += 1) {
+    clock.advanceTo(lastTime + 401);
+    const snapped = draws[draws.length - 1].path;
+    expect(snapped).toHaveLength(2);
+    // More tremor is too small to be a move: the line stays where it snapped.
+    for (let step = 5; step <= 8; step += 1) {
       clock.advanceTo(tremor(step).timeStamp);
       session.move([tremor(step)]);
     }
-    expect(draws).toHaveLength(snappedAt);
+    expect(draws[draws.length - 1].path).toEqual(snapped);
+    // Three pixels is a move, and the far end follows it at once, where the
+    // hold used to swallow anything inside its radius and then jump.
+    const aim = sample(200, 206, lastTime + 900);
+    clock.advanceTo(aim.timeStamp);
+    session.move([aim]);
+    expect(draws[draws.length - 1].path).not.toEqual(snapped);
   });
 
   it("never straightens the highlighter", () => {

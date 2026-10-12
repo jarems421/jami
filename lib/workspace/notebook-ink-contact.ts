@@ -154,11 +154,14 @@ export function positionNotebookEraserCursor(input: {
  * stroke snaps straight (`InkHoldDetector`, and js-draw's detector behind the
  * fallback).
  *
- * Half a second, held within eight screen pixels. A full second was tried and
- * felt broken on the iPad: the snap seemed to come when it wanted to, and
- * mostly not at all. What stops a snap in the middle of a word is not a long
- * wait but the shape test (`straightenedShape`): a stroke that has doubled back
- * on itself, as handwriting does, is never taken for a line.
+ * Four tenths of a second, held within six screen pixels. A full second was
+ * tried and felt broken on the iPad: the snap seemed to come when it wanted
+ * to, and mostly not at all; half a second was right but slow to come once a
+ * hand knew it, and 13 October took it to 0.4. What stops a snap in the middle
+ * of a word is not a long wait but the shape tests (`straightenedShape`,
+ * `recognizeInkShape`): a stroke that has doubled back on itself, as
+ * handwriting does, is never taken for a line, and nothing letter-sized is
+ * taken for a shape.
  */
 export const NOTEBOOK_STRAIGHTEN_HOLD = {
   /**
@@ -170,8 +173,9 @@ export const NOTEBOOK_STRAIGHTEN_HOLD = {
   /**
    * How far the tip may drift from where it stopped, in screen pixels: room for
    * a hand pressing down on the glass, not for a stroke. Writing slower than
-   * sixteen pixels a second for half a second is a pause, not writing.
+   * fifteen pixels a second for the hold's 0.4 seconds is a pause, not
+   * writing; a shorter hold had to take a smaller radius to keep that true.
    */
-  maxRadius: 8,
-  minTimeSeconds: 0.5,
+  maxRadius: 6,
+  minTimeSeconds: 0.4,
 };

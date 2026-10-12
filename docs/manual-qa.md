@@ -60,7 +60,8 @@ scroll sideways.** Long equations must scroll inside their own box.
    with the pen and with the highlighter: the circle stays, the word is not
    erased, and the highlighter leaves the middle of the circle clear.
    Draw a slightly wobbly or bowed line, flat and at an angle, and keep the pen
-   still at its end: within about half a second it snaps straight.
+   still at its end: within about four tenths of a second it snaps straight. Keep
+   the pen down and move it a few pixels: the far end follows at once, with no jump.
 6a. With the pen's hold set to Shapes (the default), draw a rough circle, an
    oval, a rectangle, a triangle and an arrow, keeping the pen still at the
    end of each: each snaps to its shape, a near-level one level. Keep the pen

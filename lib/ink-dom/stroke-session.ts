@@ -505,6 +505,10 @@ export class InkStrokeSession {
       this.lastPaint = penInkPaint({ kind: "stroke", width }, this.color);
     }
     this.drawn = drawn;
+    // From here the pen is aiming or sizing what snapped, and every move counts:
+    // left on, the hold would swallow the first few pixels and then jump.
+    this.hold?.destroy();
+    this.hold = null;
     this.sink.drawLive(this.lastPath, this.lastPaint);
     this.tipShown = false;
   }

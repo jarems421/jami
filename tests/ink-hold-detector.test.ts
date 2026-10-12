@@ -3,7 +3,7 @@ import { InkHoldDetector } from "@/lib/ink-dom/hold-detector";
 import { NOTEBOOK_STRAIGHTEN_HOLD } from "@/lib/workspace/notebook-ink-contact";
 import { InkFakeClock } from "./support/ink-fake-timers";
 
-/** The notebook's hold: within 8 px for half a second. */
+/** The notebook's hold: within 6 px for 0.4 seconds. */
 function detectorAt(clock: InkFakeClock, x = 0, y = 0) {
   const onHold = vi.fn();
   const detector = new InkHoldDetector(x, y, clock.time, onHold, clock.timers);
@@ -11,22 +11,22 @@ function detectorAt(clock: InkFakeClock, x = 0, y = 0) {
 }
 
 describe("the notebook's hold", () => {
-  it("is half a second within eight screen pixels", () => {
-    expect(NOTEBOOK_STRAIGHTEN_HOLD).toMatchObject({ minTimeSeconds: 0.5, maxRadius: 8 });
+  it("is four tenths of a second within six screen pixels", () => {
+    expect(NOTEBOOK_STRAIGHTEN_HOLD).toMatchObject({ minTimeSeconds: 0.4, maxRadius: 6 });
   });
 });
 
 describe("the hold detector's timer", () => {
-  it("fires after half a second even if the pen never moves again", () => {
+  it("fires after the hold even if the pen never moves again", () => {
     const clock = new InkFakeClock();
     const { onHold } = detectorAt(clock);
-    clock.advanceTo(499);
+    clock.advanceTo(399);
     expect(onHold).not.toHaveBeenCalled();
-    clock.advanceTo(500);
+    clock.advanceTo(400);
     expect(onHold).toHaveBeenCalledTimes(1);
   });
 
-  it("waits half a second from where the pen stopped, not from the pen landing", () => {
+  it("waits the hold from where the pen stopped, not from the pen landing", () => {
     const clock = new InkFakeClock();
     const { detector, onHold } = detectorAt(clock);
     // Writing at 100 px a second until 800 ms.
@@ -34,9 +34,9 @@ describe("the hold detector's timer", () => {
       clock.advanceTo(t);
       expect(detector.move(t / 10, 0, t)).toBe(false);
     }
-    clock.advanceTo(1299);
+    clock.advanceTo(1199);
     expect(onHold).not.toHaveBeenCalled();
-    clock.advanceTo(1300);
+    clock.advanceTo(1200);
     expect(onHold).toHaveBeenCalledTimes(1);
   });
 
@@ -65,7 +65,7 @@ describe("the hold detector's timer", () => {
 });
 
 describe("the hold detector's verdict on each move", () => {
-  it("says moving until the pen has been still for half a second, then held", () => {
+  it("says moving until the pen has been still for the hold, then held", () => {
     const clock = new InkFakeClock();
     const { detector } = detectorAt(clock);
     const verdicts: boolean[] = [];
@@ -74,35 +74,35 @@ describe("the hold detector's verdict on each move", () => {
       clock.advanceTo(t);
       verdicts.push(detector.move(step % 2 === 0 ? 0 : 0.2, 0, t));
     }
-    expect(verdicts).toEqual([false, false, false, false, true, true, true, true]);
+    expect(verdicts).toEqual([false, false, false, true, true, true, true, true]);
   });
 
   it("starts counting again when the pen drifts past the radius", () => {
     const clock = new InkFakeClock();
     const { detector, onHold } = detectorAt(clock);
     clock.advanceTo(300);
-    expect(detector.move(7, 0, 300)).toBe(false);
-    clock.advanceTo(400);
-    // 9 px from where it stopped is past the 8 px radius: a new hold begins here.
-    expect(detector.move(9, 0, 400)).toBe(false);
-    clock.advanceTo(899);
-    expect(detector.move(9.5, 0, 899)).toBe(false);
+    expect(detector.move(5, 0, 300)).toBe(false);
+    clock.advanceTo(350);
+    // 7 px from where it stopped is past the 6 px radius: a new hold begins here.
+    expect(detector.move(7, 0, 350)).toBe(false);
+    clock.advanceTo(749);
+    expect(detector.move(7.5, 0, 749)).toBe(false);
     expect(onHold).not.toHaveBeenCalled();
-    clock.advanceTo(900);
+    clock.advanceTo(750);
     expect(onHold).toHaveBeenCalledTimes(1);
-    expect(detector.move(9.5, 0, 900)).toBe(true);
+    expect(detector.move(7.5, 0, 750)).toBe(true);
   });
 
   it("holds again after moving on, but only once per stop", () => {
     const clock = new InkFakeClock();
     const { detector, onHold } = detectorAt(clock);
-    clock.advanceTo(500);
+    clock.advanceTo(400);
     expect(onHold).toHaveBeenCalledTimes(1);
     clock.advanceTo(2000);
     expect(onHold).toHaveBeenCalledTimes(1);
     clock.advanceTo(2100);
     detector.move(40, 0, 2100);
-    clock.advanceTo(2600);
+    clock.advanceTo(2500);
     expect(onHold).toHaveBeenCalledTimes(2);
   });
 });
