@@ -45,6 +45,7 @@ function styleFor(image: NotebookImageRef) {
     top: `${(placed.y / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
     width: `${(placed.width / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
     height: `${(placed.height / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
+    ...(image.rotation ? { transform: `rotate(${image.rotation}rad)` } : {}),
   };
 }
 

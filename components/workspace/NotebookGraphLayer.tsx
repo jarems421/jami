@@ -46,6 +46,7 @@ function styleFor(graph: NotebookGraphBlock) {
     top: `${(graph.y / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
     width: `${(graph.width / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
     height: `${(graph.height / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
+    ...(graph.rotation ? { transform: `rotate(${graph.rotation}rad)` } : {}),
   };
 }
 

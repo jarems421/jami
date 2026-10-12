@@ -658,12 +658,26 @@ Still to come:
   - image and graph share one Insert menu;
   - dragged out, it floats at the left, right or bottom edge as before, and
     dragged back up it returns to the bar.
-- **Lasso (L).**
-  - The loop is drawn with the pen or a mouse; touch still pans.
-  - Handles move, resize and rotate the selection. Colour and thickness come
-    from the tool popover.
-  - Images and graphs gain an optional `rotation`, read as 0 when absent. Text
-    boxes move and resize but stay upright.
+- **Lasso (L) (done, 12 October).** On the toolbar between the eraser and the
+  text box (`lib/ink/tools/lasso.ts`, `lib/workspace/notebook-lasso.ts`,
+  `useNotebookLasso`, `NotebookLassoLayer`).
+  - The loop is drawn with the pen or a mouse; fingers still go to the page.
+    It picks up ink mostly inside it (60% of its points), and images, graphs
+    and text boxes whose middle is inside.
+  - Drag inside the box to move, pull its corner to resize (the same both
+    ways), swing the round handle to turn. A bar under it recolours ink (a
+    highlighter stays see-through), makes it thicker or thinner, or deletes
+    everything picked up.
+  - Ink edits are one undo step per gesture (`InkSurface.beginEdit`,
+    `showEdit`, `endEdit`); images and graphs save as their own moves always
+    have; text boxes go through the text history.
+  - A tapered stroke is a filled outline, so Thicker traces round it in its
+    own colour and Thinner only takes that back off; the highlighter keeps its
+    weight.
+  - Images and graphs have an optional `rotation`, absent when upright, which
+    older builds ignore. Text boxes move and resize but stay upright.
+  - Notebook pages only, and Jami Ink only: on js-draw, the fallback, the
+    lasso picks up images, graphs and text but no ink.
 - **Shapes on hold (done, 12 October).** The pen's "Hold still at the end of a
   stroke" setting is Off, Lines or Shapes; Shapes is the default, and the old
   "Straighten and level" reads as it.
@@ -753,7 +767,7 @@ fallback to js-draw.
    thumbnails and previews, the static page and the editors (see Saving and
    Migration). The exam sheet keeps SVG until its rules allow the encoding,
    and swipe bitmaps moved to stage 7.
-6. **New tools.** Shapes on hold and the ruler (done), then the lasso. The
+6. **New tools (done).** Shapes on hold, the ruler and the lasso. The
    owner's second iPad round.
 7. **Performance.**
    - A worker renderer, only if the gates need it.

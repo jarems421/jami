@@ -42,7 +42,8 @@ export type NotebookDrawingToolbarProps = {
    * it; pressing the active one toggles its options popover.
    */
   onSelectDrawingTool: (tool: "pen" | "highlighter" | "eraser") => void;
-  onToggleTextTool: () => void;
+  /** The text box or the lasso: picked up, or put down when it is in hand. */
+  onToggleTool: (tool: "text" | "lasso") => void;
   onToggleInsertMenu: () => void;
   rulerShown: boolean;
   onToggleRuler: () => void;
@@ -75,7 +76,7 @@ function ToolColorBar({
 }
 
 /**
- * The notebook's drawing tools: pen, highlighter, eraser, text, Insert (a
+ * The notebook's drawing tools: pen, highlighter, eraser, lasso, text, Insert (a
  * picture or a graph), the ruler, then undo and redo.
  *
  * At home in the top bar, where it never covers the page: a row of quiet
@@ -92,7 +93,7 @@ function NotebookDrawingToolbar({
   highlighterColor,
   openMenu,
   onSelectDrawingTool,
-  onToggleTextTool,
+  onToggleTool,
   onToggleInsertMenu,
   rulerShown,
   onToggleRuler,
@@ -164,11 +165,18 @@ function NotebookDrawingToolbar({
           />
         </div>
         <ToolbarIconButton
+          label="Lasso (L)"
+          icon="lasso"
+          quiet={inBar}
+          active={tool === "lasso"}
+          onClick={() => onToggleTool("lasso")}
+        />
+        <ToolbarIconButton
           label="Text box (T)"
           icon="text"
           quiet={inBar}
           active={tool === "text"}
-          onClick={onToggleTextTool}
+          onClick={() => onToggleTool("text")}
         />
         <NotebookToolbarInsertMenu
           dock={dock}

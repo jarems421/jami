@@ -18,6 +18,7 @@ import NotebookEditorConfirmDialog from "@/components/workspace/NotebookEditorCo
 import NotebookEditorFallback from "@/components/workspace/NotebookEditorFallback";
 import NotebookEditorHeader from "@/components/workspace/NotebookEditorHeader";
 import NotebookFeedbackNotice from "@/components/workspace/NotebookFeedbackNotice";
+import NotebookLassoLayer from "@/components/workspace/NotebookLassoLayer";
 import NotebookFloatingNotices from "@/components/workspace/NotebookFloatingNotices";
 import NotebookGraphEditorDialog from "@/components/workspace/NotebookGraphEditorDialog";
 import NotebookGraphLayer from "@/components/workspace/NotebookGraphLayer";
@@ -424,6 +425,7 @@ export default function NotebookEditorPage() {
     handleOpenNewGraph,
     handleSaveGraph,
     handleTutorGraphInsert,
+    lasso,
   } = useNotebookPlacedItems({
     userId,
     notebookId,
@@ -436,6 +438,7 @@ export default function NotebookEditorPage() {
     success,
     showError,
     showThrownError,
+    lassoInput: { inkEditorRef, recordTextEdit, markUnsaved: markPageUnsaved },
   });
   const placedItemsEditingEnabled =
     notebookToolMovesPlacedItems(tool) && pageEditingEnabled && !isPhoneLayout;
@@ -567,7 +570,7 @@ export default function NotebookEditorPage() {
 
   const {
     handleSelectDrawingTool,
-    handleToggleTextTool,
+    handleToggleTool,
     pen: penToolSettings,
     highlighter: highlighterToolSettings,
     eraser: eraserToolSettings,
@@ -751,7 +754,7 @@ export default function NotebookEditorPage() {
     highlighterColor,
     openMenu: openToolMenu,
     onSelectDrawingTool: handleSelectDrawingTool,
-    onToggleTextTool: handleToggleTextTool,
+    onToggleTool: handleToggleTool,
     onAddImage: handleAddImage,
     addingImage,
     onAddGraph: handleOpenNewGraph,
@@ -991,6 +994,7 @@ export default function NotebookEditorPage() {
                     pageColor={pageColor}
                     editingEnabled={pageEditingEnabled}
                   />
+                  <NotebookLassoLayer lasso={lasso} />
                 </>
               ) : null
             }

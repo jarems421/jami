@@ -170,6 +170,14 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
             eraserModeRef.current = mode;
           },
           undo: () => surfaceRef.current?.undo(),
+          lasso: {
+            inkInLoop: (loop) => surfaceRef.current?.inkInLoop(loop) ?? [],
+            items: (ids) => surfaceRef.current?.items(ids) ?? [],
+            beginEdit: () => surfaceRef.current?.beginEdit(),
+            showEdit: (items) => surfaceRef.current?.showEdit(items),
+            endEdit: () => surfaceRef.current?.endEdit(),
+            removeItems: (ids) => surfaceRef.current?.removeItems(ids),
+          },
         };
       },
       [loadedRef, pageHeight, pageWidth, surfaceRef]

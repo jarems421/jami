@@ -336,6 +336,48 @@ describe("strokes snapped on a hold", () => {
   });
 });
 
+describe("lasso edits", () => {
+  const loopAround = (minX: number, minY: number, maxX: number, maxY: number) => [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY },
+  ];
+
+  it("finds the ink a loop goes round, and hands it back", () => {
+    const { surface } = setup();
+    load(surface, rect("a", 100, 100, 140, 140), rect("b", 400, 400, 440, 440));
+    expect(surface.inkInLoop(loopAround(80, 80, 200, 200))).toEqual(["a"]);
+    expect(surface.items(["b", "a"]).map((item) => item.id)).toEqual(["a", "b"]);
+  });
+
+  it("shows every step of a drag at once, and records the whole drag as one undo step", () => {
+    const { surface, changes } = setup();
+    const original = rect("a", 100, 100, 140, 140);
+    load(surface, original);
+    surface.beginEdit();
+    expect(surface.busy).toBe(true);
+    surface.showEdit([rect("a", 110, 100, 150, 140)]);
+    surface.showEdit([rect("a", 120, 100, 160, 140)]);
+    expect(surface.historyState().undoDepth).toBe(0);
+    surface.endEdit();
+    expect(surface.busy).toBe(false);
+    expect(surface.historyState()).toEqual({ undoDepth: 1, redoDepth: 0 });
+    expect(changes.count).toBe(1);
+    surface.undo();
+    expect(surface.document().items[0]).toBe(original);
+  });
+
+  it("deletes what was picked up as one step", () => {
+    const { surface } = setup();
+    load(surface, rect("a", 100, 100, 140, 140), rect("b", 400, 400, 440, 440));
+    surface.removeItems(["a"]);
+    expect(surface.document().items.map((item) => item.id)).toEqual(["b"]);
+    surface.undo();
+    expect(surface.document().items.map((item) => item.id)).toEqual(["a", "b"]);
+  });
+});
+
 describe("scribbling", () => {
   it("erases the word it covers as one step and keeps the scribble out of the page", () => {
     const { surface, fake, changes } = setup();

@@ -9,7 +9,7 @@ import type {
 /** Autosave state for the open page. Re-exported by `NotebookSaveIndicator`. */
 export type NotebookSaveStatus = "saved" | "unsaved" | "saving" | "failed";
 
-export type NotebookEditorTool = NotebookStrokeTool | "text" | "select";
+export type NotebookEditorTool = NotebookStrokeTool | "text" | "select" | "lasso";
 
 /*
  * Whether images and graphs can be picked up and moved.

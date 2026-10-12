@@ -40,7 +40,7 @@ function renderToolbar(handlers: Handlers, openMenu: "pen" | "insert" | null = "
       highlighterColor: "yellow",
       openMenu,
       onSelectDrawingTool: () => undefined,
-      onToggleTextTool: () => undefined,
+      onToggleTool: () => undefined,
       onAddImage: () => undefined,
       addingImage: false,
       onAddGraph: () => undefined,

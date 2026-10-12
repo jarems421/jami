@@ -140,19 +140,23 @@ export function useNotebookToolSettings({
     [clearPlacedSelection, closeMenus, openMenu, pageState, setMenuOpen, takeToolDoublePress]
   );
 
-  const handleToggleTextTool = useCallback(() => {
-    // Both sides of this toggle move placed things, so neither drops a
-    // selection by changing tool. Pressing the button has to say it.
-    clearPlacedSelection();
-    closeMenus();
-    // A double press puts it down, as it does every other tool, rather than
-    // picking it straight back up.
-    if (takeToolDoublePress("text")) {
-      pageState.setTool("select");
-      return;
-    }
-    pageState.setTool(pageState.read().tool === "text" ? "select" : "text");
-  }, [clearPlacedSelection, closeMenus, pageState, takeToolDoublePress]);
+  /** The text box and the lasso: a press picks one up, and a press of the one in hand puts it down. */
+  const handleToggleTool = useCallback(
+    (nextTool: "text" | "lasso") => {
+      // Text moves placed things, and the lasso picks them up, so neither drops
+      // a selection by changing tool. Pressing the button has to say it.
+      clearPlacedSelection();
+      closeMenus();
+      // A double press puts it down, as it does every other tool, rather than
+      // picking it straight back up.
+      if (takeToolDoublePress(nextTool)) {
+        pageState.setTool("select");
+        return;
+      }
+      pageState.setTool(pageState.read().tool === nextTool ? "select" : nextTool);
+    },
+    [clearPlacedSelection, closeMenus, pageState, takeToolDoublePress]
+  );
 
   // Every change is saved for next time and puts the tool being set up in hand.
   const pen: NotebookToolSettingsPopoverProps["pen"] = {
@@ -217,5 +221,5 @@ export function useNotebookToolSettings({
     },
   };
 
-  return { handleSelectDrawingTool, handleToggleTextTool, pen, highlighter, eraser };
+  return { handleSelectDrawingTool, handleToggleTool, pen, highlighter, eraser };
 }

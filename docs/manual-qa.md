@@ -73,6 +73,12 @@ scroll sideways.** Long equations must scroll inside their own box.
    either edge with the pen and the highlighter: the line runs exactly along
    it however the hand wanders. A stroke started away from it is untouched.
    Press Ruler again to put it away. The exam working sheet has the same ruler.
+6c. Press Lasso (L) and draw a loop round some writing, an image, a graph and a
+   text box. Drag inside the box: they all move together. Pull the corner:
+   they all grow and shrink. Swing the round handle: ink, image and graph
+   turn, the text box stays upright. Pick a colour and press Thicker, then
+   Thinner. Undo steps back one gesture at a time. Press Delete: it all goes.
+   Reload: the moved and turned image and graph are where you left them.
 7. On a phone, a notebook shows "Notebook editing works best on iPad or
    desktop." with "Continue anyway"; typed notes still work.
 

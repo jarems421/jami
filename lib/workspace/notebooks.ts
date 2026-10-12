@@ -1,3 +1,4 @@
+import { placedRotation } from "@/lib/workspace/notebook-placed-rotation";
 import { isInkDocumentText } from "@/lib/ink/codec";
 import {
   normalizeOptionalString,
@@ -111,6 +112,8 @@ export type NotebookImageRef = {
   displayHeight?: number;
   altText?: string;
   sourceAssetId?: string;
+  /** Turned by the lasso about its middle, in radians. Absent is upright. */
+  rotation?: number;
 };
 
 export type NotebookTextBlock = {
@@ -521,6 +524,7 @@ export function normalizeNotebookImageRefs(value: unknown): NotebookImageRef[] {
       ...(typeof image.height === "number" ? { height: image.height } : {}),
       ...(altText ? { altText } : {}),
       ...(sourceAssetId ? { sourceAssetId } : {}),
+      ...placedRotation(image.rotation),
       x: clampImageNumber(
         image.x,
         0,

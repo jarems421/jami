@@ -11,7 +11,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 const onSelectDrawingTool = vi.fn();
-const onToggleTextTool = vi.fn();
+const onToggleTool = vi.fn();
 const onToggleInsertMenu = vi.fn();
 const onToggleRuler = vi.fn();
 const onAddImage = vi.fn();
@@ -41,7 +41,7 @@ function render(
         highlighterColor="yellow"
         openMenu={overrides.openMenu ?? null}
         onSelectDrawingTool={onSelectDrawingTool}
-        onToggleTextTool={onToggleTextTool}
+        onToggleTool={onToggleTool}
         onToggleInsertMenu={onToggleInsertMenu}
         rulerShown={overrides.rulerShown ?? false}
         onToggleRuler={onToggleRuler}
@@ -93,7 +93,7 @@ function choose(text: string) {
 
 beforeEach(() => {
   onSelectDrawingTool.mockClear();
-  onToggleTextTool.mockClear();
+  onToggleTool.mockClear();
   onToggleInsertMenu.mockClear();
   onAddImage.mockClear();
   onAddGraph.mockClear();
@@ -262,7 +262,7 @@ describe("NotebookDrawingToolbar", () => {
           highlighterColor="yellow"
           openMenu="insert"
           onSelectDrawingTool={onSelectDrawingTool}
-          onToggleTextTool={onToggleTextTool}
+          onToggleTool={onToggleTool}
           onToggleInsertMenu={onToggleInsertMenu}
           rulerShown={false}
           onToggleRuler={onToggleRuler}
@@ -316,5 +316,14 @@ describe("NotebookDrawingToolbar", () => {
     expect(onToggleRuler).toHaveBeenCalledTimes(1);
     render({ rulerShown: true });
     expect(button("Put the ruler away").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("picks the lasso up and the text box, each from its own button", () => {
+    render();
+    click("Lasso (L)");
+    click("Text box (T)");
+    expect(onToggleTool.mock.calls).toEqual([["lasso"], ["text"]]);
+    render({ tool: "lasso" });
+    expect(button("Lasso (L)").dataset.active).toBe("true");
   });
 });

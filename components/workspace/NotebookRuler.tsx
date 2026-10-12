@@ -95,15 +95,18 @@ export default function NotebookRuler({
       onPointerUp={lift(ink.onPointerUp)}
       onPointerCancel={lift(ink.onPointerCancel)}
       onLostPointerCapture={lift(ink.onLostPointerCapture)}
-      className="absolute z-10 touch-none select-none rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)]/70 shadow-e2"
+      className="absolute z-10 touch-none select-none rounded-md border shadow-e2"
       style={{
         left: `${(ruler.cx / page.width) * 100}%`,
         top: `${(ruler.cy / page.height) * 100}%`,
         width: `${(ruler.length / page.width) * 100}%`,
         height: `${(ruler.width / page.height) * 100}%`,
         transform: `translate(-50%, -50%) rotate(${ruler.angle}rad)`,
+        // A grey the page shows through, clear on white paper and on black.
+        backgroundColor: "rgba(100, 116, 139, 0.22)",
+        borderColor: "rgba(100, 116, 139, 0.7)",
         backgroundImage:
-          "repeating-linear-gradient(to right, var(--color-text-secondary) 0 1px, transparent 1px 10px), repeating-linear-gradient(to right, var(--color-text-secondary) 0 1px, transparent 1px 50px)",
+          "repeating-linear-gradient(to right, rgba(71, 85, 105, 0.85) 0 1px, transparent 1px 10px), repeating-linear-gradient(to right, rgba(71, 85, 105, 0.85) 0 1px, transparent 1px 50px)",
         backgroundSize: "100% 22%, 100% 40%",
         backgroundRepeat: "no-repeat",
       }}

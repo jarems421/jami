@@ -10,6 +10,7 @@ const TOOL_TOGGLE_KEYS: Readonly<Record<string, NotebookEditorTool>> = {
   p: "pen",
   h: "highlighter",
   e: "eraser",
+  l: "lasso",
 };
 
 type UseNotebookKeyboardShortcutsOptions = {

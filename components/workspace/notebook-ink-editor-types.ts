@@ -1,4 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
+import type { InkSurface } from "@/lib/ink-dom/surface";
 import type { NotebookEraserMode } from "@/lib/workspace/notebook-eraser";
 import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
 import type { NotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
@@ -32,7 +33,17 @@ export type NotebookInkEditorHandle = {
   serializeWarm(): NotebookInkData | null;
   setEraserMode(mode: NotebookEraserMode): void;
   undo(): void;
+  /**
+   * What the lasso works on: the ink a loop goes round, and edits to it that
+   * land as one undo step. Jami Ink only; absent on js-draw, the fallback.
+   */
+  lasso?: NotebookInkLasso;
 };
+
+export type NotebookInkLasso = Pick<
+  InkSurface,
+  "inkInLoop" | "items" | "beginEdit" | "showEdit" | "endEdit" | "removeItems"
+>;
 
 export type NotebookInkEditorCallbacks = {
   onChange(): void;

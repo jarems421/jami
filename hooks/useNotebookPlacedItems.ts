@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
+import type { NotebookInkEditorHandle } from "@/components/workspace/notebook-ink-editor-types";
+import { useNotebookLasso } from "@/hooks/useNotebookLasso";
 import type { NotebookLoader } from "@/hooks/useNotebookLoader";
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import {
@@ -13,7 +15,7 @@ import {
   notebookToolMovesPlacedItems,
   type NotebookEditorTool,
 } from "@/lib/workspace/notebook-page-state";
-import type { NotebookImageRef } from "@/lib/workspace/notebooks";
+import type { NotebookImageRef, NotebookTextBlock } from "@/lib/workspace/notebooks";
 import {
   addUploadedImageToNotebookPage,
   deleteUploadedNotebookImageFile,
@@ -37,6 +39,12 @@ type UseNotebookPlacedItemsOptions = {
   success: (message: string) => void;
   showError: (message: string) => void;
   showThrownError: (error: unknown, fallback: string) => void;
+  /** What the lasso needs beyond images and graphs: the ink, and the text history. */
+  lassoInput: {
+    inkEditorRef: RefObject<NotebookInkEditorHandle | null>;
+    recordTextEdit: (previous: NotebookTextBlock[], next: NotebookTextBlock[]) => void;
+    markUnsaved: () => void;
+  };
 };
 
 /**
@@ -58,6 +66,7 @@ export function useNotebookPlacedItems({
   success,
   showError,
   showThrownError,
+  lassoInput,
 }: UseNotebookPlacedItemsOptions) {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
@@ -427,7 +436,26 @@ export function useNotebookPlacedItems({
     [handleDeleteGraph, handleGraphsCommit, handleSelectGraph, selectedGraphId]
   );
 
+  const lasso = useNotebookLasso({
+    active: tool === "lasso" && !isPhoneLayout,
+    pageId: openPageId,
+    inkEditorRef: lassoInput.inkEditorRef,
+    placed: {
+      images: () => (openPageId ? currentImageRefsFor(openPageId) : []),
+      graphs: () => (openPageId ? currentGraphBlocksFor(openPageId) : []),
+      showImages: (imageRefs) => openPageId && applyPageImages(openPageId, imageRefs, Date.now()),
+      showGraphs: (graphBlocks) => openPageId && applyPageGraphs(openPageId, graphBlocks, Date.now()),
+      saveImages: (imageRefs) => void handleImagesCommit(imageRefs),
+      saveGraphs: (graphBlocks) => void handleGraphsCommit(graphBlocks),
+      texts: () => pageState.read().textBlocks,
+      setTexts: (textBlocks) => pageState.setTextBlocks(textBlocks),
+      recordTexts: lassoInput.recordTextEdit,
+      markUnsaved: lassoInput.markUnsaved,
+    },
+  });
+
   return {
+    lasso,
     imageLayerProps,
     graphLayerProps,
     selectedImageId,

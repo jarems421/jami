@@ -9,7 +9,8 @@ export type NotebookInkTool =
   | "highlighter"
   | "eraser"
   | "select"
-  | "text";
+  | "text"
+  | "lasso";
 
 /** Everything about the ink editor that a style application depends on. */
 export type NotebookInkStyle = {

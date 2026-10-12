@@ -15,11 +15,13 @@ import {
   inkItemBounds,
   type InkBox,
   type InkDocument,
+  type InkItem,
   type InkOutlineItem,
   type InkPoint,
   type InkShapeItem,
 } from "@/lib/ink/model";
 import { InkSpatialIndex } from "@/lib/ink/spatial-index";
+import { inkItemsInLoop } from "@/lib/ink/tools/lasso";
 import type { InkRuler } from "@/lib/ink/tools/ruler";
 import { planInkScribbleErase } from "@/lib/ink/tools/scribble-erase";
 import type { InkTimers } from "@/lib/ink-dom/hold-detector";
@@ -96,6 +98,20 @@ export type InkSurface = {
   moveErase(points: readonly InkPoint[]): void;
   endErase(): void;
   cancelErase(): void;
+  /** The ids of the ink a lasso loop goes round, in page units. */
+  inkInLoop(loop: readonly InkPoint[]): string[];
+  /** The items with these ids, in page order. */
+  items(ids: readonly string[]): InkItem[];
+  /**
+   * An edit made in many small steps (the lasso dragging what it picked up):
+   * `beginEdit`, then `showEdit` with the items as they are now, as often as
+   * wanted, then `endEdit`, which records the whole edit as one undo step.
+   */
+  beginEdit(): void;
+  showEdit(items: readonly InkItem[]): void;
+  endEdit(): void;
+  /** Takes these items off the page, as one undo step. */
+  removeItems(ids: readonly string[]): void;
   /** A stroke or an erase is in progress. */
   readonly busy: boolean;
   undo(): void;
@@ -126,6 +142,8 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
   let doc: InkDocument = emptyInkDocument();
   let stroke: Stroke | null = null;
   let erase: InkEraseGesture | null = null;
+  /** The page as it was when a lasso edit began. */
+  let editStart: InkDocument | null = null;
   let cancelWarmUp: (() => void) | null = null;
   let destroyed = false;
 
@@ -170,7 +188,7 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
   }
 
   function step(direction: "undo" | "redo"): void {
-    if (destroyed || stroke || erase) return;
+    if (destroyed || stroke || erase || editStart) return;
     const result = direction === "undo" ? history.undo(doc) : history.redo(doc);
     if (!result) return;
     doc = result.doc;
@@ -297,8 +315,42 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
 
     cancelErase,
 
+    inkInLoop: (loop) => inkItemsInLoop(doc, loop),
+
+    items(ids) {
+      const wanted = new Set(ids);
+      return doc.items.filter((item) => wanted.has(item.id));
+    },
+
+    beginEdit() {
+      if (destroyed || stroke || erase) return;
+      editStart = doc;
+    },
+
+    showEdit(items) {
+      if (!editStart) return;
+      const change = inkReplaceChange(doc, new Map(items.map((item) => [item.id, [item]])));
+      if (!isEmptyChange(change)) apply(change);
+    },
+
+    endEdit() {
+      const start = editStart;
+      editStart = null;
+      if (!start) return;
+      const change = inkDiffChange(start, doc);
+      if (!isEmptyChange(change)) recorded(change);
+    },
+
+    removeItems(ids) {
+      if (destroyed || stroke || erase || ids.length === 0) return;
+      const change = inkRemoveChange(doc, ids);
+      if (isEmptyChange(change)) return;
+      apply(change);
+      recorded(change);
+    },
+
     get busy() {
-      return stroke !== null || erase !== null;
+      return stroke !== null || erase !== null || editStart !== null;
     },
 
     undo: () => step("undo"),

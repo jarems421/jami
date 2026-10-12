@@ -1,3 +1,4 @@
+import { placedRotation } from "@/lib/workspace/notebook-placed-rotation";
 import {
   compileGraphExpression,
   type GraphAngleUnit,
@@ -65,6 +66,8 @@ export type NotebookGraphBlock = NotebookGraphDraft & {
   y: number;
   width: number;
   height: number;
+  /** Turned by the lasso about its middle, in radians. Absent is upright. */
+  rotation?: number;
 };
 
 export type NotebookGraphResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -175,6 +178,7 @@ export function normalizeNotebookGraphBlocks(value: unknown): NotebookGraphBlock
       y: clamp(finite(data.y, 0), 0, PAGE_HEIGHT - height),
       width,
       height,
+      ...placedRotation(data.rotation),
       ...normalizeGraphDraft(data),
     });
   }
