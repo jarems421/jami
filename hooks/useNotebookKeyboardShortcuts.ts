@@ -20,8 +20,12 @@ type UseNotebookKeyboardShortcutsOptions = {
   switchTool: (tool: NotebookEditorTool) => void;
   undo: () => void;
   redo: () => void;
-  /** Escape also closes the tool menus and lets go of whatever is selected. */
-  onEscape: () => void;
+  /**
+   * Escape: closes an open menu, and says so with `"menu"` -- which is all
+   * Escape does then, so closing a menu never puts the tool down. With none
+   * open, it lets go of whatever is selected and the tool is put down.
+   */
+  onEscape: () => "menu" | void;
 };
 
 /**
@@ -74,8 +78,7 @@ export function useNotebookKeyboardShortcuts({
       } else if (key === "v") {
         actions.switchTool("select");
       } else if (key === "escape") {
-        actions.switchTool("select");
-        actions.onEscape();
+        if (actions.onEscape() !== "menu") actions.switchTool("select");
       }
     };
 

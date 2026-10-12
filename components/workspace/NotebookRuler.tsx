@@ -1,10 +1,23 @@
 "use client";
 
-import { useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useLayoutEffect, useRef, type MutableRefObject, type PointerEvent as ReactPointerEvent } from "react";
 import type { InkPoint } from "@/lib/ink/model";
 import { inkRulerDegrees, slideInkRuler, twistInkRuler, type InkRuler } from "@/lib/ink/tools/ruler";
 
 type Handler = (event: ReactPointerEvent<HTMLDivElement>) => void;
+
+/** Where the ruler sits on the page, as the styles its element is placed with. */
+function placement(ruler: InkRuler, page: { width: number; height: number }) {
+  return {
+    left: `${(ruler.cx / page.width) * 100}%`,
+    top: `${(ruler.cy / page.height) * 100}%`,
+    width: `${(ruler.length / page.width) * 100}%`,
+    height: `${(ruler.width / page.height) * 100}%`,
+    transform: `translate(-50%, -50%) rotate(${ruler.angle}rad)`,
+  };
+}
+
+const readoutTurn = (ruler: InkRuler) => `translate(-50%, -50%) rotate(${-ruler.angle}rad)`;
 
 /**
  * The ruler, laid over the page in page units so it zooms with it.
@@ -14,38 +27,55 @@ type Handler = (event: ReactPointerEvent<HTMLDivElement>) => void;
  * its business: they go straight on to the ink underneath (`ink`), so a stroke
  * can start on the ruler's edge as well as beside it. Touch on it never pans
  * the page.
+ *
+ * While the fingers move it, it moves itself: its element is placed directly
+ * and its position kept in `liveRef`, which is where a stroke reads it from,
+ * and nothing in React renders until the fingers lift (`onSettle`). Rendering
+ * the ink editor on every move of a finger was the costliest thing about it.
  */
 export default function NotebookRuler({
   ruler,
+  liveRef,
   page,
   toPage,
-  onChange,
+  onSettle,
   ink,
 }: {
+  /** Where it was last settled. */
   ruler: InkRuler;
+  /** Where it is now, moved or not: kept in step here as the fingers move it. */
+  liveRef: MutableRefObject<InkRuler>;
   page: { width: number; height: number };
   /** A client position on the page, in page units; null while the page is not measured. */
   toPage: (clientX: number, clientY: number) => InkPoint | null;
-  onChange: (ruler: InkRuler) => void;
+  /** The fingers have let go: where it now is. */
+  onSettle: (ruler: InkRuler) => void;
   ink: { onPointerDown: Handler; onPointerMove: Handler; onPointerUp: Handler; onPointerCancel: Handler; onLostPointerCapture: Handler };
 }) {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const readoutRef = useRef<HTMLSpanElement | null>(null);
   const fingersRef = useRef(new Map<number, InkPoint>());
   /** The ruler and the two fingers when the second one landed. */
   const twistRef = useRef<{ start: InkRuler; before: [InkPoint, InkPoint] } | null>(null);
-  // The ruler as the last move left it, ahead of the render that shows it.
-  const rulerRef = useRef(ruler);
   useLayoutEffect(() => {
-    rulerRef.current = ruler;
-  }, [ruler]);
+    liveRef.current = ruler;
+  }, [liveRef, ruler]);
+
   const place = (next: InkRuler) => {
-    rulerRef.current = next;
-    onChange(next);
+    liveRef.current = next;
+    const element = elementRef.current;
+    if (element) Object.assign(element.style, placement(next, page));
+    const readout = readoutRef.current;
+    if (readout) {
+      readout.textContent = `${inkRulerDegrees(next.angle)}°`;
+      readout.style.transform = readoutTurn(next);
+    }
   };
 
   const fingers = () => [...fingersRef.current.values()];
   const restartTwist = () => {
     const [a, b] = fingers();
-    twistRef.current = a && b ? { start: rulerRef.current, before: [a, b] } : null;
+    twistRef.current = a && b ? { start: liveRef.current, before: [a, b] } : null;
   };
 
   const down: Handler = (event) => {
@@ -74,7 +104,7 @@ export default function NotebookRuler({
       const [a, b] = fingers();
       place(twistInkRuler(twist.start, twist.before, [a, b]));
     } else {
-      place(slideInkRuler(rulerRef.current, last, at));
+      place(slideInkRuler(liveRef.current, last, at));
     }
   };
 
@@ -83,11 +113,13 @@ export default function NotebookRuler({
     event.stopPropagation();
     if (!fingersRef.current.delete(event.pointerId)) return;
     restartTwist();
+    if (fingersRef.current.size === 0) onSettle(liveRef.current);
   };
 
   const degrees = inkRulerDegrees(ruler.angle);
   return (
     <div
+      ref={elementRef}
       role="presentation"
       data-notebook-ruler="true"
       onPointerDown={down}
@@ -97,11 +129,7 @@ export default function NotebookRuler({
       onLostPointerCapture={lift(ink.onLostPointerCapture)}
       className="absolute z-10 touch-none select-none rounded-md border shadow-e2"
       style={{
-        left: `${(ruler.cx / page.width) * 100}%`,
-        top: `${(ruler.cy / page.height) * 100}%`,
-        width: `${(ruler.length / page.width) * 100}%`,
-        height: `${(ruler.width / page.height) * 100}%`,
-        transform: `translate(-50%, -50%) rotate(${ruler.angle}rad)`,
+        ...placement(ruler, page),
         // A grey the page shows through, clear on white paper and on black.
         backgroundColor: "rgba(100, 116, 139, 0.22)",
         borderColor: "rgba(100, 116, 139, 0.7)",
@@ -112,9 +140,10 @@ export default function NotebookRuler({
       }}
     >
       <span
+        ref={readoutRef}
         aria-label={`Ruler at ${degrees} degrees`}
         className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-surface-panel-strong)] px-2 py-0.5 text-xs font-semibold tabular-nums text-text-primary"
-        style={{ transform: `translate(-50%, -50%) rotate(${-ruler.angle}rad)` }}
+        style={{ transform: readoutTurn(ruler) }}
       >
         {degrees}°
       </span>

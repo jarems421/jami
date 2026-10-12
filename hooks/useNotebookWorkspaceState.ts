@@ -71,6 +71,8 @@ export function useNotebookDrawingToolState() {
     if (highlighterMenuOpen) setHighlighterMenuOpen(false);
     if (eraserMenuOpen) setEraserMenuOpen(false);
     if (insertMenuOpen) setInsertMenuOpen(false);
+    /** Whether there was a menu to close. */
+    return penMenuOpen || highlighterMenuOpen || eraserMenuOpen || insertMenuOpen;
   }, [eraserMenuOpen, highlighterMenuOpen, insertMenuOpen, penMenuOpen]);
 
   return {

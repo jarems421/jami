@@ -127,8 +127,9 @@ What students feel, in numbers:
   display cache is off.
 
 A first baseline recorded on the same day was wrong. Its helpers closed the
-pen settings with Escape, which in the notebook picks the select tool, so
-every stroke after it was a selection drag that drew nothing. The helpers now
+pen settings with Escape, which in the notebook then also picked the select
+tool (since 13 October it only closes an open menu), so every stroke after it
+was a selection drag that drew nothing. The helpers now
 close the settings by pressing the tool again, as a student would.
 
 ### Measuring the renderer alone (stage 3)

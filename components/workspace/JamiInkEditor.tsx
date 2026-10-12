@@ -108,6 +108,9 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
     });
     // Kept while it is put away, so it comes back where it was left.
     const [ruler, setRuler] = useState(() => initialInkRuler({ width: pageWidth, height: pageHeight }));
+    /** Where it is now: the ruler moves itself while fingers move it, and settles here when they lift. */
+    const liveRulerRef = useRef(ruler);
+    const readRuler = useCallback(() => liveRulerRef.current, []);
     const toPage = useCallback(
       (clientX: number, clientY: number) => {
         const mapping = engine.getMapping();
@@ -131,7 +134,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
       readOnly,
       scribbleToErase,
       shapesOnHold,
-      ruler: rulerShown ? ruler : null,
+      ruler: rulerShown ? readRuler : null,
       reportInteraction,
       page: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
       trace,
@@ -209,9 +212,10 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
         {rulerShown ? (
           <NotebookRuler
             ruler={ruler}
+            liveRef={liveRulerRef}
             page={{ width: pageWidth, height: pageHeight }}
             toPage={toPage}
-            onChange={setRuler}
+            onSettle={setRuler}
             ink={pointerInput.surfaceHandlers}
           />
         ) : null}

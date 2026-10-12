@@ -37,7 +37,7 @@ import NotebookTextBlockLayer from "@/components/workspace/NotebookTextBlockLaye
 import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
 import NotebookViewport from "@/components/workspace/NotebookViewport";
 import { useFeedback } from "@/hooks/useFeedback";
-import { PHONE_LAYOUT_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { NOTEBOOK_PHONE_LAYOUT_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { useNotebookActivePage } from "@/hooks/useNotebookActivePage";
 import { useNotebookAssistantContext } from "@/hooks/useNotebookAssistantContext";
 import { useNotebookEditorShell, useNotebookPageUrl } from "@/hooks/useNotebookEditorShell";
@@ -148,7 +148,7 @@ export default function NotebookEditorPage() {
     assistantOpen, setAssistantOpen, pagesDrawerOpen, setPagesDrawerOpen,
     phoneFullEditing, setPhoneFullEditing,
   } = useNotebookPanelState();
-  const isPhoneLayout = useMediaQuery(PHONE_LAYOUT_QUERY);
+  const isPhoneLayout = useMediaQuery(NOTEBOOK_PHONE_LAYOUT_QUERY);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   /** Bumped on every edit; save results older than the newest are discarded. */
@@ -725,7 +725,7 @@ export default function NotebookEditorPage() {
     undo: handleUndo,
     redo: handleRedo,
     onEscape: () => {
-      closeDrawingToolMenus();
+      if (closeDrawingToolMenus()) return "menu";
       clearPlacedSelection();
     },
   });

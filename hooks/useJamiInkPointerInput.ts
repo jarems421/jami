@@ -52,8 +52,12 @@ type LiveInputs = NotebookInkStyle & {
   readOnly: boolean;
   scribbleToErase: boolean;
   shapesOnHold: boolean;
-  /** The ruler, while it is out: a stroke landing by one of its edges is drawn along it. */
-  ruler: InkRuler | null;
+  /**
+   * Where the ruler is now, while it is out: a stroke landing by one of its
+   * edges is drawn along it. Read as the stroke begins, so a ruler the fingers
+   * are still moving is read where it is, not where it last settled.
+   */
+  ruler: (() => InkRuler) | null;
   page: {
     onPointerDown: SurfacePointerHandler;
     onPointerMove: SurfacePointerHandler;
@@ -111,7 +115,7 @@ export function useJamiInkPointerInput({
   scribbleToErase: boolean;
   /** Holding the pen still may snap shapes, not only lines. */
   shapesOnHold: boolean;
-  ruler?: InkRuler | null;
+  ruler?: (() => InkRuler) | null;
   reportInteraction: (active: boolean) => void;
   /** The page's handlers, for pointers ink does not take. */
   page: LiveInputs["page"];
@@ -275,7 +279,7 @@ export function useJamiInkPointerInput({
           }),
           mapping,
           first: native,
-          ruler: live.ruler,
+          ruler: live.ruler?.() ?? null,
         });
         const watchScribble = live.scribbleToErase && tool === "pen";
         if (watchScribble) {

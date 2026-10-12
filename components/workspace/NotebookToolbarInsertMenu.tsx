@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import ToolbarIconButton, {
   NotebookIcon,
@@ -75,8 +75,10 @@ export default function NotebookToolbarInsertMenu({
   // Outside the menu, so the picker's answer still arrives once the menu has gone.
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const placeMenu = useCallback(
     (menu: HTMLDivElement | null) => {
+      menuRef.current = menu;
       const anchor = anchorRef.current;
       if (!menu || !anchor) return;
       const position = notebookToolbarMenuPosition(dock, anchor.getBoundingClientRect(), {
@@ -91,6 +93,13 @@ export default function NotebookToolbarInsertMenu({
     },
     [dock]
   );
+  // Placed again when the window changes under it -- an iPad turned on its side.
+  useEffect(() => {
+    if (!open) return;
+    const placeAgain = () => placeMenu(menuRef.current);
+    window.addEventListener("resize", placeAgain);
+    return () => window.removeEventListener("resize", placeAgain);
+  }, [open, placeMenu]);
 
   return (
     <div ref={anchorRef} className="relative">

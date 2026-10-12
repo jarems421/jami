@@ -81,7 +81,9 @@ scroll sideways.** Long equations must scroll inside their own box.
    Thinner. Undo steps back one gesture at a time. Press Delete: it all goes.
    Reload: the moved and turned image and graph are where you left them.
 7. On a phone, a notebook shows "Notebook editing works best on iPad or
-   desktop." with "Continue anyway"; typed notes still work.
+   desktop." with "Continue anyway"; typed notes still work. An iPad mini held
+   upright gets the full notebook, with no such notice. With a tool's settings
+   or the Insert menu open, Escape closes it and the tool stays in hand.
 
 ### On an iPad, with a Pencil
 

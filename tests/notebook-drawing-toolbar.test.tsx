@@ -326,4 +326,15 @@ describe("NotebookDrawingToolbar", () => {
     render({ tool: "lasso" });
     expect(button("Lasso (L)").dataset.active).toBe("true");
   });
+
+  it("places its menu again when the window changes under it", () => {
+    render({ dock: "top", openMenu: "insert" });
+    const anchor = button("Insert").parentElement!;
+    anchor.getBoundingClientRect = () => ({ left: 300, top: 10, right: 344, bottom: 54, width: 44, height: 44, x: 300, y: 10, toJSON: () => ({}) }) as DOMRect;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(menu()!.style.top).toBe("62px");
+    expect(menu()!.style.left).toBe("322px");
+  });
 });

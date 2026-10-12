@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, type MutableRefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NotebookRuler from "@/components/workspace/NotebookRuler";
@@ -35,6 +35,7 @@ function pointer(target: Element, type: string, init: { x: number; y: number; id
 
 function renderRuler() {
   const onChange = vi.fn();
+  const liveRef: MutableRefObject<InkRuler> = { current: RULER };
   const ink = {
     onPointerDown: vi.fn(),
     onPointerMove: vi.fn(),
@@ -47,29 +48,42 @@ function renderRuler() {
       <NotebookRuler
         ruler={RULER}
         page={{ width: 900, height: 1240 }}
+        liveRef={liveRef}
         toPage={(x, y) => ({ x, y })}
-        onChange={onChange}
+        onSettle={onChange}
         ink={ink}
       />
     )
   );
   const element = container.querySelector("[data-notebook-ruler]")!;
-  return { element, onChange, ink };
+  return { element, onChange, ink, liveRef };
 }
 
 describe("NotebookRuler", () => {
-  it("slides under one finger, and turns under two", () => {
-    const { element, onChange } = renderRuler();
+  it("slides under one finger by moving itself, and settles where it was let go", () => {
+    const { element, onChange, liveRef } = renderRuler();
     pointer(element, "pointerdown", { x: 400, y: 300 });
     pointer(element, "pointermove", { x: 430, y: 290 });
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ cx: 430, cy: 290, angle: 0 }));
-
+    // Moved without React: its element, and where a stroke reads it from.
+    expect(liveRef.current).toMatchObject({ cx: 430, cy: 290, angle: 0 });
+    expect((element as HTMLElement).style.left).toBe(`${(430 / 900) * 100}%`);
+    expect(onChange).not.toHaveBeenCalled();
     pointer(element, "pointerup", { x: 430, y: 290 });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ cx: 430, cy: 290 }));
+  });
+
+  it("turns under two fingers, reading out the angle as it goes", () => {
+    const { element, onChange, liveRef } = renderRuler();
     pointer(element, "pointerdown", { x: 300, y: 300, id: 2 });
     pointer(element, "pointerdown", { x: 500, y: 300, id: 3 });
     pointer(element, "pointermove", { x: 500, y: 400, id: 3 });
-    const turned = onChange.mock.lastCall?.[0] as InkRuler;
-    expect(turned.angle).toBeGreaterThan(0.3);
+    expect(liveRef.current.angle).toBeGreaterThan(0.3);
+    expect(element.textContent).not.toBe("0°");
+    pointer(element, "pointerup", { x: 500, y: 400, id: 3 });
+    expect(onChange).not.toHaveBeenCalled();
+    pointer(element, "pointerup", { x: 300, y: 300, id: 2 });
+    expect((onChange.mock.lastCall?.[0] as InkRuler).angle).toBeGreaterThan(0.3);
   });
 
   it("hands the pen to the ink underneath, so a stroke can start on its edge", () => {

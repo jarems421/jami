@@ -6,6 +6,13 @@ import { useCallback, useSyncExternalStore } from "react";
 export const PHONE_LAYOUT_QUERY = "(max-width: 767px)";
 
 /**
+ * Where the notebook treats the screen as a phone's: viewing and light typed
+ * notes. Narrower than the app's own phone layout, so an iPad mini held
+ * upright (744 CSS px) gets the full notebook, as every other iPad does.
+ */
+export const NOTEBOOK_PHONE_LAYOUT_QUERY = "(max-width: 699px)";
+
+/**
  * Whether a media query matches, kept current as it changes.
  *
  * False on the server and while hydrating, so the first client render agrees
