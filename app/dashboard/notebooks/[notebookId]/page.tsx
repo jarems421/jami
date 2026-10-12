@@ -10,7 +10,6 @@ import {
 } from "react";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import { useUser } from "@/components/providers/UserProvider";
-import { FeedbackBanner } from "@/components/ui";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
 import NotebookCreatePageAffordance from "@/components/workspace/NotebookCreatePageAffordance";
@@ -18,6 +17,7 @@ import NotebookDrawingToolbar from "@/components/workspace/NotebookDrawingToolba
 import NotebookEditorConfirmDialog from "@/components/workspace/NotebookEditorConfirmDialog";
 import NotebookEditorFallback from "@/components/workspace/NotebookEditorFallback";
 import NotebookEditorHeader from "@/components/workspace/NotebookEditorHeader";
+import NotebookFeedbackNotice from "@/components/workspace/NotebookFeedbackNotice";
 import NotebookFloatingNotices from "@/components/workspace/NotebookFloatingNotices";
 import NotebookGraphEditorDialog from "@/components/workspace/NotebookGraphEditorDialog";
 import NotebookGraphLayer from "@/components/workspace/NotebookGraphLayer";
@@ -878,15 +878,7 @@ export default function NotebookEditorPage() {
             eraser={eraserToolSettings}
           />
 
-          {feedback ? (
-            <div className="absolute left-3 right-3 top-3 z-50 mx-auto max-w-2xl">
-              <FeedbackBanner
-                type={feedback.type}
-                message={feedback.message}
-                onDismiss={() => clearFeedback()}
-              />
-            </div>
-          ) : null}
+          <NotebookFeedbackNotice feedback={feedback} onDismiss={() => clearFeedback()} />
 
           <NotebookAddPagesDialog {...addPagesDialog} />
 
