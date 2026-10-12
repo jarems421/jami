@@ -127,7 +127,7 @@ export default function NotebookRuler({
       onPointerUp={lift(ink.onPointerUp)}
       onPointerCancel={lift(ink.onPointerCancel)}
       onLostPointerCapture={lift(ink.onLostPointerCapture)}
-      className="absolute z-10 touch-none select-none rounded-md border shadow-e2"
+      className="pointer-events-auto absolute z-10 touch-none select-none rounded-md border shadow-e2"
       style={{
         ...placement(ruler, page),
         // A grey the page shows through, clear on white paper and on black.

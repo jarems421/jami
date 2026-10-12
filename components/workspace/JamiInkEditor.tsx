@@ -1,5 +1,6 @@
 "use client";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { InkStatsOverlay, useInkStatsEnabled } from "@/components/workspace/InkStatsOverlay";
 import { NotebookEraserCursor } from "@/components/workspace/NotebookEraserCursor";
 import NotebookRuler from "@/components/workspace/NotebookRuler";
@@ -110,6 +111,9 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
     const [ruler, setRuler] = useState(() => initialInkRuler({ width: pageWidth, height: pageHeight }));
     /** Where it is now: the ruler moves itself while fingers move it, and settles here when they lift. */
     const liveRulerRef = useRef(ruler);
+    /** The sheet this editor covers, which the ruler is drawn on. */
+    const [sheet, setSheet] = useState<HTMLElement | null>(null);
+    const onSheet = useCallback((element: HTMLDivElement | null) => setSheet(element?.parentElement ?? null), []);
     const readRuler = useCallback(() => liveRulerRef.current, []);
     const toPage = useCallback(
       (clientX: number, clientY: number) => {
@@ -188,6 +192,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
 
     return (
       <div
+        ref={onSheet}
         data-notebook-live-ink-editor="true"
         // Its own layer, so wet ink redrawing every frame never invalidates
         // the ruled paper or PDF beneath it -- see NotebookLivePageLayers.
@@ -209,16 +214,23 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
           }`}
           {...pointerInput.surfaceHandlers}
         />
-        {rulerShown ? (
-          <NotebookRuler
-            ruler={ruler}
-            liveRef={liveRulerRef}
-            page={{ width: pageWidth, height: pageHeight }}
-            toPage={toPage}
-            onSettle={setRuler}
-            ink={pointerInput.surfaceHandlers}
-          />
-        ) : null}
+        {rulerShown && sheet
+          ? createPortal(
+              // On the sheet itself, over every layer -- the lasso's included --
+              // so fingers can always reach it; laid out on the same box as the ink.
+              <div className="pointer-events-none absolute inset-0 z-[45]">
+                <NotebookRuler
+                  ruler={ruler}
+                  liveRef={liveRulerRef}
+                  page={{ width: pageWidth, height: pageHeight }}
+                  toPage={toPage}
+                  onSettle={setRuler}
+                  ink={pointerInput.surfaceHandlers}
+                />
+              </div>,
+              sheet
+            )
+          : null}
         {activeTool === "eraser" ? (
           <NotebookEraserCursor ref={eraserCursorRef} diameter={pointerInput.eraserCursorDiameter} />
         ) : null}
