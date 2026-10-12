@@ -105,7 +105,7 @@ function makeProps(
     pageHeight: 1240,
     pageId: "page-1",
     pageWidth: 900,
-    persistedInkSvg: "<svg data-page='one'></svg>",
+    persistedInk: { version: 2, format: "js-draw-svg", svg: "<svg data-page='one'></svg>" },
     swipeInkSnapshot: null,
     ...overrides,
   };
@@ -135,7 +135,7 @@ describe("NotebookLivePageLayers", () => {
         "pointer-events-none absolute inset-0 z-0 [contain:paint] [transform:translateZ(0)] [will-change:transform]",
       fileLayerClassName:
         "pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden [contain:paint] [transform:translateZ(0)] [will-change:transform]",
-      inkSvg: props.persistedInkSvg,
+      inkSvg: "<svg data-page='one'></svg>",
       inkSizes: "48rem",
       inkClassName:
         "pointer-events-none absolute inset-0 z-[12] object-fill",
@@ -171,7 +171,7 @@ describe("NotebookLivePageLayers", () => {
         pageId: "page-1",
         pageWidth: 900,
         pageHeight: 1240,
-        initialSvg: props.persistedInkSvg,
+        initialInk: props.persistedInk,
         eraserThickness,
         readOnly: true,
       });

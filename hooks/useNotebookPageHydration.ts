@@ -6,7 +6,7 @@ import type { NotebookInkController } from "@/hooks/useNotebookInkController";
 import type { NotebookLoader } from "@/hooks/useNotebookLoader";
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import type { NotebookPersistenceController } from "@/hooks/useNotebookPersistenceController";
-import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
+import { pageHasSavedInk, pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 import type { Notebook, NotebookPage } from "@/lib/workspace/notebooks";
 
 type UseNotebookPageHydrationOptions = {
@@ -93,9 +93,7 @@ export function useNotebookPageHydration({
     pageState.setTextBlocks(selectedPage.textBlocks);
     resetTextBlockInteraction();
     clearHistory();
-    setInkHasContent(
-      Boolean(selectedPage.inkData?.svg) || (selectedPage.strokeData?.strokes.length ?? 0) > 0
-    );
+    setInkHasContent(pageHasSavedInk(selectedPage));
     pageState.setPageColor(selectedPage.pageColor ?? notebookPageColor ?? "white");
     pageState.setPageStyle(selectedPage.pageStyle ?? notebookPageStyle ?? "plain");
     // Remember when the editor is mounting without this page's real ink, so the

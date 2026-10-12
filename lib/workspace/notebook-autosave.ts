@@ -54,13 +54,13 @@ export function shouldStartNotebookAutosave(input: {
 }
 
 export function shouldDiscardNotebookInkExport(input: {
-  svgAvailable: boolean;
+  inkAvailable: boolean;
   inkInteractionActive: boolean;
   saveRevision: number;
   currentRevision: number;
 }) {
   return (
-    !input.svgAvailable ||
+    !input.inkAvailable ||
     input.inkInteractionActive ||
     input.saveRevision !== input.currentRevision
   );

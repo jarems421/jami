@@ -1,3 +1,4 @@
+import { isInkDocumentText } from "@/lib/ink/codec";
 import {
   normalizeOptionalString,
   normalizeStringArray,
@@ -39,11 +40,21 @@ export type NotebookStrokeData = {
   strokes: NotebookStroke[];
 };
 
-export type NotebookInkData = {
-  version: 2;
-  format: "js-draw-svg";
-  svg: string;
-};
+/**
+ * A page's ink as it is stored.
+ *
+ * `js-draw-svg` (v2) is the SVG every build since the smooth pen has read. Jami
+ * Ink writes it too while it rolls out, carrying its own encoding of the same
+ * page alongside in `jamiInk` (`lib/ink/codec.ts`), so a build from before it
+ * still reads and edits the SVG and a rollback loses nothing. `jami-ink` (v3)
+ * is that encoding alone, written only when a page is too big to carry both;
+ * once the rollout is over it is the only form written. See
+ * `docs/notebook-ink.md` (Migration), and `notebookInkSvg` and
+ * `notebookInkDocument` for reading either.
+ */
+export type NotebookInkData =
+  | { version: 2; format: "js-draw-svg"; svg: string; jamiInk?: string }
+  | { version: 3; format: "jami-ink"; data: string };
 
 /**
  * Lossy page preview stored on the page record for the pages drawer. See
@@ -223,6 +234,11 @@ export function getNotebookTextBlockTextLimit(block: Pick<NotebookTextBlock, "fo
     ? MAX_NOTEBOOK_MARKDOWN_BLOCK_TEXT
     : MAX_NOTEBOOK_TEXT_BLOCK_TEXT;
 }
+/**
+ * The most characters a page's ink may take in its record: the SVG, and Jami
+ * Ink's encoding too when it carries one (`notebookInkStoredLength`). Named
+ * for the SVG it was first a cap on.
+ */
 export const MAX_NOTEBOOK_INK_SVG_LENGTH = 850_000;
 // Firestore documents have a 1 MiB ceiling. Leave room for field names and
 // page metadata instead of relying on the backend to reject a nearly-full doc.
@@ -416,6 +432,9 @@ export function normalizeNotebookStrokeData(
 export function normalizeNotebookInkData(value: unknown): NotebookInkData | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const data = value as Record<string, unknown>;
+  if (data.version === 3 && data.format === "jami-ink") {
+    return isInkDocumentText(data.data) ? { version: 3, format: "jami-ink", data: data.data } : undefined;
+  }
   if (
     data.version !== 2 ||
     data.format !== "js-draw-svg" ||
@@ -428,7 +447,19 @@ export function normalizeNotebookInkData(value: unknown): NotebookInkData | unde
     version: 2,
     format: "js-draw-svg",
     svg: data.svg,
+    // Shape only: a copy that does not decode is set aside when it is read.
+    ...(isInkDocumentText(data.jamiInk) ? { jamiInk: data.jamiInk } : {}),
   };
+}
+
+/** The ink's SVG when it is stored with one: never decoded, so cheap enough for every render. */
+export function storedNotebookInkSvg(ink: NotebookInkData | null | undefined): string | undefined {
+  return ink?.format === "js-draw-svg" ? ink.svg : undefined;
+}
+
+/** The characters the ink takes in its record, held to `MAX_NOTEBOOK_INK_SVG_LENGTH`. */
+export function notebookInkStoredLength(ink: NotebookInkData): number {
+  return ink.format === "jami-ink" ? ink.data.length : ink.svg.length + (ink.jamiInk?.length ?? 0);
 }
 
 export function normalizeNotebookPreviewSvg(value: unknown) {

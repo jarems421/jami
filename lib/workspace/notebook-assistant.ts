@@ -1,3 +1,4 @@
+import { pageHasSavedInk } from "@/lib/workspace/notebook-page-ink-split";
 import type { NotebookPage, NotebookTextBlock } from "@/lib/workspace/notebooks";
 
 type NotebookPromptAction = { label: string; prompt: string };
@@ -19,8 +20,7 @@ export function notebookPageHasWork(input: {
     page?.typedContent?.trim() ||
       input.textBlocks.some((block) => block.text.trim()) ||
       input.inkHasContent ||
-      page?.inkData?.svg ||
-      (page?.strokeData?.strokes.length ?? 0) > 0 ||
+      (page && pageHasSavedInk(page)) ||
       (page?.imageRefs.length ?? 0) > 0 ||
       (page?.graphBlocks.length ?? 0) > 0
   );

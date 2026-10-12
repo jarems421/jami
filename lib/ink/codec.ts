@@ -495,6 +495,15 @@ function readItem(input: ByteReader, budget: { left: number }): InkItem {
   return { kind: "unknown", id, layerCode: layerByte, code: kind, payload: payload.slice() };
 }
 
+/**
+ * Whether text claims to be stored v3 ink, by its prefix alone: what a record's
+ * shape is checked against without paying for a decode. Only
+ * `decodeInkDocument` says whether it actually is.
+ */
+export function isInkDocumentText(text: unknown): text is string {
+  return typeof text === "string" && text.startsWith(PREFIX) && text.length <= MAX_ENCODED_CHARACTERS;
+}
+
 /** Reads stored ink, or null if it is anything other than valid v3 data. */
 export function decodeInkDocument(text: string): InkDocument | null {
   try {

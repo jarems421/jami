@@ -1,5 +1,6 @@
 import {
   MAX_NOTEBOOK_PREVIEW_SVG_LENGTH,
+  storedNotebookInkSvg,
   type Notebook,
   type NotebookInkData,
   type NotebookPage,
@@ -14,7 +15,6 @@ export type NotebookPageSaveResult = {
   typedContent: string;
   textBlocks: NotebookTextBlock[];
   inkData: NotebookInkData;
-  inkSvg: string;
   pageColor: NotebookPageColor;
   pageStyle: NotebookPageStyle;
   status: NotebookPage["status"];
@@ -51,15 +51,18 @@ export function applyNotebookPageSave(
   };
 }
 
-/** The notebook record with the page just saved as its preview, when it fits. */
+/**
+ * The notebook record with the page just saved as its preview, when it fits: a
+ * page stored as Jami Ink's encoding alone is far too big to anyway.
+ */
 export function applyNotebookPreviewFromSave(
   notebook: Notebook,
   result: NotebookPageSaveResult
 ): Notebook {
+  const svg = storedNotebookInkSvg(result.inkData);
   return {
     ...notebook,
-    previewInkSvg:
-      result.inkSvg.length <= MAX_NOTEBOOK_PREVIEW_SVG_LENGTH ? result.inkSvg : undefined,
+    previewInkSvg: svg !== undefined && svg.length <= MAX_NOTEBOOK_PREVIEW_SVG_LENGTH ? svg : undefined,
     previewPageId: result.pageId,
     updatedAt: result.updatedAt,
   };

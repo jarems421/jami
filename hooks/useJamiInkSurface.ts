@@ -9,7 +9,9 @@ import type { InkSheetRect } from "@/lib/ink/render-plan";
 import { createInkSurface, type InkSurface } from "@/lib/ink-dom/surface";
 import { inkSurfaceViewport } from "@/lib/ink-dom/surface-viewport";
 import type { InkScreenMapping } from "@/lib/ink-dom/stroke-session";
+import { notebookInkDocument } from "@/lib/workspace/notebook-ink-data";
 import type { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
+import type { NotebookInkData } from "@/lib/workspace/notebooks";
 
 /** How long after the last scroll or resize the sheet is taken to have settled. */
 const SETTLE_MS = 120;
@@ -32,7 +34,7 @@ const SETTLE_MS = 120;
  */
 export function useJamiInkSurface({
   hostRef,
-  initialSvg,
+  initialInk,
   pageId,
   pageWidth,
   pageHeight,
@@ -43,7 +45,7 @@ export function useJamiInkSurface({
   reportInteraction,
 }: {
   hostRef: RefObject<HTMLDivElement | null>;
-  initialSvg: string;
+  initialInk: NotebookInkData | null;
   pageId: string;
   pageWidth: number;
   pageHeight: number;
@@ -56,7 +58,7 @@ export function useJamiInkSurface({
   const surfaceRef = useRef<InkSurface | null>(null);
   /** The page's ink is in the surface (loading did not fail). */
   const loadedRef = useRef(false);
-  const initialSvgRef = useRef(initialSvg);
+  const initialInkRef = useRef(initialInk);
 
   /** Where the page sits, as the last render said. */
   const placeRef = useRef({
@@ -158,7 +160,10 @@ export function useJamiInkSurface({
         onHistoryChange: (undoDepth, redoDepth) => callbacksRef.current.onHistoryChange(undoDepth, redoDepth),
       });
       surfaceRef.current = surface;
-      surface.load(initialSvgRef.current);
+      const page = notebookInkDocument(initialInkRef.current);
+      // Never opened empty in its place: a save would write over the real page.
+      if (!page) throw new Error("This page's ink cannot be read by this version of Jami.");
+      surface.load(page);
       loadedRef.current = true;
       // The first viewport; `onReady` follows once its ink is drawn.
       measure();

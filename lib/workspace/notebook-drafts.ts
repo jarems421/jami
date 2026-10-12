@@ -1,8 +1,10 @@
+import { isInkDocumentText } from "@/lib/ink/codec";
 import {
   isNotebookPageColor,
   isNotebookPageStatus,
   isNotebookPageStyle,
   normalizeNotebookTextBlocks,
+  type NotebookInkData,
   type NotebookPage,
   type NotebookPageColor,
   type NotebookPageStatus,
@@ -29,11 +31,42 @@ export type NotebookPageDraft = {
   localRevision: number;
   savedAt: number;
   textBlocks: NotebookTextBlock[];
-  inkSvg: string;
+  ink: NotebookInkData;
   pageColor: NotebookPageColor;
   pageStyle: NotebookPageStyle;
   status: NotebookPageStatus;
 };
+
+/**
+ * A draft as it is kept on the device: the ink's SVG as `inkSvg`, where every
+ * build before Jami Ink reads it, and Jami Ink's encoding of the same page
+ * beside it as `jamiInk` -- or alone, for a page too big to carry both.
+ */
+type StoredNotebookPageDraft = Omit<NotebookPageDraft, "ink"> & {
+  inkSvg?: string;
+  jamiInk?: string;
+};
+
+export function storedNotebookPageDraft(draft: NotebookPageDraft): StoredNotebookPageDraft {
+  const { ink, ...rest } = draft;
+  if (ink.format === "jami-ink") return { ...rest, jamiInk: ink.data };
+  return { ...rest, inkSvg: ink.svg, ...(ink.jamiInk ? { jamiInk: ink.jamiInk } : {}) };
+}
+
+/** The ink a stored draft carries, or null if what it carries is not ink. */
+function storedDraftInk(svg: unknown, jamiInk: unknown): NotebookInkData | null {
+  const encoded =
+    isInkDocumentText(jamiInk) && jamiInk.length <= MAX_NOTEBOOK_LOCAL_INK_LENGTH ? jamiInk : undefined;
+  if (svg === undefined) return encoded ? { version: 3, format: "jami-ink", data: encoded } : null;
+  if (
+    typeof svg !== "string" ||
+    svg.length > MAX_NOTEBOOK_LOCAL_INK_LENGTH ||
+    !svg.trimStart().startsWith("<svg")
+  ) {
+    return null;
+  }
+  return { version: 2, format: "js-draw-svg", svg, ...(encoded ? { jamiInk: encoded } : {}) };
+}
 
 export type NotebookDraftDecision = "restore" | "discard";
 
@@ -89,6 +122,7 @@ export function parseNotebookPageDraft(value: unknown): NotebookPageDraft | null
   const localRevision = normalizeRevision(draft.localRevision);
   const savedAt = normalizeRevision(draft.savedAt);
   const textBlocks = normalizeNotebookTextBlocks(draft.textBlocks);
+  const ink = storedDraftInk(draft.inkSvg, draft.jamiInk);
 
   if (
     draft.version !== NOTEBOOK_DRAFT_VERSION ||
@@ -101,9 +135,7 @@ export function parseNotebookPageDraft(value: unknown): NotebookPageDraft | null
     savedAt === null ||
     !Array.isArray(draft.textBlocks) ||
     textBlocks.length !== draft.textBlocks.length ||
-    typeof draft.inkSvg !== "string" ||
-    draft.inkSvg.length > MAX_NOTEBOOK_LOCAL_INK_LENGTH ||
-    !draft.inkSvg.trimStart().startsWith("<svg") ||
+    !ink ||
     !isNotebookPageColor(draft.pageColor) ||
     !isNotebookPageStyle(draft.pageStyle) ||
     !isNotebookPageStatus(draft.status)
@@ -121,7 +153,7 @@ export function parseNotebookPageDraft(value: unknown): NotebookPageDraft | null
     localRevision,
     savedAt,
     textBlocks,
-    inkSvg: draft.inkSvg,
+    ink,
     pageColor: draft.pageColor,
     pageStyle: draft.pageStyle,
     status: draft.status,
@@ -131,11 +163,14 @@ export function parseNotebookPageDraft(value: unknown): NotebookPageDraft | null
 export function createNotebookPageDraft(
   input: Omit<NotebookPageDraft, "version" | "savedAt"> & { savedAt?: number }
 ) {
-  const draft = parseNotebookPageDraft({
-    ...input,
-    version: NOTEBOOK_DRAFT_VERSION,
-    savedAt: input.savedAt ?? Date.now(),
-  });
+  // Checked as it will be stored, so a draft that could not be read back is never written.
+  const draft = parseNotebookPageDraft(
+    storedNotebookPageDraft({
+      ...input,
+      version: NOTEBOOK_DRAFT_VERSION,
+      savedAt: input.savedAt ?? Date.now(),
+    })
+  );
   if (!draft) throw new Error("The notebook recovery draft could not be prepared.");
   return draft;
 }
@@ -210,7 +245,7 @@ async function writeIndexedDbDraft(key: string, draft: NotebookPageDraft) {
   const database = await openDraftDatabase();
   try {
     const transaction = database.transaction(NOTEBOOK_DRAFT_STORE_NAME, "readwrite");
-    transaction.objectStore(NOTEBOOK_DRAFT_STORE_NAME).put(draft, key);
+    transaction.objectStore(NOTEBOOK_DRAFT_STORE_NAME).put(storedNotebookPageDraft(draft), key);
     await waitForTransaction(transaction);
   } finally {
     database.close();
@@ -249,7 +284,7 @@ export function writeNotebookPageDraftSync(draft: NotebookPageDraft) {
   try {
     window.localStorage.setItem(
       getNotebookPageDraftStorageKey(draft),
-      JSON.stringify(draft)
+      JSON.stringify(storedNotebookPageDraft(draft))
     );
     return true;
   } catch {

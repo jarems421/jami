@@ -9,6 +9,7 @@ import {
   useNotebookPersistenceController,
   type NotebookPersistenceController,
 } from "@/hooks/useNotebookPersistenceController";
+import { svgNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import type { NotebookPageSaveResult } from "@/lib/workspace/notebook-save-result";
 import type { NotebookPage } from "@/lib/workspace/notebooks";
 
@@ -66,7 +67,7 @@ function Harness() {
     inkEditorRef,
     editorRevisionRef,
     isInkInteracting: useCallback(() => inkInteracting, []),
-    fallbackInkSvg: "<svg data-fallback='true' />",
+    fallbackInk: svgNotebookInkData("<svg data-fallback='true' />"),
     onPageSaved: useCallback((result: NotebookPageSaveResult) => {
       saved.push(result);
     }, []),
@@ -111,9 +112,9 @@ beforeEach(() => {
     hasInk: () => true,
     isInteracting: () => inkInteracting,
     redo: vi.fn(),
-    serialize: () => "<svg data-sync='true' />",
-    serializeWarm: () => "<svg />",
-    serializeAsync: async () => "<svg data-async='true' />",
+    serialize: () => svgNotebookInkData("<svg data-sync='true' />"),
+    serializeWarm: () => svgNotebookInkData("<svg />"),
+    serializeAsync: async () => svgNotebookInkData("<svg data-async='true' />"),
     setEraserMode: vi.fn(),
     undo: vi.fn(),
   };
@@ -198,6 +199,10 @@ describe("useNotebookPersistenceController", () => {
     expect(saved[0]?.contentRevision).toBe(4);
     expect(saved[0]?.updatedAt).toBe(2000);
     expect(store.read().contentRevision).toBe(4);
+    // The ink goes as the editor handed it over, in whichever form that is.
+    const handedOver = svgNotebookInkData("<svg data-async='true' />");
+    expect(saveNotebookPageSnapshot.mock.calls[0]?.[1]).toMatchObject({ inkData: handedOver });
+    expect(saved[0]?.inkData).toEqual(handedOver);
   });
 
   it("marks the page failed when the write rejects", async () => {

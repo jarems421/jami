@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeNotebookInkData } from "@/lib/workspace/notebook-ink-data";
+import { svgNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import {
   MAX_NOTEBOOK_IMAGE_REFS,
   MAX_NOTEBOOK_INK_SVG_LENGTH,
@@ -8,6 +8,7 @@ import {
   MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
   mapNotebookPageData,
   normalizeNotebookImageRefs,
+  type NotebookInkData,
   type NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
 import {
@@ -62,15 +63,20 @@ describe("notebook page persistence contract", () => {
 
     expect(page.textBlocks).toHaveLength(MAX_NOTEBOOK_TEXT_BLOCKS + 2);
     expect(page.textBlocks[0]?.text).toBe(longText);
-    expect(page.inkData?.svg).toBe(legacyInk);
+    expect(page.inkData).toEqual(svgNotebookInkData(legacyInk));
   });
 
   it("rejects unsafe ink and text explicitly at the shared write boundary", () => {
     expectPersistenceCode(
       () =>
-        makeNotebookInkData(
-          `<svg>${"x".repeat(MAX_NOTEBOOK_INK_SVG_LENGTH)}</svg>`
-        ),
+        prepareNotebookPageSnapshotForPersistence({
+          typedContent: "",
+          textBlocks: [],
+          inkData: svgNotebookInkData(`<svg>${"x".repeat(MAX_NOTEBOOK_INK_SVG_LENGTH)}</svg>`),
+          pageColor: "white",
+          pageStyle: "plain",
+          status: "working",
+        }),
       "ink-too-large"
     );
     expectPersistenceCode(
@@ -121,6 +127,53 @@ describe("notebook page persistence contract", () => {
         }),
       "snapshot-too-large"
     );
+  });
+
+  describe("Jami Ink's page, with its SVG copy", () => {
+    const prepare = (inkData: NotebookInkData) =>
+      prepareNotebookPageSnapshotForPersistence({
+        typedContent: "",
+        textBlocks: [],
+        inkData,
+        pageColor: "white",
+        pageStyle: "plain",
+        status: "working",
+      });
+    const svg = (length: number) => `<svg>${"x".repeat(length)}</svg>`;
+    const encoding = (length: number) => `j3:${"A".repeat(length)}`;
+
+    it("keeps the copy while both fit the record", () => {
+      const ink: NotebookInkData = {
+        version: 2,
+        format: "js-draw-svg",
+        svg: svg(1_000),
+        jamiInk: encoding(400),
+      };
+      expect(prepare(ink).inkData).toEqual(ink);
+    });
+
+    it("drops the copy, keeping the encoding alone, when the two together would not fit", () => {
+      const ink: NotebookInkData = {
+        version: 2,
+        format: "js-draw-svg",
+        svg: svg(600_000),
+        jamiInk: encoding(300_000),
+      };
+      expect(prepare(ink).inkData).toEqual({ version: 3, format: "jami-ink", data: encoding(300_000) });
+    });
+
+    it("refuses an encoding too big even alone", () => {
+      expectPersistenceCode(
+        () =>
+          prepare({
+            version: 2,
+            format: "js-draw-svg",
+            svg: svg(1_000),
+            jamiInk: encoding(MAX_NOTEBOOK_INK_SVG_LENGTH),
+          }),
+        "ink-too-large"
+      );
+    });
   });
 
   it("maps old pages to revision zero and preserves stored revisions", () => {

@@ -69,11 +69,7 @@ export function applyNotebookDraftToPage(
     ...page,
     typedContent: buildTypedContentFromTextBlocks(draft.textBlocks),
     textBlocks: draft.textBlocks,
-    inkData: {
-      version: 2,
-      format: "js-draw-svg",
-      svg: draft.inkSvg,
-    },
+    inkData: draft.ink,
     strokeData: undefined,
     pageColor: draft.pageColor,
     pageStyle: draft.pageStyle,

@@ -17,6 +17,7 @@ import {
   normalizeNotebookInkData,
   normalizeNotebookStrokeData,
   normalizeNotebookTextBlocks,
+  notebookInkStoredLength,
   type NotebookImageRef,
   type NotebookInkData,
   type NotebookPageColor,
@@ -67,6 +68,26 @@ function getUtf8ByteLength(value: string) {
 }
 
 /**
+ * The ink as it will be stored: with its SVG copy while both fit the record,
+ * and as Jami Ink's encoding alone when they do not.
+ *
+ * The copy is what a build from before Jami Ink reads, so dropping it costs
+ * only that, and only on the biggest pages: such a page shows there as one
+ * whose ink has not loaded, which that build will not open to edit, rather
+ * than as an empty page it would save over.
+ */
+export function fitNotebookInkData(ink: NotebookInkData): NotebookInkData {
+  if (
+    ink.format === "js-draw-svg" &&
+    ink.jamiInk &&
+    notebookInkStoredLength(ink) > MAX_NOTEBOOK_INK_SVG_LENGTH
+  ) {
+    return { version: 3, format: "jami-ink", data: ink.jamiInk };
+  }
+  return ink;
+}
+
+/**
  * Canonical preflight for every editable notebook-page write.
  *
  * Readers remain tolerant so legacy content is never clipped on open. Writers
@@ -104,7 +125,9 @@ export function prepareNotebookPageSnapshotForPersistence(
    * If compaction throws, the original ink is what gets written.
    */
   let inkData = normalizedInk;
-  if (normalizedInk) {
+  // Only an SVG js-draw wrote: Jami Ink's carries the page's own encoding
+  // beside it, and is not made of the dense segments compaction is for.
+  if (normalizedInk?.format === "js-draw-svg" && !normalizedInk.jamiInk) {
     try {
       const compacted = compactNotebookInkSvg(normalizedInk.svg);
       if (compacted.bytesAfter < compacted.bytesBefore) {
@@ -114,7 +137,8 @@ export function prepareNotebookPageSnapshotForPersistence(
       inkData = normalizedInk;
     }
   }
-  if (inkData && inkData.svg.length > MAX_NOTEBOOK_INK_SVG_LENGTH) {
+  inkData = inkData ? fitNotebookInkData(inkData) : undefined;
+  if (inkData && notebookInkStoredLength(inkData) > MAX_NOTEBOOK_INK_SVG_LENGTH) {
     throw new NotebookPagePersistenceError(
       "ink-too-large",
       "This page has too much ink to sync safely. Split the work across another page; this draft remains on this device."

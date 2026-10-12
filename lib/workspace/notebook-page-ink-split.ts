@@ -21,7 +21,11 @@ import type {
   NotebookStroke,
   NotebookStrokeData,
 } from "@/lib/workspace/notebooks";
-import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
+import {
+  MAX_NOTEBOOK_INK_SVG_LENGTH,
+  notebookInkStoredLength,
+  storedNotebookInkSvg,
+} from "@/lib/workspace/notebooks";
 
 /**
  * Ink SVG budget for the copy inlined into the page record for thumbnails.
@@ -76,7 +80,7 @@ export function buildNotebookPageThumbnail(input: {
   inkData?: NotebookInkData;
   strokeData?: NotebookStrokeData;
 }): NotebookPageThumbnail {
-  const svg = input.inkData?.svg;
+  const svg = storedNotebookInkSvg(input.inkData);
   const withinBudget =
     typeof svg === "string" && svg.length <= MAX_THUMBNAIL_INK_SVG_LENGTH;
   const strokes = (input.strokeData?.strokes ?? [])
@@ -87,8 +91,11 @@ export function buildNotebookPageThumbnail(input: {
     ...(withinBudget ? { inkSvg: svg } : {}),
     strokes,
     // Only true when there is ink the digest cannot show at all: an oversized
-    // SVG with no legacy strokes to fall back on.
-    inkOmitted: Boolean(svg) && !withinBudget && strokes.length === 0,
+    // SVG, or Jami Ink's encoding with no SVG beside it, and no legacy strokes
+    // to fall back on. It is also what tells a build from before Jami Ink,
+    // which cannot read that encoding, that the page has ink it has not
+    // loaded -- so it will not open the page as an empty one and save over it.
+    inkOmitted: Boolean(input.inkData) && !withinBudget && strokes.length === 0,
   };
 }
 
@@ -156,11 +163,19 @@ export function mergeNotebookPageInk(
  * nothing to leave alone.
  */
 export function needsInkSplitConversion(page: NotebookPage): boolean {
-  const inlineSvgLength = page.inkData?.svg.length ?? 0;
+  const inlineInkLength = page.inkData ? notebookInkStoredLength(page.inkData) : 0;
   return (
-    inlineSvgLength > MAX_THUMBNAIL_INK_SVG_LENGTH ||
+    inlineInkLength > MAX_THUMBNAIL_INK_SVG_LENGTH ||
     (page.strokeData?.strokes.length ?? 0) > MAX_THUMBNAIL_STROKES
   );
+}
+
+/**
+ * Whether a page has saved ink in memory, in any format: what the static page,
+ * the editor's first state and Tutor's "is there work here" all ask.
+ */
+export function pageHasSavedInk(page: Pick<NotebookPage, "inkData" | "strokeData">): boolean {
+  return Boolean(page.inkData) || (page.strokeData?.strokes?.length ?? 0) > 0;
 }
 
 /**
@@ -196,13 +211,16 @@ export function resolveNotebookPageThumbnail(
 ): NotebookPageThumbnail {
   if (page.inkData || page.strokeData) {
     // The budget exists to keep stored records small. This data is already in
-    // memory, so render it in full rather than degrading it on the way out.
+    // memory, so render it in full rather than degrading it on the way out --
+    // except Jami Ink's encoding alone, kept for the biggest pages, which is
+    // not written out as an SVG for a 160px picture.
+    const svg = storedNotebookInkSvg(page.inkData);
     return {
-      ...(page.inkData ? { inkSvg: page.inkData.svg } : {}),
+      ...(svg !== undefined ? { inkSvg: svg } : {}),
       strokes: (page.strokeData?.strokes ?? [])
         .slice(0, MAX_THUMBNAIL_STROKES)
         .map(downsampleStrokePoints),
-      inkOmitted: false,
+      inkOmitted: page.inkData?.format === "jami-ink",
     };
   }
   return page.thumbnail ?? { strokes: [], inkOmitted: false };
@@ -215,5 +233,5 @@ export function resolveNotebookPageThumbnail(
 export function isNotebookInkRecordWithinLimits(
   ink: NotebookPageInkRecord
 ): boolean {
-  return (ink.inkData?.svg.length ?? 0) <= MAX_NOTEBOOK_INK_SVG_LENGTH;
+  return (ink.inkData ? notebookInkStoredLength(ink.inkData) : 0) <= MAX_NOTEBOOK_INK_SVG_LENGTH;
 }

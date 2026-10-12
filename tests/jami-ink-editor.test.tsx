@@ -5,7 +5,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JamiInkEditor } from "@/components/workspace/JamiInkEditor";
 import type { NotebookInkEditorHandle } from "@/components/workspace/notebook-ink-editor-types";
+import { jamiInkData } from "@/lib/workspace/notebook-ink-data";
 import { NOTEBOOK_PEN_SETTINGS_DEFAULT } from "@/lib/workspace/notebook-pen-feel";
+import { docOf, outline } from "./support/ink-fixtures";
 
 const engine = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock("@/lib/ink-dom/surface", () => ({ createInkSurface: engine.create }));
@@ -32,9 +34,14 @@ type FakeSurface = {
     | "clear"
     | "hasInk"
     | "historyState"
-    | "serialize"
+    | "document"
     | "destroy"]: ReturnType<typeof vi.fn>;
 } & { busy: boolean };
+
+/** The page as saved, and as it stands once the pen has been at it. */
+const SAVED = docOf(outline("saved", [{ op: "M", x: 10, y: 10 }, { op: "L", x: 50, y: 50 }]));
+const COMMITTED = docOf(outline("committed", [{ op: "M", x: 20, y: 20 }, { op: "L", x: 80, y: 40 }]));
+const PAGE = { width: 900, height: 1240 };
 
 function makeSurface(): FakeSurface {
   return {
@@ -56,7 +63,7 @@ function makeSurface(): FakeSurface {
     clear: vi.fn(),
     hasInk: vi.fn(() => true),
     historyState: vi.fn(() => ({ undoDepth: 2, redoDepth: 1 })),
-    serialize: vi.fn(() => "<svg>committed</svg>"),
+    document: vi.fn(() => COMMITTED),
     destroy: vi.fn(),
     busy: false,
   };
@@ -86,7 +93,7 @@ function baseProps(overrides: Partial<Props> = {}): Props {
     penColor: "black",
     penSettings: NOTEBOOK_PEN_SETTINGS_DEFAULT,
     penThickness: 3,
-    initialSvg: "<svg>saved</svg>",
+    initialInk: jamiInkData(SAVED, PAGE),
     pageHeight: 1240,
     pageId: "page-1",
     pageWidth: 900,
@@ -160,7 +167,8 @@ describe("JamiInkEditor", () => {
     expect(engine.create).toHaveBeenCalledTimes(1);
     expect(engine.create.mock.calls[0][0]).toBe(host());
     expect(createdOptions.page).toEqual({ width: 900, height: 1240 });
-    expect(surface.load).toHaveBeenCalledWith("<svg>saved</svg>");
+    // Its own encoding, not the SVG beside it.
+    expect(surface.load).toHaveBeenCalledWith(SAVED);
     expect(lastViewport()).toMatchObject({
       scale: 0.5,
       visible: { left: 0, top: 0, width: 450, height: 620 },
@@ -268,14 +276,16 @@ describe("JamiInkEditor", () => {
     expect(surface.clear).toHaveBeenCalledTimes(1);
     expect(api.getHistoryState()).toEqual({ undoDepth: 2, redoDepth: 1 });
     expect(api.hasInk()).toBe(true);
-    expect(api.serialize()).toBe("<svg>committed</svg>");
-    expect(api.serializeWarm()).toBe("<svg>committed</svg>");
+    const saved = api.serialize();
+    expect(saved).toEqual(jamiInkData(COMMITTED, PAGE));
+    // Made once for each version of the page.
+    expect(api.serializeWarm()).toBe(saved);
     expect(api.isInteracting()).toBe(false);
   });
 
   it("serializes asynchronously only while no pen is down", async () => {
     render(baseProps());
-    await expect(handle.current!.serializeAsync()).resolves.toBe("<svg>committed</svg>");
+    await expect(handle.current!.serializeAsync()).resolves.toEqual(jamiInkData(COMMITTED, PAGE));
 
     act(() => {
       container
@@ -311,6 +321,16 @@ describe("JamiInkEditor", () => {
     render(baseProps());
     expect(callbacks.onReadyError).toHaveBeenCalledTimes(1);
     expect(surface.whenVisibleDrawn).not.toHaveBeenCalled();
+    expect(handle.current!.serialize()).toBeNull();
+    errors.mockRestore();
+  });
+
+  it("will not open a page whose ink it cannot read as an empty one", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // Jami Ink's encoding alone, and not one this build can decode.
+    render(baseProps({ initialInk: { version: 3, format: "jami-ink", data: "j3:AAAA" } }));
+    expect(surface.load).not.toHaveBeenCalled();
+    expect(callbacks.onReadyError).toHaveBeenCalledTimes(1);
     expect(handle.current!.serialize()).toBeNull();
     errors.mockRestore();
   });

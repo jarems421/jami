@@ -3,6 +3,7 @@ import "server-only";
 import sharp from "sharp";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { selectNotebookPicturedPageNumbers } from "@/lib/ai/notebook-page-handwriting";
+import { notebookInkSvg } from "@/lib/workspace/notebook-ink-data";
 import {
   mapNotebookFileData,
   normalizeNotebookInkData,
@@ -44,14 +45,14 @@ function describePosition(pageNumber: number, currentPageNumber: number) {
 }
 
 async function loadInkSvg(uid: string, page: NotebookPage) {
-  if (page.inkData) return page.inkData.svg ?? "";
+  if (page.inkData) return notebookInkSvg(page.inkData) ?? "";
   const record = await getAdminDb()
     .collection("users")
     .doc(uid)
     .collection("notebookPageInk")
     .doc(page.id)
     .get();
-  return (record.exists ? normalizeNotebookInkData(record.data()?.inkData)?.svg : undefined) ?? "";
+  return notebookInkSvg(record.exists ? normalizeNotebookInkData(record.data()?.inkData) : undefined) ?? "";
 }
 
 /** The background files these pages use, read by id: a notebook's own file list can be long. */

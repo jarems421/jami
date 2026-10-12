@@ -5,6 +5,7 @@ import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInk
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type { Notebook, NotebookFile, NotebookImageRef } from "@/lib/workspace/notebooks";
 import { describeNotebookGraphsForTutor } from "@/lib/workspace/notebook-graphs";
+import { notebookInkSvg } from "@/lib/workspace/notebook-ink-data";
 import type { NotebookPdfCanvasTracking } from "@/lib/workspace/notebook-pdf-canvas";
 import {
   readBlobAsBase64,
@@ -133,12 +134,13 @@ export function useNotebookAssistantContext({
       }
     };
 
-    const inkSvg = await editor.serializeAsync();
-    if (inkSvg === null) {
+    const ink = await editor.serializeAsync();
+    if (ink === null) {
       throw new Error(
         "Finish the current pen stroke and wait for the page to settle, then try again."
       );
     }
+    const inkSvg = notebookInkSvg(ink) ?? "";
     assertCaptureIsCurrent();
 
     let background:

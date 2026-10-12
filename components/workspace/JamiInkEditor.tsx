@@ -9,9 +9,12 @@ import type {
 import { useJamiInkPointerInput } from "@/hooks/useJamiInkPointerInput";
 import { useJamiInkSurface } from "@/hooks/useJamiInkSurface";
 import { useNotebookInkEditorCallbacks } from "@/hooks/useNotebookInkEditorCallbacks";
+import type { InkDocument } from "@/lib/ink/model";
 import { InkInputTrace } from "@/lib/ink-dom/input-trace";
+import { jamiInkData } from "@/lib/workspace/notebook-ink-data";
 import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
+import type { NotebookInkData } from "@/lib/workspace/notebooks";
 
 /**
  * A notebook page's ink on Jami Ink (`docs/notebook-ink.md`), behind
@@ -31,7 +34,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
       eraserThickness,
       highlighterColor,
       highlighterThickness,
-      initialSvg,
+      initialInk,
       inkFrame = null,
       inkWindow = null,
       onChange,
@@ -88,7 +91,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
     });
     const engine = useJamiInkSurface({
       hostRef,
-      initialSvg,
+      initialInk,
       pageId,
       pageWidth,
       pageHeight,
@@ -119,15 +122,24 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
     });
 
     const { surfaceRef, loadedRef } = engine;
+    /** The last document handed over, the sheet it was on, and what it was handed over as. */
+    const savedRef = useRef<{ doc: InkDocument; width: number; height: number; ink: NotebookInkData } | null>(null);
     useImperativeHandle(
       forwardedRef,
       () => {
         const isInteracting = () => lifecycleRef.current?.isInteracting ?? false;
-        // The committed page, which a stroke in progress is not yet part of.
-        // The surface caches it until the page next changes.
+        // The committed page, which a stroke in progress is not yet part of,
+        // made once for each version of it: an autosave, a draft and a swipe
+        // in a row ask for the same page.
         const serialize = () => {
           const surface = surfaceRef.current;
-          return surface && loadedRef.current ? surface.serialize() : null;
+          if (!surface || !loadedRef.current) return null;
+          const doc = surface.document();
+          const saved = savedRef.current;
+          if (saved?.doc === doc && saved.width === pageWidth && saved.height === pageHeight) return saved.ink;
+          const ink = jamiInkData(doc, { width: pageWidth, height: pageHeight });
+          savedRef.current = { doc, width: pageWidth, height: pageHeight, ink };
+          return ink;
         };
         return {
           clear: () => surfaceRef.current?.clear(),
@@ -144,7 +156,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
           undo: () => surfaceRef.current?.undo(),
         };
       },
-      [loadedRef, surfaceRef]
+      [loadedRef, pageHeight, pageWidth, surfaceRef]
     );
 
     return (

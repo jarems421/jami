@@ -9,6 +9,7 @@ import {
   type NotebookInkController,
 } from "@/hooks/useNotebookInkController";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
+import { svgNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import type { NotebookTextBlock } from "@/lib/workspace/notebooks";
 
 let container: HTMLDivElement;
@@ -77,9 +78,9 @@ beforeEach(() => {
     hasInk: () => inkUndoDepth > 0,
     isInteracting: () => interacting,
     redo: inkRedo,
-    serialize: () => "<svg />",
-    serializeWarm: () => "<svg />",
-    serializeAsync: async () => "<svg />",
+    serialize: () => svgNotebookInkData("<svg />"),
+    serializeWarm: () => svgNotebookInkData("<svg />"),
+    serializeAsync: async () => svgNotebookInkData("<svg />"),
     setEraserMode: vi.fn(),
     undo: inkUndo,
   };

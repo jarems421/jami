@@ -18,11 +18,20 @@ import {
 import { BLANK_PAGE, pagesToPng } from "@/lib/practice/exam-working-snapshot";
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
 import { NOTEBOOK_INK_UI_SYNC_IDLE_MS } from "@/lib/workspace/notebook-autosave";
+import { notebookInkSvg } from "@/lib/workspace/notebook-ink-data";
+import type { NotebookInkData } from "@/lib/workspace/notebooks";
 import {
   ExamScratchpadTooLargeError,
   loadExamScratchpad,
   saveExamScratchpad,
 } from "@/services/study/exam-practice";
+
+/**
+ * A page of the sheet as it is kept: its SVG. The sheet's record is held by
+ * the security rules to SVG pages, so Jami Ink's own encoding is not stored
+ * here (`docs/notebook-ink.md`).
+ */
+const pageSvg = (ink: NotebookInkData | null): string | null => (ink === null ? null : (notebookInkSvg(ink) ?? ""));
 
 /*
  * How long the pen has to stay lifted before the sheet is written.
@@ -170,7 +179,7 @@ export function useExamSheetDocument({
     const pages = [...pagesRef.current];
     const editor = editorRef.current;
     if (editor) {
-      const current = editor.serializeWarm() ?? editor.serialize();
+      const current = pageSvg(editor.serializeWarm() ?? editor.serialize());
       if (current != null) pages[pageIndexRef.current] = current;
     }
     setPages(pages);
@@ -209,7 +218,7 @@ export function useExamSheetDocument({
     const editor = editorRef.current;
     if (!editor || isInking()) return;
     const index = pageIndexRef.current;
-    const current = await editor.serializeAsync();
+    const current = pageSvg(await editor.serializeAsync());
     /*
      * The pen came down, the page turned or the editor was replaced while the
      * page was being read: that copy is already out of date. Whatever changed
@@ -277,7 +286,7 @@ export function useExamSheetDocument({
           serialize: async () => {
             const editor = editorRef.current;
             if (!loadedRef.current || !editor) return null;
-            const current = await editor.serializeAsync();
+            const current = pageSvg(await editor.serializeAsync());
             if (current == null) return null;
             const pages = [...pagesRef.current];
             pages[pageIndexRef.current] = current;

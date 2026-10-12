@@ -37,7 +37,6 @@ function makeResult(overrides: Partial<NotebookPageSaveResult> = {}): NotebookPa
     typedContent: "  saved notes  ",
     textBlocks: [{ id: "b", x: 0, y: 0, width: 10, height: 10, text: "saved", outlineVisible: false }],
     inkData: { version: 2, format: "js-draw-svg", svg: "<svg>saved</svg>" },
-    inkSvg: "<svg>saved</svg>",
     pageColor: "cream",
     pageStyle: "lined",
     status: "working",
@@ -55,7 +54,7 @@ describe("applying a completed save to the loaded page", () => {
     });
     const saved = applyNotebookPageSave(legacy, makeResult());
     expect(saved.textBlocks.map((block) => block.text)).toEqual(["saved"]);
-    expect(saved.inkData?.svg).toBe("<svg>saved</svg>");
+    expect(saved.inkData).toEqual({ version: 2, format: "js-draw-svg", svg: "<svg>saved</svg>" });
     // Saved ink is in the current format, so the legacy stroke list goes.
     expect(saved.strokeData).toBeUndefined();
     expect(saved.pageColor).toBe("cream");
@@ -107,7 +106,15 @@ describe("the notebook's preview after a save", () => {
 
   it("drops an ink preview too large to keep on the notebook record", () => {
     const huge = "x".repeat(MAX_NOTEBOOK_PREVIEW_SVG_LENGTH + 1);
-    expect(applyNotebookPreviewFromSave(notebook, makeResult({ inkSvg: huge })).previewInkSvg).toBeUndefined();
+    const inkData = { version: 2, format: "js-draw-svg", svg: huge } as const;
+    expect(applyNotebookPreviewFromSave(notebook, makeResult({ inkData })).previewInkSvg).toBeUndefined();
+  });
+
+  it("keeps no preview of a page stored as Jami Ink's encoding alone, far too big for one", () => {
+    const inkData = { version: 3, format: "jami-ink", data: "j3:AAAA" } as const;
+    const next = applyNotebookPreviewFromSave(notebook, makeResult({ inkData }));
+    expect(next.previewInkSvg).toBeUndefined();
+    expect(next.previewPageId).toBe("page-1");
   });
 });
 

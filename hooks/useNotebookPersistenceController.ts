@@ -24,9 +24,9 @@ import {
   writeNotebookPageDraftSync,
 } from "@/lib/workspace/notebook-drafts";
 import { getNotebookWorkingPageStatus } from "@/lib/workspace/notebook-page-content";
-import { makeNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import {
   buildTypedContentFromTextBlocks,
+  type NotebookInkData,
   type NotebookPage,
   type NotebookPageColor,
   type NotebookPageStyle,
@@ -35,13 +35,13 @@ import {
 import {
   saveNotebookPageSnapshot,
 } from "@/services/study/notebooks";
-import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
+import { pageHasSavedInk, pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 import type { NotebookPageSaveResult } from "@/lib/workspace/notebook-save-result";
 
 type PageSnapshotInput = {
   page: NotebookPage;
   textBlocks: NotebookTextBlock[];
-  inkSvg: string;
+  ink: NotebookInkData;
   hasInk: boolean;
   pageColor: NotebookPageColor;
   pageStyle: NotebookPageStyle;
@@ -66,7 +66,7 @@ type UseNotebookPersistenceControllerOptions = {
   /** True while a stroke is in flight, so saves never capture a partial page. */
   isInkInteracting: () => boolean;
   /** Ink for the open page when the editor has not mounted yet. */
-  fallbackInkSvg: string | null;
+  fallbackInk: NotebookInkData | null;
   /** Apply a completed save to the page list and notebook preview. */
   onPageSaved: (result: NotebookPageSaveResult) => void;
   onError: (message: string) => void;
@@ -108,7 +108,7 @@ export function useNotebookPersistenceController({
   inkEditorRef,
   editorRevisionRef,
   isInkInteracting,
-  fallbackInkSvg,
+  fallbackInk,
   onPageSaved,
   onError,
   onClearError,
@@ -124,7 +124,7 @@ export function useNotebookPersistenceController({
 
   // Latest inputs, so the debounced callbacks below keep a stable identity.
   const latestRef = useRef({
-    fallbackInkSvg,
+    fallbackInk,
     isInkInteracting,
     onError,
     onClearError,
@@ -135,7 +135,7 @@ export function useNotebookPersistenceController({
   });
   useEffect(() => {
     latestRef.current = {
-      fallbackInkSvg,
+      fallbackInk,
       isInkInteracting,
       onError,
       onClearError,
@@ -146,7 +146,7 @@ export function useNotebookPersistenceController({
     };
   }, [
     commitUi,
-    fallbackInkSvg,
+    fallbackInk,
     isInkInteracting,
     onError,
     onClearError,
@@ -157,7 +157,7 @@ export function useNotebookPersistenceController({
 
   /** Both draft writers build the same record; only serialisation differs. */
   const buildDraft = useCallback(
-    (page: NotebookPage, userId: string, inkSvg: string) => {
+    (page: NotebookPage, userId: string, ink: NotebookInkData) => {
       const { textBlocks, pageColor, pageStyle, contentRevision } =
         pageState.read();
       const inkEditor = inkEditorRef.current;
@@ -169,12 +169,12 @@ export function useNotebookPersistenceController({
         remoteUpdatedAt: page.updatedAt,
         localRevision: editorRevisionRef.current,
         textBlocks,
-        inkSvg,
+        ink,
         pageColor,
         pageStyle,
         status: getNotebookWorkingPageStatus({
           typedContent: buildTypedContentFromTextBlocks(textBlocks) ?? "",
-          hasInk: inkEditor?.hasInk() ?? Boolean(page.inkData?.svg),
+          hasInk: inkEditor?.hasInk() ?? pageHasSavedInk(page),
         }),
       });
     },
@@ -196,14 +196,14 @@ export function useNotebookPersistenceController({
     const inkEditor = inkEditorRef.current;
 
     try {
-      const inkSvg = inkEditor
+      const ink = inkEditor
         ? await inkEditor.serializeAsync()
-        : latestRef.current.fallbackInkSvg;
+        : latestRef.current.fallbackInk;
       // The page can change while the editor serialises.
-      if (pageState.read().selectedPage?.id !== page.id || inkSvg === null) {
+      if (pageState.read().selectedPage?.id !== page.id || ink === null) {
         return;
       }
-      await writeNotebookPageDraft(buildDraft(page, userId, inkSvg));
+      await writeNotebookPageDraft(buildDraft(page, userId, ink));
       draftErrorShownRef.current = false;
     } catch (error) {
       if (draftErrorShownRef.current) return;
@@ -221,12 +221,12 @@ export function useNotebookPersistenceController({
     if (!target) return false;
     const inkEditor = inkEditorRef.current;
     try {
-      const inkSvg = inkEditor
+      const ink = inkEditor
         ? inkEditor.serialize()
-        : latestRef.current.fallbackInkSvg;
-      if (inkSvg === null) return false;
+        : latestRef.current.fallbackInk;
+      if (ink === null) return false;
       return writeNotebookPageDraftSync(
-        buildDraft(target.page, target.userId, inkSvg)
+        buildDraft(target.page, target.userId, ink)
       );
     } catch {
       // This lifecycle fallback cannot await IndexedDB; the normal draft/save
@@ -247,7 +247,7 @@ export function useNotebookPersistenceController({
           typedContent,
           hasInk: input.hasInk,
         });
-        const inkData = makeNotebookInkData(input.inkSvg);
+        const inkData = input.ink;
         const saveResult = await saveNotebookPageSnapshot(currentUserId, {
           notebookId: input.page.notebookId,
           pageId: input.page.id,
@@ -290,7 +290,6 @@ export function useNotebookPersistenceController({
             typedContent,
             textBlocks: input.textBlocks,
             inkData,
-            inkSvg: input.inkSvg,
             pageColor: input.pageColor,
             pageStyle: input.pageStyle,
             status,
@@ -383,13 +382,13 @@ export function useNotebookPersistenceController({
         latestSaveIdRef.current = saveId;
         const saveRevision = editorRevisionRef.current;
         const inkEditor = inkEditorRef.current;
-        const inkSvg = inkEditor
+        const ink = inkEditor
           ? await inkEditor.serializeAsync()
-          : latestRef.current.fallbackInkSvg;
+          : latestRef.current.fallbackInk;
 
         if (
           shouldDiscardNotebookInkExport({
-            svgAvailable: inkSvg !== null,
+            inkAvailable: ink !== null,
             inkInteractionActive: latestRef.current.isInkInteracting(),
             saveRevision,
             currentRevision: editorRevisionRef.current,
@@ -397,14 +396,14 @@ export function useNotebookPersistenceController({
         ) {
           return false;
         }
-        if (inkSvg === null) return false;
+        if (ink === null) return false;
 
         const { textBlocks, pageColor, pageStyle, contentRevision } =
           pageState.read();
         return savePageSnapshot({
           page,
           textBlocks,
-          inkSvg,
+          ink,
           hasInk: inkEditorRef.current?.hasInk() ?? false,
           pageColor,
           pageStyle,
@@ -503,11 +502,11 @@ export function useNotebookPersistenceController({
     // only covers local serialization; the slower Firebase acknowledgement is
     // deliberately allowed to finish after the Link starts navigating.
     const saveRevision = editorRevisionRef.current;
-    let inkSvg: string | null;
+    let ink: NotebookInkData | null;
     try {
-      inkSvg = inkEditor
+      ink = inkEditor
         ? inkEditor.serialize()
-        : latestRef.current.fallbackInkSvg;
+        : latestRef.current.fallbackInk;
     } catch (error) {
       console.error("Failed to serialize notebook ink before navigation.", error);
       latestRef.current.onError("Could not prepare this page to save before leaving.");
@@ -515,12 +514,12 @@ export function useNotebookPersistenceController({
     }
     if (
       shouldDiscardNotebookInkExport({
-        svgAvailable: inkSvg !== null,
+        inkAvailable: ink !== null,
         inkInteractionActive: latestRef.current.isInkInteracting(),
         saveRevision,
         currentRevision: editorRevisionRef.current,
       }) ||
-      inkSvg === null
+      ink === null
     ) {
       return false;
     }
@@ -531,7 +530,7 @@ export function useNotebookPersistenceController({
     const snapshot = {
       page,
       textBlocks,
-      inkSvg,
+      ink,
       hasInk: inkEditor?.hasInk() ?? false,
       pageColor,
       pageStyle,

@@ -5,7 +5,11 @@ import {
   resolveNotebookCarouselPages,
   type NotebookPageSwipeMotion,
 } from "@/lib/workspace/notebook-carousel";
-import { legacyStrokesToJsDrawSvg } from "@/lib/workspace/notebook-ink-data";
+import {
+  legacyStrokesToJsDrawSvg,
+  notebookInkSvg,
+  svgNotebookInkData,
+} from "@/lib/workspace/notebook-ink-data";
 import { normalizeNotebookStrokes } from "@/lib/workspace/notebook-page-content";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
@@ -14,6 +18,7 @@ import {
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
   type Notebook,
   type NotebookFile,
+  type NotebookInkData,
   type NotebookPage,
 } from "@/lib/workspace/notebooks";
 
@@ -93,23 +98,21 @@ export function useNotebookActivePage({
       ? `${selectedPage.id}:${activeNotebookFile.id}:${selectedPage.pdfPageIndex ?? 0}`
       : null;
 
-  const selectedPageInkSvg = useMemo(() => {
-    if (!selectedPage) {
-      return legacyStrokesToJsDrawSvg(
-        [],
-        NOTEBOOK_PAGE_COORDINATE_WIDTH,
-        NOTEBOOK_PAGE_COORDINATE_HEIGHT
-      );
-    }
-    return (
-      selectedPage.inkData?.svg ??
-      legacyStrokesToJsDrawSvg(
-        normalizeNotebookStrokes(selectedPage.strokeData?.strokes),
-        NOTEBOOK_PAGE_COORDINATE_WIDTH,
-        NOTEBOOK_PAGE_COORDINATE_HEIGHT
-      )
-    );
-  }, [selectedPage]);
+  /** The open page's ink as the editor loads it, legacy strokes as the SVG they always became. */
+  const selectedPageInk = useMemo(
+    (): NotebookInkData =>
+      selectedPage?.inkData ??
+      svgNotebookInkData(
+        legacyStrokesToJsDrawSvg(
+          normalizeNotebookStrokes(selectedPage?.strokeData?.strokes),
+          NOTEBOOK_PAGE_COORDINATE_WIDTH,
+          NOTEBOOK_PAGE_COORDINATE_HEIGHT
+        )
+      ),
+    [selectedPage]
+  );
+  /** And as a picture, for the swipe track before the editor has one. */
+  const selectedPageInkSvg = useMemo(() => notebookInkSvg(selectedPageInk) ?? "", [selectedPageInk]);
 
   const carousel = resolveNotebookCarouselPages({
     motion: swipeMotion,
@@ -127,6 +130,7 @@ export function useNotebookActivePage({
      * mean saving a near-blank page over the student's real drawing.
      */
     selectedPageInkUnloaded: selectedPage ? pageHasUnloadedInk(selectedPage) : false,
+    selectedPageInk,
     selectedPageInkSvg,
     activeNotebookFile,
     activeNotebookFileUrl,

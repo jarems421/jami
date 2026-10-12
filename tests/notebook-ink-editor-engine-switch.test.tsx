@@ -13,15 +13,16 @@ vi.mock("@/lib/app/feature-flags", () => ({ featureFlags: flags }));
 const seen = vi.hoisted(() => ({ props: [] as Array<Record<string, unknown>> }));
 
 function fakeHandle(label: string): NotebookInkEditorHandle {
+  const ink = { version: 2, format: "js-draw-svg", svg: `<svg data-engine="${label}"/>` } as const;
   return {
     clear: vi.fn(),
     getHistoryState: () => ({ undoDepth: 0, redoDepth: 0 }),
     hasInk: () => false,
     isInteracting: () => false,
     redo: vi.fn(),
-    serialize: () => label,
-    serializeAsync: async () => label,
-    serializeWarm: () => label,
+    serialize: () => ink,
+    serializeAsync: async () => ink,
+    serializeWarm: () => ink,
     setEraserMode: vi.fn(),
     undo: vi.fn(),
   };
@@ -54,7 +55,7 @@ const props: ComponentProps<typeof NotebookInkEditor> = {
   penColor: "black",
   penSettings: NOTEBOOK_PEN_SETTINGS_DEFAULT,
   penThickness: 3,
-  initialSvg: "<svg />",
+  initialInk: { version: 2, format: "js-draw-svg", svg: "<svg />" },
   inkFrame: { pageX: -10, pageY: -20, frameWidth: 300, frameHeight: 400 },
   pageHeight: 1240,
   pageId: "page-1",
@@ -96,7 +97,7 @@ describe("NotebookInkEditor", () => {
     flags.enableJamiInk = false;
     const ref = render();
     expect(container.querySelector("[data-engine]")?.getAttribute("data-engine")).toBe("js-draw");
-    expect(ref.current?.serialize()).toBe("js-draw");
+    expect(ref.current?.serialize()).toMatchObject({ svg: "<svg data-engine=\"js-draw\"/>" });
     expect(seen.props[0]).toMatchObject({ pageId: "page-1", penThickness: 3, inkFrame: props.inkFrame });
   });
 
@@ -104,7 +105,7 @@ describe("NotebookInkEditor", () => {
     flags.enableJamiInk = true;
     const ref = render();
     expect(container.querySelector("[data-engine]")?.getAttribute("data-engine")).toBe("jami");
-    expect(ref.current?.serialize()).toBe("jami");
+    expect(ref.current?.serialize()).toMatchObject({ svg: "<svg data-engine=\"jami\"/>" });
     expect(seen.props[0]).toMatchObject({ pageId: "page-1", penThickness: 3, inkFrame: props.inkFrame });
   });
 });

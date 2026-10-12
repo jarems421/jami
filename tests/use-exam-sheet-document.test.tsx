@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import { useExamSheetDocument } from "@/hooks/useExamSheetDocument";
 import type { ExamScratchpadHandle } from "@/lib/practice/exam-working";
+import { svgNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 
 vi.mock("@/services/study/exam-practice", () => ({
   ExamScratchpadTooLargeError: class ExamScratchpadTooLargeError extends Error {},
@@ -28,9 +29,9 @@ function fakeEditor(): NotebookInkEditorHandle & { markup: string } {
     hasInk: () => editor.markup !== "",
     isInteracting: () => false,
     redo: () => undefined,
-    serialize: () => editor.markup,
-    serializeAsync: async () => editor.markup,
-    serializeWarm: () => editor.markup,
+    serialize: () => svgNotebookInkData(editor.markup),
+    serializeAsync: async () => svgNotebookInkData(editor.markup),
+    serializeWarm: () => svgNotebookInkData(editor.markup),
     setEraserMode: () => undefined,
     undo: () => undefined,
   };

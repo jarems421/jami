@@ -43,6 +43,10 @@ scroll sideways.** Long equations must scroll inside their own box.
    wrong page and no page comes back blank.
 4. Open a notebook made from a PDF. Pages render and ink sits on top; the
    uploaded PDF itself is never modified.
+4a. Write on a page last saved before 12 October, leave it and reopen it: the
+   old ink and the new are both there, in place. Then open the same page with
+   `NEXT_PUBLIC_ENABLE_JAMI_INK=false` (the js-draw fallback): it shows the
+   same ink, and its thumbnail in the pages drawer matches.
 5. Use the toolbar: Pen (P), Highlighter (H), Eraser (E), Text box (T), Undo and
    Redo, pen and highlighter colour and thickness, and pen smoothing. Undo steps
    back whichever of ink or text happened last.

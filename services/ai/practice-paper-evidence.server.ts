@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { buildJamiAssistantReferenceParts } from "@/lib/ai/jami-assistant";
 import { questionIdsForPdfPage } from "@/lib/practice/paper-pdf-layout";
+import { notebookInkSvg } from "@/lib/workspace/notebook-ink-data";
 import {
   type PracticePaper,
   type PracticePaperEvidenceIssue,
@@ -216,7 +217,7 @@ export async function createPracticePaperEvidenceBundle(
     const splitInk = inkSnapshots[index];
     const ink = splitInk.exists ? normalizeNotebookInkData(splitInk.data()?.inkData) : undefined;
     const questionIds = questionIdsForPage(page, paper);
-    if (questionIds.length === 0 && (page.typedContent || page.inkData?.svg || ink?.svg)) {
+    if (questionIds.length === 0 && (page.typedContent || page.inkData || ink)) {
       issues.push({
         code: "answer_question_mapping_uncertain",
         severity: "warning",
@@ -227,7 +228,7 @@ export async function createPracticePaperEvidenceBundle(
     const rendered = await renderNotebookPage({
       uid,
       page,
-      inkSvg: page.inkData?.svg ?? ink?.svg ?? "",
+      inkSvg: notebookInkSvg(page.inkData ?? ink) ?? "",
       files,
       fileCache,
       pdfCache,
@@ -334,7 +335,7 @@ export async function createPracticePaperEvidenceBundle(
       const rendered = await renderNotebookPage({
         uid,
         page,
-        inkSvg: page.inkData?.svg ?? ink?.svg ?? "",
+        inkSvg: notebookInkSvg(page.inkData ?? ink) ?? "",
         files,
         fileCache,
         pdfCache,

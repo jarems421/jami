@@ -8,12 +8,13 @@ import {
   isNotebookInkRecordWithinLimits,
   mergeNotebookPageInk,
   needsInkSplitConversion,
+  pageHasSavedInk,
   pageHasUnloadedInk,
   resolveNotebookPageThumbnail,
   splitNotebookPageForPersistence,
 } from "@/lib/workspace/notebook-page-ink-split";
-import type { NotebookPage, NotebookStroke } from "@/lib/workspace/notebooks";
-import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
+import type { NotebookInkData, NotebookPage, NotebookStroke } from "@/lib/workspace/notebooks";
+import { MAX_NOTEBOOK_INK_SVG_LENGTH, storedNotebookInkSvg } from "@/lib/workspace/notebooks";
 
 function stroke(pointCount: number): NotebookStroke {
   return {
@@ -130,7 +131,7 @@ describe("notebook page ink split", () => {
     });
 
     expect(thumbnail.inkSvg).toBeUndefined();
-    expect(ink?.inkData?.svg).toBe(svg);
+    expect(storedNotebookInkSvg(ink?.inkData)).toBe(svg);
     expect(ink?.contentRevision).toBe(7);
     expect(ink?.pageId).toBe("page-1");
   });
@@ -155,7 +156,7 @@ describe("notebook page ink split", () => {
       updatedAt: 2,
     });
 
-    expect(merged.inkData?.svg).toBe("<svg>x</svg>");
+    expect(storedNotebookInkSvg(merged.inkData)).toBe("<svg>x</svg>");
   });
 
   it("treats a legacy page's inline ink as authoritative", () => {
@@ -171,7 +172,7 @@ describe("notebook page ink split", () => {
       updatedAt: 1,
     });
 
-    expect(merged.inkData?.svg).toBe("<svg>inline</svg>");
+    expect(storedNotebookInkSvg(merged.inkData)).toBe("<svg>inline</svg>");
   });
 
   it("leaves a page untouched when no ink record exists", () => {
@@ -262,5 +263,48 @@ describe("notebook page ink split", () => {
         updatedAt: 1,
       })
     ).toBe(false);
+  });
+
+  describe("Jami Ink's encoding", () => {
+    const record = (inkData: NotebookInkData) => ({
+      pageId: "page-1",
+      notebookId: "notebook-1",
+      inkData,
+      contentRevision: 1,
+      updatedAt: 1,
+    });
+    const half = Math.floor(MAX_NOTEBOOK_INK_SVG_LENGTH / 2);
+
+    it("counts against the limit beside the SVG it rides with", () => {
+      const both = (encoded: number): NotebookInkData => ({
+        version: 2,
+        format: "js-draw-svg",
+        svg: svgOfLength(half),
+        jamiInk: `j3:${"A".repeat(encoded)}`,
+      });
+      expect(isNotebookInkRecordWithinLimits(record(both(1_000)))).toBe(true);
+      expect(isNotebookInkRecordWithinLimits(record(both(half)))).toBe(false);
+    });
+
+    it("alone, is ink the digest cannot show, so a build that cannot read it will not open the page empty", () => {
+      const alone: NotebookInkData = { version: 3, format: "jami-ink", data: "j3:AAAA" };
+      const thumbnail = buildNotebookPageThumbnail({ inkData: alone });
+      expect(thumbnail).toEqual({ strokes: [], inkOmitted: true });
+      // How a build from before Jami Ink, which drops the record it cannot read, sees the page.
+      expect(pageHasUnloadedInk(page({ thumbnail }))).toBe(true);
+      expect(resolveNotebookPageThumbnail(page({ inkData: alone }))).toEqual({
+        strokes: [],
+        inkOmitted: true,
+      });
+    });
+  });
+
+  it("knows a page has saved ink in any form", () => {
+    expect(pageHasSavedInk(page())).toBe(false);
+    expect(pageHasSavedInk(page({ inkData: { version: 3, format: "jami-ink", data: "j3:AAAA" } }))).toBe(true);
+    expect(pageHasSavedInk(page({ inkData: { version: 2, format: "js-draw-svg", svg: "<svg></svg>" } }))).toBe(true);
+    expect(
+      pageHasSavedInk(page({ strokeData: { version: 1, strokes: [stroke(2)] } }))
+    ).toBe(true);
   });
 });

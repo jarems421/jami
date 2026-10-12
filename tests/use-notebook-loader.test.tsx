@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useNotebookLoader, type NotebookLoader } from "@/hooks/useNotebookLoader";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
 import type { Feedback } from "@/lib/app/feedback";
-import type { NotebookPage } from "@/lib/workspace/notebooks";
+import { storedNotebookInkSvg, type NotebookPage } from "@/lib/workspace/notebooks";
 
 const getNotebookById = vi.fn();
 const getNotebookPages = vi.fn();
@@ -179,7 +179,7 @@ describe("useNotebookLoader", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1_500);
       });
-      expect(loader.pages[0]?.inkData?.svg).toBe("<svg data-ink='1' />");
+      expect(storedNotebookInkSvg(loader.pages[0]?.inkData)).toBe("<svg data-ink='1' />");
     } finally {
       getNotebookPageWithInk.mockImplementation((_userId: unknown, page: unknown) => page);
       vi.useRealTimers();

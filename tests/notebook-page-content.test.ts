@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createNotebookPageDraft } from "@/lib/workspace/notebook-drafts";
+import { svgNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import {
   applyNotebookDraftToPage,
   buildNotebookThumbnailPoints,
@@ -152,7 +153,7 @@ describe("notebook page content", () => {
           outlineVisible: false,
         },
       ],
-      inkSvg: "<svg></svg>",
+      ink: svgNotebookInkData("<svg></svg>"),
       pageColor: "black",
       pageStyle: "grid",
       status: "working",
@@ -163,7 +164,7 @@ describe("notebook page content", () => {
     expect(restored.contentRevision).toBe(3);
     expect(restored.updatedAt).toBe(20);
     expect(restored.typedContent).toBe("Recovered notes");
-    expect(restored.inkData?.svg).toBe("<svg></svg>");
+    expect(restored.inkData).toEqual(svgNotebookInkData("<svg></svg>"));
     expect(restored.strokeData).toBeUndefined();
     expect(restored.pageColor).toBe("black");
     expect(restored.pageStyle).toBe("grid");

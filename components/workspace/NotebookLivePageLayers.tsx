@@ -11,6 +11,8 @@ import {
   NOTEBOOK_ERASER_THICKNESS_BY_SIZE,
   type NotebookEraserSize,
 } from "@/lib/workspace/notebook-eraser";
+import { notebookInkSvg } from "@/lib/workspace/notebook-ink-data";
+import type { NotebookInkData } from "@/lib/workspace/notebooks";
 
 export type NotebookLivePageBackgroundProps = Omit<
   ComponentPropsWithoutRef<typeof NotebookPageBackground>,
@@ -24,7 +26,7 @@ export type NotebookLivePageBackgroundProps = Omit<
 export type NotebookLiveInkEditorProps = Omit<
   ComponentPropsWithoutRef<typeof NotebookInkEditor>,
   | "eraserThickness"
-  | "initialSvg"
+  | "initialInk"
   | "pageHeight"
   | "pageId"
   | "pageWidth"
@@ -49,7 +51,7 @@ export type NotebookLivePageLayersProps = {
   pageHeight: number;
   pageId: string;
   pageWidth: number;
-  persistedInkSvg: string;
+  persistedInk: NotebookInkData;
   swipeInkSnapshot: NotebookSwipeInkSnapshot | null;
 };
 
@@ -66,7 +68,7 @@ export function NotebookLivePageLayers({
   pageHeight,
   pageId,
   pageWidth,
-  persistedInkSvg,
+  persistedInk,
   swipeInkSnapshot,
 }: NotebookLivePageLayersProps) {
   const matchingSwipeInkSnapshot =
@@ -87,7 +89,7 @@ export function NotebookLivePageLayers({
         pageStyleClassName="pointer-events-none absolute inset-0 z-0 [contain:paint] [transform:translateZ(0)] [will-change:transform]"
         fileLayerClassName="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden [contain:paint] [transform:translateZ(0)] [will-change:transform]"
         inkSvg={
-          !inkReady && hasPersistedInk ? persistedInkSvg : undefined
+          !inkReady && hasPersistedInk ? notebookInkSvg(persistedInk) : undefined
         }
         inkSizes="48rem"
         inkClassName="pointer-events-none absolute inset-0 z-[12] object-fill"
@@ -99,7 +101,7 @@ export function NotebookLivePageLayers({
         pageId={pageId}
         pageWidth={pageWidth}
         pageHeight={pageHeight}
-        initialSvg={persistedInkSvg}
+        initialInk={persistedInk}
         eraserThickness={NOTEBOOK_ERASER_THICKNESS_BY_SIZE[eraserWidth]}
         readOnly={!editingEnabled}
       />

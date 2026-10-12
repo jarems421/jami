@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { inkToSvg } from "@/lib/ink/export-svg";
 import type { InkChange } from "@/lib/ink/history";
 import type { InkDocument, InkItem, InkOutlineItem, InkPaint, InkPathCommand } from "@/lib/ink/model";
 import type { InkLiveTip, InkRenderer } from "@/lib/ink-dom/renderer";
@@ -95,7 +94,7 @@ function setup() {
 }
 
 function load(surface: InkSurface, ...items: InkItem[]): void {
-  surface.load(inkToSvg(docOf(...items), PAGE));
+  surface.load(docOf(...items));
 }
 
 function sample(x: number, y: number, time: number): InkPointerSample {
@@ -167,12 +166,6 @@ describe("load", () => {
     load(surface, rect("b", 0, 0, 10, 10));
     expect(surface.historyState()).toEqual({ undoDepth: 0, redoDepth: 0 });
     expect(history[history.length - 1]).toEqual([0, 0]);
-  });
-
-  it("treats a page it cannot read as empty", () => {
-    const { surface } = setup();
-    surface.load("");
-    expect(surface.hasInk()).toBe(false);
   });
 
   it("warms the GPU once the visible ink is drawn", () => {
@@ -431,19 +424,22 @@ describe("clear and serialize", () => {
     expect(fake.shown.items).toHaveLength(2);
   });
 
-  it("serialises the committed document, cached until it changes", () => {
+  it("hands over the committed document, the same one until it changes", () => {
     const { surface, fake } = setup();
     load(surface, rect("a", 100, 100, 140, 140));
-    const first = surface.serialize();
-    expect(first).toBe(inkToSvg(fake.shown, PAGE));
-    expect(surface.serialize()).toBe(first);
+    const first = surface.document();
+    expect(first).toBe(fake.shown);
+    expect(surface.document()).toBe(first);
 
     writeStroke(surface);
+    // A stroke in progress is not part of it.
+    expect(surface.document()).toBe(first);
     surface.endStroke();
-    const second = surface.serialize();
+    const second = surface.document();
     expect(second).not.toBe(first);
-    expect(second).toBe(inkToSvg(fake.shown, PAGE));
+    expect(second).toBe(fake.shown);
+    expect(second.items).toHaveLength(2);
     surface.undo();
-    expect(surface.serialize()).toBe(first);
+    expect(surface.document().items).toEqual(first.items);
   });
 });

@@ -117,7 +117,7 @@ describe("notebook autosave race guards", () => {
   it("discards an export when writing resumes during serialization", () => {
     expect(
       shouldDiscardNotebookInkExport({
-        svgAvailable: true,
+        inkAvailable: true,
         inkInteractionActive: false,
         saveRevision: 12,
         currentRevision: 12,
@@ -125,7 +125,7 @@ describe("notebook autosave race guards", () => {
     ).toBe(false);
     expect(
       shouldDiscardNotebookInkExport({
-        svgAvailable: true,
+        inkAvailable: true,
         inkInteractionActive: false,
         saveRevision: 12,
         currentRevision: 13,
@@ -133,7 +133,7 @@ describe("notebook autosave race guards", () => {
     ).toBe(true);
     expect(
       shouldDiscardNotebookInkExport({
-        svgAvailable: true,
+        inkAvailable: true,
         inkInteractionActive: true,
         saveRevision: 12,
         currentRevision: 12,

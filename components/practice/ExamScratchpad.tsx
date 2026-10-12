@@ -19,6 +19,7 @@ import {
 } from "@/lib/practice/exam-sheet-paper";
 import { nextExamWorkingZoomStep, type ExamScratchpadHandle } from "@/lib/practice/exam-working";
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
+import { svgNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import { getNotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 
@@ -121,6 +122,9 @@ function ExamScratchpad({
     onInkChange,
   });
   const { currentPage, pageIndex, pageMount, pageSvgs } = sheet;
+  // The open page's stored SVG as the editor takes it, the same object while it is the same page.
+  const openPageSvg = pageSvgs?.[pageIndex] ?? "";
+  const openPageInk = useMemo(() => (openPageSvg ? svgNotebookInkData(openPageSvg) : null), [openPageSvg]);
   const ownPaper = getNotebookPaperPalette(paper.pageColor);
 
   const tools = useExamWorkingTools({
@@ -403,7 +407,7 @@ function ExamScratchpad({
                     key={`${attemptId}:${pageMount}`}
                     ref={editorRef}
                     {...tools.ink}
-                    initialSvg={pageSvgs[pageIndex] ?? ""}
+                    initialInk={openPageInk}
                     inkWindow={inkWindow}
                     inkFrame={inkFrame}
                     pageHeight={currentPage.height}

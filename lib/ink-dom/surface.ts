@@ -8,8 +8,6 @@ import {
   invertInkChange,
   type InkChange,
 } from "@/lib/ink/history";
-import { inkToSvg } from "@/lib/ink/export-svg";
-import { importJsDrawSvg } from "@/lib/ink/import-js-draw-svg";
 import {
   createInkItemId,
   emptyInkDocument,
@@ -71,7 +69,7 @@ export type InkSurfaceOptions = {
 
 export type InkSurface = {
   /** Shows a saved page: history cleared, no `onChange`. */
-  load(svg: string): void;
+  load(page: InkDocument): void;
   setViewport(viewport: InkViewport): void;
   beginGesture(): void;
   endGesture(): void;
@@ -94,8 +92,12 @@ export type InkSurface = {
   clear(): void;
   hasInk(): boolean;
   historyState(): { undoDepth: number; redoDepth: number };
-  /** The committed document as SVG; cached until the document changes. */
-  serialize(): string;
+  /**
+   * The committed document, which a stroke in progress is not yet part of.
+   * Never changed in place: an edit makes a new one, so the same object back
+   * means nothing has changed since.
+   */
+  document(): InkDocument;
   destroy(): void;
 };
 
@@ -115,7 +117,6 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
   let erase: InkEraseGesture | null = null;
   let cancelWarmUp: (() => void) | null = null;
   let destroyed = false;
-  let serialized: { doc: InkDocument; svg: string } | null = null;
 
   function syncIndex(change: InkChange): void {
     for (const { item } of change.removed) index.delete(item.id);
@@ -169,11 +170,11 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
   }
 
   return {
-    load(svg) {
+    load(page) {
       if (destroyed) return;
       dropGestures();
       cancelWarmUp?.();
-      doc = importJsDrawSvg(svg)?.document ?? emptyInkDocument();
+      doc = page;
       index.clear();
       for (const item of doc.items) index.set(item.id, inkItemBounds(item));
       history.clear();
@@ -285,10 +286,7 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
     hasInk: () => doc.items.length > 0,
     historyState: () => ({ undoDepth: history.undoDepth, redoDepth: history.redoDepth }),
 
-    serialize() {
-      if (!serialized || serialized.doc !== doc) serialized = { doc, svg: inkToSvg(doc, options.page) };
-      return serialized.svg;
-    },
+    document: () => doc,
 
     destroy() {
       if (destroyed) return;

@@ -14,8 +14,9 @@ import {
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
 } from "@/lib/workspace/notebooks";
-import { legacyStrokesToJsDrawSvg } from "@/lib/workspace/notebook-ink-data";
+import { legacyStrokesToJsDrawSvg, notebookInkSvg } from "@/lib/workspace/notebook-ink-data";
 import { normalizeNotebookStrokes } from "@/lib/workspace/notebook-page-content";
+import { pageHasSavedInk } from "@/lib/workspace/notebook-page-ink-split";
 import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 import {
   NOTEBOOK_TEXT_LAYER_ATTRIBUTE,
@@ -42,14 +43,13 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
   const pageColor = page.pageColor ?? notebook?.pageColor ?? "white";
   const pageStyle = page.pageStyle ?? notebook?.pageStyle ?? "plain";
   const inkSvg =
-    page.inkData?.svg ??
+    notebookInkSvg(page.inkData) ??
     legacyStrokesToJsDrawSvg(
       normalizeNotebookStrokes(page.strokeData?.strokes),
       NOTEBOOK_PAGE_COORDINATE_WIDTH,
       NOTEBOOK_PAGE_COORDINATE_HEIGHT
     );
-  const hasInk =
-    Boolean(page.inkData?.svg) || (page.strokeData?.strokes?.length ?? 0) > 0;
+  const hasInk = pageHasSavedInk(page);
 
   const isDarkPaper = getNotebookPaperPalette(pageColor).isDark;
 

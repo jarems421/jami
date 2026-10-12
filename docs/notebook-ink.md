@@ -611,19 +611,39 @@ Still to come:
     it 120 ms after the scroll settles. The sheet clips with `overflow: clip`:
     clipped with `hidden` it was a scroll container of its own, and Chrome
     gave the finger's pan to it rather than to the scroller.
-- **Saving.**
-  - `NotebookInkData` becomes `js-draw-svg` (v2) or `jami-ink` (v3, with an
-    SVG copy during the rollout window).
-  - `isNotebookInkRecordWithinLimits` counts both. The copy is compacted, or
-    marked omitted, when it would not fit.
-  - Drafts store v3.
-- **Readers.** One helper serves the server
-  (`notebook-neighbour-pages.server.ts`, `practice-paper-evidence.server.ts`,
-  `notebook-page-render.server.ts`), thumbnails, `previewInkSvg` and the
-  static page readers.
-- **Exam working.** `examWorkingHasInk` reads the model. The marking image is
-  drawn by the engine. Exam attempt pages store v3 plus an SVG copy.
-- **Swipes.** Swipe and warm snapshots become engine bitmaps.
+- **Saving** (stage 5, built). Both editors hand over the ink as it is stored
+  (`NotebookInkData`, in `lib/workspace/notebooks.ts`), never as bare SVG:
+  - js-draw hands over its SVG (`js-draw-svg`, v2).
+  - Jami Ink hands over the same SVG with its own encoding of the page beside
+    it as `jamiInk` (`jamiInkData`, made once per version of the page).
+  - A page too big to carry both (together over
+    `MAX_NOTEBOOK_INK_SVG_LENGTH`) is stored as the encoding alone
+    (`jami-ink`, v3; `fitNotebookInkData`). The cap counts both
+    (`notebookInkStoredLength`, `isNotebookInkRecordWithinLimits`), and
+    compaction touches only an SVG js-draw wrote.
+  - Drafts keep the SVG as `inkSvg`, where drafts always kept it, and the
+    encoding beside it as `jamiInk`; drafts kept before both restore unchanged.
+  - Jami Ink opens a page from its encoding when it carries one, items and
+    ids as they were (`notebookInkDocument`), and from the SVG otherwise. A
+    page that is the encoding alone and does not decode is never opened: the
+    editor reports it rather than showing an empty page a save would write
+    over.
+- **Readers** (built). Two helpers in `lib/workspace/notebook-ink-data.ts`:
+  `notebookInkSvg` for anything that draws or reads ink as an image (the
+  server's `notebook-neighbour-pages.server.ts` and
+  `practice-paper-evidence.server.ts`, which hand it to
+  `notebook-page-render.server.ts`; the static page; the swipe track; Tutor's
+  page snapshot), and `notebookInkDocument` for the editor.
+  `storedNotebookInkSvg` reads only an SVG already stored, for what must stay
+  cheap (thumbnails and `previewInkSvg`): a page stored as the encoding alone
+  shows as ink the thumbnail cannot draw.
+- **Exam working** keeps its pages as SVG strings. The `examScratchpads` rules
+  allow only `inkSvg`, `pages` and `updatedAt`, so storing the encoding there
+  waits on a rules change the owner deploys. The editor's ink is read as SVG
+  (`notebookInkSvg`) on the way in and out; `examWorkingHasInk` and the
+  marking image still read that SVG.
+- **Swipes** keep their SVG snapshot, now from `notebookInkSvg`. Engine
+  bitmaps for them are a performance change, moved to stage 7.
 - **Unchanged.** Toolbar, tool settings, shortcuts, style sync, the text, image
   and graph layers, PDF rendering (now scheduled by the engine) and phone
   viewing.
@@ -651,10 +671,21 @@ Explicit, as `docs/architecture.md` requires:
 
 - Nothing is converted in the background. Old pages (js-draw SVG, inline
   legacy ink, v1 strokes) open through the importers unchanged.
-- A page becomes `jami-ink` v3 only when the student edits it and it saves.
-- The SVG copy keeps every page readable by a js-draw build until cleanup.
-- Readers of the old formats stay for good. Removing one needs an explicit
-  migration and a production count check.
+- A page gains Jami Ink's encoding only when the student edits it with Jami
+  Ink and it saves.
+- During the rollout the record stays a `js-draw-svg` (v2) record, SVG and
+  all, with the encoding in an extra `jamiInk` field. A build from before
+  stage 5 reads the SVG, ignores the field, and saves plain v2 SVG if it
+  edits the page, which Jami Ink then opens through the SVG. Rolling back,
+  by deploy or by `enableJamiInk`, loses nothing.
+- The biggest pages, which cannot carry both, are stored as the encoding
+  alone (`jami-ink`, v3). A build from before stage 5 cannot read that: it
+  sees the page as ink it has not loaded (the thumbnail says the ink is
+  omitted) and will not open it to edit, so it cannot save an empty page over
+  it.
+- Cleanup (stage 8) stops writing the SVG, so every page saved after it is
+  v3. Readers of the old formats stay for good. Removing one needs an
+  explicit migration and a production count check.
 
 ## Stages
 
@@ -679,14 +710,18 @@ fallback to js-draw.
      end, undo, redo and clear.
    - `NotebookInkEditor` on `InkSurface`, in notebooks and the exam sheet.
    - The owner's first iPad round.
-5. **Saving and every reader.** Format, drafts, limits, the server, thumbnails,
-   swipes and exam working.
+5. **Saving and every reader (done).** Format, drafts, limits, the server,
+   thumbnails and previews, the static page and the editors (see Saving and
+   Migration). The exam sheet keeps SVG until its rules allow the encoding,
+   and swipe bitmaps moved to stage 7.
 6. **New tools.** Lasso, shapes on hold and the ruler. The owner's second iPad
    round.
 7. **Performance.**
    - A worker renderer, only if the gates need it.
    - PDF detail under the engine scheduler.
    - The memory budget.
+   - Swipe and warm snapshots as engine bitmaps, in place of an SVG the
+     browser decodes as the swipe begins.
    - The owner's third iPad round.
 8. **Release and cleanup.**
    - `enableJamiInk` stays on, with the env override back to js-draw.

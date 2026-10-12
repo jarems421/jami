@@ -73,10 +73,12 @@ import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
 import { notebookPageHasWork } from "@/lib/workspace/notebook-assistant";
+import { notebookInkSvg } from "@/lib/workspace/notebook-ink-data";
 import {
   clampNotebookPagePan,
   shouldSuppressTouchAfterStylus,
 } from "@/lib/workspace/notebook-inking";
+import { pageHasSavedInk } from "@/lib/workspace/notebook-page-ink-split";
 import { notebookToolMovesPlacedItems } from "@/lib/workspace/notebook-page-state";
 import {
   type NotebookPdfCanvasTracking,
@@ -204,6 +206,7 @@ export default function NotebookEditorPage() {
     selectedPage,
     selectedPageIndex,
     selectedPageInkUnloaded,
+    selectedPageInk,
     selectedPageInkSvg,
     activeNotebookFile,
     activeNotebookFileUrl,
@@ -313,7 +316,7 @@ export default function NotebookEditorPage() {
     getSelectedPageId: () => pageState.read().selectedPage?.id ?? null,
     // Prepared while the page was idle, so beginning a swipe does not pay for
     // an SVG export on the pointermove that starts it.
-    getInkSnapshotSvg: () => inkEditorRef.current?.serializeWarm() ?? selectedPageInkSvg,
+    getInkSnapshotSvg: () => notebookInkSvg(inkEditorRef.current?.serializeWarm()) ?? selectedPageInkSvg,
     onSwipeMotionChange: setPageSwipeMotion,
     onInkSnapshotChange: setPageSwipeInkSnapshot,
   });
@@ -394,7 +397,7 @@ export default function NotebookEditorPage() {
     inkEditorRef,
     editorRevisionRef,
     isInkInteracting,
-    fallbackInkSvg: selectedPageInkSvg,
+    fallbackInk: selectedPageInk,
     onPageSaved: handlePageSaved,
     onError: showError,
     onClearError: clearFeedbackIfShowing,
@@ -968,11 +971,8 @@ export default function NotebookEditorPage() {
                     pageId={selectedPage.id}
                     pageWidth={CANVAS_WIDTH}
                     pageHeight={CANVAS_HEIGHT}
-                    persistedInkSvg={selectedPageInkSvg}
-                    hasPersistedInk={Boolean(
-                      selectedPage.inkData?.svg ||
-                        (selectedPage.strokeData?.strokes?.length ?? 0) > 0
-                    )}
+                    persistedInk={selectedPageInk}
+                    hasPersistedInk={pageHasSavedInk(selectedPage)}
                     inkReady={inkReady}
                     editingEnabled={pageEditingEnabled && !selectedPageInkUnloaded}
                     eraserWidth={eraserWidth}

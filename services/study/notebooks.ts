@@ -35,6 +35,7 @@ import {
   normalizeNotebookStrokeData,
   normalizeNotebookTitle,
   normalizeNotebookPreviewSvg,
+  storedNotebookInkSvg,
   MAX_NOTEBOOK_IMAGE_REFS,
   type Notebook,
   type NotebookFile,
@@ -715,7 +716,7 @@ export async function saveNotebookPageSnapshot(
         transaction.delete(notebookPageInkRef(normalizedUserId, pageId));
       }
       transaction.update(notebookRef, {
-        previewInkSvg: normalizeNotebookPreviewSvg(input.inkData.svg) ?? null,
+        previewInkSvg: normalizeNotebookPreviewSvg(storedNotebookInkSvg(inkData)) ?? null,
         previewPageId: pageId,
         updatedAt: now,
       });
@@ -728,7 +729,7 @@ export async function saveNotebookPageSnapshot(
   const hasSavedWork =
     Boolean(snapshot.typedContent.trim()) ||
     snapshot.textBlocks.length > 0 ||
-    Boolean(snapshot.inkData?.svg?.trim()) ||
+    Boolean(storedNotebookInkSvg(snapshot.inkData)?.trim() ?? snapshot.inkData) ||
     snapshot.status !== "blank";
   if (hasSavedWork) {
     reportTutorialAction("save-work", { notebookId });

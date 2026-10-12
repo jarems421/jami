@@ -13,6 +13,7 @@ import { useNotebookInkRenderWindow } from "@/hooks/useNotebookInkRenderWindow";
 import { useNotebookInkSnapshots } from "@/hooks/useNotebookInkSnapshots";
 import { useNotebookJsDrawEditor } from "@/hooks/useNotebookJsDrawEditor";
 import { getNotebookEraserToolThickness } from "@/lib/workspace/notebook-eraser";
+import { notebookInkSvg, svgNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
 import {
   applyNotebookEraserMode,
@@ -39,7 +40,7 @@ export const JsDrawInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEd
       eraserThickness,
       highlighterColor,
       highlighterThickness,
-      initialSvg,
+      initialInk,
       inkWindow = null,
       onChange,
       onHistoryChange,
@@ -112,7 +113,8 @@ export const JsDrawInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEd
       refs,
       style,
       readOnly,
-      initialSvg,
+      // A page Jami Ink saved too big to carry its SVG is written out as one.
+      initialSvg: notebookInkSvg(initialInk, { width: pageWidth, height: pageHeight }) ?? "",
       pageId,
       pageWidth,
       pageHeight,
@@ -130,6 +132,7 @@ export const JsDrawInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEd
       () => {
         const serializeSynchronously = () =>
           serializeNotebookInkSynchronously(editorRef.current, readyRef.current, isInteracting);
+        const asInk = (svg: string | null) => (svg === null ? null : svgNotebookInkData(svg));
         return {
           clear() {
             const editor = editorRef.current;
@@ -156,21 +159,21 @@ export const JsDrawInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEd
             // An export already taken of exactly this ink saves blocking on
             // another, which matters most here: this runs as a student leaves.
             const snapshot = currentSnapshot();
-            if (snapshot !== null && readyRef.current && !isInteracting()) return snapshot;
-            return serializeSynchronously();
+            if (snapshot !== null && readyRef.current && !isInteracting()) return asInk(snapshot);
+            return asInk(serializeSynchronously());
           },
           serializeWarm() {
             // A prepared snapshot is preferred even mid-gesture, where the
             // blocking path refuses to run at all and would otherwise hand the
             // swipe a stale SVG from the last save.
-            return currentSnapshot() ?? serializeSynchronously();
+            return asInk(currentSnapshot() ?? serializeSynchronously());
           },
           async serializeAsync() {
             if (!editorRef.current || isInteracting() || !readyRef.current) {
               return null;
             }
             const svg = await exportCurrentInk();
-            return isInteracting() ? null : svg;
+            return isInteracting() ? null : asInk(svg);
           },
           setEraserMode(mode) {
             const styleSync = styleSyncRef.current;
