@@ -27,17 +27,24 @@ export function isNotebookToolbarDock(
   );
 }
 
+/**
+ * Where the toolbar is until it is dragged somewhere else: `top`, in the
+ * notebook's top bar beside the title, which never covers the page. The other
+ * docks float over the page at its left, right or bottom edge.
+ */
+export const NOTEBOOK_TOOLBAR_DEFAULT_DOCK: NotebookToolbarDock = "top";
+
 export function readNotebookToolbarDockPreference(): NotebookToolbarDock {
-  if (typeof window === "undefined") return "bottom";
+  if (typeof window === "undefined") return NOTEBOOK_TOOLBAR_DEFAULT_DOCK;
 
   try {
     const storedValue = window.localStorage.getItem(
       NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY
     );
-    return isNotebookToolbarDock(storedValue) ? storedValue : "bottom";
+    return isNotebookToolbarDock(storedValue) ? storedValue : NOTEBOOK_TOOLBAR_DEFAULT_DOCK;
   } catch {
-    // Storage can be unavailable in privacy modes; the bottom dock is safe.
-    return "bottom";
+    // Storage can be unavailable in privacy modes; the top bar is safe.
+    return NOTEBOOK_TOOLBAR_DEFAULT_DOCK;
   }
 }
 
@@ -97,8 +104,11 @@ export const NOTEBOOK_TOOL_DOUBLE_PRESS_MS = 400;
 
 export type NotebookToolPress = { tool: string; at: number };
 
-/** Which tool's options popover is open, if any. The three never show together. */
-export type NotebookToolMenu = "pen" | "highlighter" | "eraser" | null;
+/**
+ * Which toolbar menu is open, if any: a tool's options popover, or the Insert
+ * menu (a picture or a graph). Never two at once.
+ */
+export type NotebookToolMenu = "pen" | "highlighter" | "eraser" | "insert" | null;
 
 /** Whether this press, following the last one, completes a double press. */
 export function isNotebookToolDoublePress(
@@ -113,6 +123,32 @@ export function isNotebookToolDoublePress(
 
 export function isNotebookToolbarSideDock(dock: NotebookToolbarDock) {
   return dock === "left" || dock === "right";
+}
+
+/**
+ * Where a menu opened from a toolbar button goes, in viewport pixels for a
+ * fixed-position menu: beside the button, on the side away from the edge the
+ * toolbar is docked to, `gap` clear of it. A menu cannot hang inside the
+ * toolbar itself, whose paint containment clips anything outside its box.
+ */
+export function notebookToolbarMenuPosition(
+  dock: NotebookToolbarDock,
+  anchor: { left: number; top: number; right: number; bottom: number },
+  viewport: { width: number; height: number },
+  gap = 8
+): { left?: number; top?: number; right?: number; bottom?: number; transform: string } {
+  const middleX = (anchor.left + anchor.right) / 2;
+  const middleY = (anchor.top + anchor.bottom) / 2;
+  switch (dock) {
+    case "top":
+      return { left: middleX, top: anchor.bottom + gap, transform: "translateX(-50%)" };
+    case "bottom":
+      return { left: middleX, bottom: viewport.height - anchor.top + gap, transform: "translateX(-50%)" };
+    case "left":
+      return { left: anchor.right + gap, top: middleY, transform: "translateY(-50%)" };
+    case "right":
+      return { right: viewport.width - anchor.left + gap, top: middleY, transform: "translateY(-50%)" };
+  }
 }
 
 export function hasNotebookToolbarDragStarted(input: {
@@ -173,10 +209,16 @@ export function clampNotebookToolbarDragOffset(input: {
   frameWidth: number;
   frameHeight: number;
   inset?: number;
+  /**
+   * How far above the frame the toolbar may go: the top bar's height, so a
+   * toolbar can be carried out of the top bar and back into it.
+   */
+  topReach?: number;
 }) {
   const inset = Math.max(0, input.inset ?? 8);
   const minLeft = Math.min(inset, Math.max(0, input.frameWidth - input.toolbarWidth));
-  const minTop = Math.min(inset, Math.max(0, input.frameHeight - input.toolbarHeight));
+  const minTop =
+    Math.min(inset, Math.max(0, input.frameHeight - input.toolbarHeight)) - Math.max(0, input.topReach ?? 0);
   const maxLeft = Math.max(
     minLeft,
     input.frameWidth - input.toolbarWidth - inset

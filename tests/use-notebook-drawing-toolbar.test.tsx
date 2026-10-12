@@ -14,7 +14,14 @@ afterEach(() => {
   root = null;
 });
 
-function renderToolbar(handlers: { closeMenus: () => void; undo: () => void; redo: () => void }) {
+type Handlers = {
+  closeMenus: () => void;
+  setMenuOpen: (menu: "pen" | "highlighter" | "eraser" | "insert", open: boolean) => void;
+  undo: () => void;
+  redo: () => void;
+};
+
+function renderToolbar(handlers: Handlers, openMenu: "pen" | "insert" | null = "pen") {
   let seen: Toolbar | null = null;
   const report = (toolbar: Toolbar) => {
     seen = toolbar;
@@ -28,7 +35,7 @@ function renderToolbar(handlers: { closeMenus: () => void; undo: () => void; red
       tool: "pen",
       penColor: "black",
       highlighterColor: "yellow",
-      openMenu: "pen",
+      openMenu,
       onSelectDrawingTool: () => undefined,
       onToggleTextTool: () => undefined,
       onAddImage: () => undefined,
@@ -52,6 +59,7 @@ describe("useNotebookDrawingToolbar", () => {
     const calls: string[] = [];
     const toolbar = renderToolbar({
       closeMenus: () => calls.push("close"),
+      setMenuOpen: vi.fn(),
       undo: () => calls.push("undo"),
       redo: () => calls.push("redo"),
     });
@@ -61,7 +69,7 @@ describe("useNotebookDrawingToolbar", () => {
   });
 
   it("hands the toolbar its state and its dock, with the dock's drag bindings", () => {
-    const toolbar = renderToolbar({ closeMenus: vi.fn(), undo: vi.fn(), redo: vi.fn() });
+    const toolbar = renderToolbar({ closeMenus: vi.fn(), setMenuOpen: vi.fn(), undo: vi.fn(), redo: vi.fn() });
     expect(toolbar.toolbarProps).toMatchObject({
       dock: toolbar.dock,
       tool: "pen",
@@ -70,5 +78,16 @@ describe("useNotebookDrawingToolbar", () => {
       redoDepth: 1,
     });
     expect(typeof toolbar.toolbarProps.dockBindings.onPointerDown).toBe("function");
+  });
+
+  it("opens the Insert menu when it is shut, and shuts it when it is open", () => {
+    const setMenuOpen = vi.fn();
+    const handlers = { closeMenus: vi.fn(), setMenuOpen, undo: vi.fn(), redo: vi.fn() };
+    renderToolbar(handlers, "pen").toolbarProps.onToggleInsertMenu();
+    renderToolbar(handlers, "insert").toolbarProps.onToggleInsertMenu();
+    expect(setMenuOpen.mock.calls).toEqual([
+      ["insert", true],
+      ["insert", false],
+    ]);
   });
 });

@@ -15,10 +15,8 @@ import type { NotebookPage } from "@/lib/workspace/notebooks";
  */
 export default function NotebookQuestionOverlay({
   page,
-  dockedTop,
 }: {
   page: NotebookPage;
-  dockedTop: boolean;
 }) {
   /*
    * A practice question's answer, folded away until asked for. Revealing it is
@@ -29,11 +27,7 @@ export default function NotebookQuestionOverlay({
   if (!page.questionPrompt) return null;
   const answerShown = answerShownFor === page.id;
   return (
-    <div
-      className={`absolute left-1/2 z-20 w-[min(92vw,36rem)] -translate-x-1/2 ${
-        dockedTop ? "top-[5rem]" : "top-3"
-      }`}
-    >
+    <div className="absolute left-1/2 top-3 z-20 w-[min(92vw,36rem)] -translate-x-1/2">
       <Card tone="warm" padding="sm">
         <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">
           {page.questionPrompt}

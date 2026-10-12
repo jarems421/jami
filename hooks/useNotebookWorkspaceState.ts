@@ -30,6 +30,7 @@ export function useNotebookDrawingToolState() {
   const [penMenuOpen, setPenMenuOpen] = useState(false);
   const [highlighterMenuOpen, setHighlighterMenuOpen] = useState(false);
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
+  const [insertMenuOpen, setInsertMenuOpen] = useState(false);
   // The stored preferences are read on the client after mount, so the server
   // and the first client render agree. See `readNotebookScribbleErasePreference`
   // and `readNotebookPenSettings`.
@@ -38,19 +39,22 @@ export function useNotebookDrawingToolState() {
     NOTEBOOK_PEN_SETTINGS_DEFAULT
   );
 
-  /** Which options popover is showing. The three are mutually exclusive. */
+  /** Which toolbar menu is showing. They are mutually exclusive. */
   const openMenu: NotebookToolMenu = penMenuOpen
     ? "pen"
     : highlighterMenuOpen
       ? "highlighter"
       : eraserMenuOpen
         ? "eraser"
-        : null;
+        : insertMenuOpen
+          ? "insert"
+          : null;
   const setMenuOpen = useCallback(
     (menu: Exclude<NotebookToolMenu, null>, open: boolean) => {
       setPenMenuOpen(menu === "pen" && open);
       setHighlighterMenuOpen(menu === "highlighter" && open);
       setEraserMenuOpen(menu === "eraser" && open);
+      setInsertMenuOpen(menu === "insert" && open);
     },
     []
   );
@@ -63,7 +67,8 @@ export function useNotebookDrawingToolState() {
     if (penMenuOpen) setPenMenuOpen(false);
     if (highlighterMenuOpen) setHighlighterMenuOpen(false);
     if (eraserMenuOpen) setEraserMenuOpen(false);
-  }, [eraserMenuOpen, highlighterMenuOpen, penMenuOpen]);
+    if (insertMenuOpen) setInsertMenuOpen(false);
+  }, [eraserMenuOpen, highlighterMenuOpen, insertMenuOpen, penMenuOpen]);
 
   return {
     openMenu,

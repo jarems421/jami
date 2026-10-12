@@ -95,6 +95,8 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
   ).toBeVisible({ timeout: 15_000 });
 
   const toolbar = page.getByRole("toolbar", { name: "Drawing tools" });
+  // It starts in the top bar, clear of the page.
+  await expect(toolbar).toHaveAttribute("data-toolbar-dock", "top");
   expect(
     await toolbar.getByRole("button").evaluateAll((buttons) =>
       buttons.map((button) => button.getAttribute("aria-label"))
@@ -104,8 +106,7 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
     "Highlighter (H)",
     "Eraser (E)",
     "Text box (T)",
-    "Add image",
-    "Add graph",
+    "Insert",
     "Undo (Ctrl+Z)",
     "Redo (Ctrl+Shift+Z)",
   ]);
@@ -123,7 +124,8 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
         };
       })
     );
-  expect(floatingControlStyles).toHaveLength(2);
+  // The page navigation: the toolbar floats only once it is dragged out of the top bar.
+  expect(floatingControlStyles).toHaveLength(1);
   for (const style of floatingControlStyles) {
     expect(style).toMatchObject({
       backdropFilter: "none",

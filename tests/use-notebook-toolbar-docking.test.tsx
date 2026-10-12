@@ -25,6 +25,8 @@ type HarnessProps = {
   onAction: MouseEventHandler<HTMLButtonElement>;
   onDragStarted: () => void;
   prefersReducedMotion?: boolean;
+  /** A top bar 60px tall above the frame, as the notebook has. */
+  withTopBar?: boolean;
 };
 
 type PointerInit = {
@@ -114,34 +116,40 @@ function Harness({
   onAction,
   onDragStarted,
   prefersReducedMotion = false,
+  withTopBar = false,
 }: HarnessProps) {
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const topBarRef = useRef<HTMLElement | null>(null);
   const { dock, toolbarRef, toolbarBindings } =
     useNotebookToolbarDocking({
       frameRef,
+      topBarRef: withTopBar ? topBarRef : undefined,
       frameSize,
       onDragStarted,
       prefersReducedMotion,
     });
 
   return (
-    <div ref={frameRef} data-notebook-frame="true">
-      <div
-        ref={toolbarRef}
-        role="toolbar"
-        data-toolbar-dock={dock}
-        {...toolbarBindings}
-      >
-        <button
-          type="button"
-          data-notebook-toolbar-action="true"
-          onClick={onAction}
+    <>
+      {withTopBar ? <header ref={topBarRef} data-notebook-top-bar="true" /> : null}
+      <div ref={frameRef} data-notebook-frame="true">
+        <div
+          ref={toolbarRef}
+          role="toolbar"
+          data-toolbar-dock={dock}
+          {...toolbarBindings}
         >
-          Pen
-        </button>
+          <button
+            type="button"
+            data-notebook-toolbar-action="true"
+            onClick={onAction}
+          >
+            Pen
+          </button>
+        </div>
+        <output aria-label="toolbar dock">{dock}</output>
       </div>
-      <output aria-label="toolbar dock">{dock}</output>
-    </div>
+    </>
   );
 }
 
@@ -270,6 +278,9 @@ beforeAll(() => {
       value(this: HTMLElement) {
         if (this.dataset.notebookFrame === "true") {
           return rect(FRAME_RECT);
+        }
+        if (this.dataset.notebookTopBar === "true") {
+          return rect({ left: 0, top: -60, width: 800, height: 60 });
         }
         if (this.dataset.toolbarDock) {
           const base = getToolbarBasePosition(this);
@@ -495,18 +506,19 @@ describe("useNotebookToolbarDocking", () => {
       });
 
       startActionDrag(harness.action(), {
-        endX: 100,
-        endY: 20,
+        startY: 28,
+        endX: 400,
+        endY: 580,
         pointerId: 4,
       });
       dispatchPointer(harness.toolbar(), finishEvent, {
-        clientX: 100,
-        clientY: 20,
+        clientX: 400,
+        clientY: 580,
         pointerId: 4,
         pointerType: "pen",
       });
 
-      expect(harness.dock()).toBe("bottom");
+      expect(harness.dock()).toBe("top");
       expect(harness.toolbar().dataset.toolbarDragging).toBeUndefined();
       expect(harness.toolbar().style.transform).toBe(
         "translate3d(0, 0, 0)"
@@ -526,21 +538,22 @@ describe("useNotebookToolbarDocking", () => {
     });
 
     startActionDrag(harness.action(), {
-      endX: 100,
-      endY: 20,
+      startY: 28,
+      endX: 400,
+      endY: 580,
       pointerId: 5,
     });
     dispatchPointer(harness.toolbar(), "pointerup", {
-      clientX: 100,
-      clientY: 20,
+      clientX: 400,
+      clientY: 580,
       pointerId: 5,
       pointerType: "pen",
     });
 
-    expect(harness.dock()).toBe("top");
+    expect(harness.dock()).toBe("bottom");
     expect(
       window.localStorage.getItem(NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY)
-    ).toBe("top");
+    ).toBe("bottom");
     expect(harness.toolbar().style.transition).toBe("none");
     expect(harness.toolbar().style.transform).not.toBe(
       "translate3d(0, 0, 0)"
@@ -555,6 +568,42 @@ describe("useNotebookToolbarDocking", () => {
     dispatchTransitionEnd(harness.toolbar(), "transform");
     expect(harness.toolbar().style.transition).toBe("");
     expect(harness.toolbar().style.transform).toBe("");
+  });
+
+  it("carries a toolbar up into the top bar, and stops one at the frame's edge without one", () => {
+    const drawUp = (withTopBar: boolean) => {
+      const harness = renderHarness({
+        frameSize: { width: 800, height: 600 },
+        onAction: vi.fn(),
+        onDragStarted: vi.fn(),
+        withTopBar,
+      });
+      startActionDrag(harness.action(), { startY: 28, endX: 400, endY: -40, pointerId: 9 });
+      const transform = harness.toolbar().style.transform;
+      act(() => activeRoot?.unmount());
+      activeRoot = null;
+      return transform;
+    };
+    // Up to the bar's top, less the inset a floating toolbar keeps.
+    expect(drawUp(true)).toBe("translate3d(0px, -60px, 0)");
+    expect(drawUp(false)).toBe("translate3d(0px, 0px, 0)");
+  });
+
+  it("stops a toolbar floating over the page at the frame's edge, which clips it, even with a top bar", () => {
+    window.localStorage.setItem(NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY, "left");
+    const harness = renderHarness({
+      frameSize: { width: 800, height: 600 },
+      onAction: vi.fn(),
+      onDragStarted: vi.fn(),
+      withTopBar: true,
+    });
+    expect(harness.dock()).toBe("left");
+    startActionDrag(harness.action(), { startX: 30, startY: 300, endX: 30, endY: -40, pointerId: 10 });
+    // From 280 down the frame up to the 8px inset at its top, and no further.
+    expect(harness.toolbar().style.transform).toBe("translate3d(0px, -272px, 0)");
+    dispatchPointer(harness.toolbar(), "pointerup", { clientX: 30, clientY: -40, pointerId: 10, pointerType: "pen" });
+    // Let go over the bar, it goes into the bar.
+    expect(harness.dock()).toBe("top");
   });
 
   it("restores the saved dock after mounting", () => {
@@ -583,8 +632,9 @@ describe("useNotebookToolbarDocking", () => {
     const harness = renderHarness(initialProps);
 
     startActionDrag(harness.action(), {
-      endX: 100,
-      endY: 20,
+      startY: 28,
+      endX: 400,
+      endY: 580,
       pointerId: 6,
     });
     harness.rerender({
@@ -592,7 +642,7 @@ describe("useNotebookToolbarDocking", () => {
       frameSize: { width: 801, height: 600 },
     });
 
-    expect(harness.dock()).toBe("bottom");
+    expect(harness.dock()).toBe("top");
     expect(harness.toolbar().dataset.toolbarDragging).toBeUndefined();
     expect(harness.toolbar().style.transform).toBe(
       "translate3d(0, 0, 0)"
@@ -615,18 +665,19 @@ describe("useNotebookToolbarDocking", () => {
     });
 
     startActionDrag(harness.action(), {
-      endX: 100,
-      endY: 20,
+      startY: 28,
+      endX: 400,
+      endY: 580,
       pointerId: 7,
     });
     dispatchPointer(harness.toolbar(), "pointerup", {
-      clientX: 100,
-      clientY: 20,
+      clientX: 400,
+      clientY: 580,
       pointerId: 7,
       pointerType: "pen",
     });
 
-    expect(harness.dock()).toBe("top");
+    expect(harness.dock()).toBe("bottom");
     expect(harness.toolbar().style.transition).toBe("");
     expect(harness.toolbar().style.transform).toBe(
       "translate3d(0, 0, 0)"
@@ -643,8 +694,9 @@ describe("useNotebookToolbarDocking", () => {
     });
 
     startActionDrag(harness.action(), {
-      endX: 100,
-      endY: 20,
+      startY: 28,
+      endX: 400,
+      endY: 580,
       pointerId: 8,
     });
     expect(harness.toolbar().style.transform).not.toBe(
@@ -652,13 +704,13 @@ describe("useNotebookToolbarDocking", () => {
     );
 
     dispatchPointer(harness.toolbar(), "pointercancel", {
-      clientX: 100,
-      clientY: 20,
+      clientX: 400,
+      clientY: 580,
       pointerId: 8,
       pointerType: "pen",
     });
 
-    expect(harness.dock()).toBe("bottom");
+    expect(harness.dock()).toBe("top");
     expect(harness.toolbar().style.transition).toBe("");
     expect(harness.toolbar().style.transform).toBe("");
     expect(animationFrameCallbacks.size).toBe(0);

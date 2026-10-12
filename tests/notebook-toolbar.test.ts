@@ -9,6 +9,7 @@ import {
   isNotebookToolDoublePress,
   isNotebookToolbarDock,
   isNotebookToolbarSideDock,
+  notebookToolbarMenuPosition,
   NOTEBOOK_TOOL_DOUBLE_PRESS_MS,
   NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY,
   readNotebookToolbarDockPreference,
@@ -117,6 +118,25 @@ describe("notebook toolbar docking", () => {
     ).toEqual({ x: -92, y: 476 });
   });
 
+  it("lets the toolbar be carried up into the top bar, as far as the bar reaches", () => {
+    const up = (topReach?: number) =>
+      clampNotebookToolbarDragOffset({
+        deltaX: 0,
+        deltaY: -200,
+        originLeft: 100,
+        originTop: -52,
+        toolbarWidth: 300,
+        toolbarHeight: 44,
+        frameWidth: 800,
+        frameHeight: 600,
+        topReach,
+      }).y;
+    // From the bar, it goes no higher than the bar's top less the inset.
+    expect(up(61)).toBe(-1);
+    // With no bar to go into, the first move pulls it inside the frame.
+    expect(up()).toBe(60);
+  });
+
   it("snaps fractional touch movement to the physical pixel grid", () => {
     expect(
       snapNotebookToolbarOffsetToDevicePixels(
@@ -160,6 +180,34 @@ describe("notebook toolbar docking", () => {
     ).toBe("bottom");
   });
 
+  it("opens a toolbar menu beside its button, away from the docked edge", () => {
+    const anchor = { left: 600, top: 10, right: 644, bottom: 54 };
+    const viewport = { width: 1180, height: 820 };
+    expect(notebookToolbarMenuPosition("top", anchor, viewport)).toEqual({
+      left: 622,
+      top: 62,
+      transform: "translateX(-50%)",
+    });
+    const low = { left: 600, top: 760, right: 644, bottom: 804 };
+    expect(notebookToolbarMenuPosition("bottom", low, viewport)).toEqual({
+      left: 622,
+      bottom: 68,
+      transform: "translateX(-50%)",
+    });
+    const side = { left: 14, top: 400, right: 58, bottom: 444 };
+    expect(notebookToolbarMenuPosition("left", side, viewport)).toEqual({
+      left: 66,
+      top: 422,
+      transform: "translateY(-50%)",
+    });
+    const far = { left: 1122, top: 400, right: 1166, bottom: 444 };
+    expect(notebookToolbarMenuPosition("right", far, viewport)).toEqual({
+      right: 66,
+      top: 422,
+      transform: "translateY(-50%)",
+    });
+  });
+
   it("uses vertical orientation only for side docks", () => {
     expect(isNotebookToolbarSideDock("left")).toBe(true);
     expect(isNotebookToolbarSideDock("right")).toBe(true);
@@ -180,8 +228,9 @@ describe("notebook toolbar docking", () => {
     expect(values.get(NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY)).toBe("left");
     expect(readNotebookToolbarDockPreference()).toBe("left");
 
+    // Anything else is the top bar, where the toolbar starts.
     values.set(NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY, "center");
-    expect(readNotebookToolbarDockPreference()).toBe("bottom");
+    expect(readNotebookToolbarDockPreference()).toBe("top");
   });
 });
 

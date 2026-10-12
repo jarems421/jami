@@ -739,10 +739,11 @@ export default function NotebookEditorPage() {
     void createPageAtEnd();
   }, [createPageAtEnd]);
 
-  const { dock: toolbarDock, toolbarProps: drawingToolbarProps } = useNotebookDrawingToolbar({
+  const { dock: toolbarDock, topBarRef, toolbarProps: drawingToolbarProps } = useNotebookDrawingToolbar({
     frameRef: pageFrameRef,
     frameSize,
     closeMenus: closeDrawingToolMenus,
+    setMenuOpen: drawingTools.setMenuOpen,
     undo: handleUndo,
     redo: handleRedo,
     tool,
@@ -865,10 +866,12 @@ export default function NotebookEditorPage() {
             onEditingLockChange: setPracticePaperEditingLocked,
             onTutorLockChange: setPracticePaperTutorLocked,
           }}
+          tools={pageEditingEnabled && toolbarDock === "top" ? <NotebookDrawingToolbar {...drawingToolbarProps} /> : null}
+          barRef={topBarRef}
         />
         <div className="relative isolate min-h-0 flex-1 overflow-hidden">
           <NotebookToolSettingsPopover
-            dock={toolbarDock}
+            dock={toolbarDock === "top" ? "top-bar" : toolbarDock}
             openMenu={openToolMenu}
             pen={penToolSettings}
             highlighter={highlighterToolSettings}
@@ -958,7 +961,7 @@ export default function NotebookEditorPage() {
             onActivePointerCancel={handlePageSurfaceTextGestureStop}
             overlay={
               selectedPage ? (
-                <NotebookQuestionOverlay page={selectedPage} dockedTop={toolbarDock === "top"} />
+                <NotebookQuestionOverlay page={selectedPage} />
               ) : null
             }
             activeContent={
@@ -1010,12 +1013,12 @@ export default function NotebookEditorPage() {
               bounce={createPageBounce}
             />
           ) : null}
-          {pageEditingEnabled ? <NotebookDrawingToolbar {...drawingToolbarProps} /> : null}
+          {pageEditingEnabled && toolbarDock !== "top" ? <NotebookDrawingToolbar {...drawingToolbarProps} /> : null}
           <NotebookPageNavigation
             selectedPageIndex={selectedPageIndex}
             pageCount={pages.length}
             navigationBusy={Boolean(pageSwipeMotion)}
-            editingToolbarVisible={pageEditingEnabled}
+            editingToolbarVisible={pageEditingEnabled && toolbarDock === "bottom"}
             canCreatePage={
               selectedPageIndex >= 0 && selectedPageIndex >= pages.length - 1 && pageEditingEnabled
             }

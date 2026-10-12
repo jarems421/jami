@@ -12,6 +12,7 @@ let root: Root;
 
 const onSelectDrawingTool = vi.fn();
 const onToggleTextTool = vi.fn();
+const onToggleInsertMenu = vi.fn();
 const onAddImage = vi.fn();
 const onAddGraph = vi.fn();
 const onUndo = vi.fn();
@@ -39,6 +40,7 @@ function render(
         openMenu={overrides.openMenu ?? null}
         onSelectDrawingTool={onSelectDrawingTool}
         onToggleTextTool={onToggleTextTool}
+        onToggleInsertMenu={onToggleInsertMenu}
         onAddImage={onAddImage}
         addingImage={overrides.addingImage ?? false}
         onAddGraph={onAddGraph}
@@ -65,10 +67,32 @@ function click(label: string) {
   });
 }
 
+/** The open Insert menu, which is drawn on the page's body, outside the toolbar. */
+function menu() {
+  return document.querySelector<HTMLElement>('[role="menu"]');
+}
+
+/** An item of the open Insert menu, by what it says. */
+function menuItem(text: string) {
+  const item = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+    (each) => each.textContent === text
+  );
+  if (!item) throw new Error(`no menu item ${text}`);
+  return item;
+}
+
+function choose(text: string) {
+  act(() => {
+    menuItem(text).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
 beforeEach(() => {
   onSelectDrawingTool.mockClear();
   onToggleTextTool.mockClear();
+  onToggleInsertMenu.mockClear();
   onAddImage.mockClear();
+  onAddGraph.mockClear();
   onUndo.mockClear();
   onRedo.mockClear();
   container = document.createElement("div");
@@ -143,21 +167,113 @@ describe("NotebookDrawingToolbar", () => {
     expect(container.querySelector('[aria-label^="Select"]')).toBeNull();
   });
 
-  it("hands a chosen picture to the page, and holds the button while one uploads", () => {
+  it("keeps pictures and graphs behind one Insert button, whose menu the page opens", () => {
     render();
+    expect(container.querySelector('[aria-label="Add image"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Add graph"]')).toBeNull();
+    expect(menu()).toBeNull();
+    expect(button("Insert").getAttribute("aria-haspopup")).toBe("menu");
+    expect(button("Insert").getAttribute("aria-expanded")).toBe("false");
+    click("Insert");
+    expect(onToggleInsertMenu).toHaveBeenCalledTimes(1);
+
+    render({ openMenu: "insert" });
+    expect(button("Insert").getAttribute("aria-expanded")).toBe("true");
+    const items = [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((item) => item.textContent);
+    expect(items).toEqual(["Image", "Graph"]);
+    // Not inside the toolbar, whose paint containment would clip it.
+    expect(container.contains(menu())).toBe(false);
+  });
+
+  it("opens the graph editor from the menu, and puts the menu away", () => {
+    render({ openMenu: "insert" });
+    choose("Graph");
+    expect(onToggleInsertMenu).toHaveBeenCalledTimes(1);
+    expect(onAddGraph).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for a picture from the menu in the same tap, and hands the one chosen to the page", () => {
+    render({ openMenu: "insert" });
     const input = container.querySelector<HTMLInputElement>('input[type="file"]');
     if (!input) throw new Error("no image file input");
     expect(input.accept).toBe("image/jpeg,image/png,image/webp");
+    const picker = vi.spyOn(input, "click").mockImplementation(() => undefined);
+    choose("Image");
+    expect(picker).toHaveBeenCalledTimes(1);
+    expect(onToggleInsertMenu).toHaveBeenCalledTimes(1);
 
+    // The menu has gone by the time the picker answers; the input has not.
+    render({ openMenu: null });
     const file = new File(["png"], "graph.png", { type: "image/png" });
     Object.defineProperty(input, "files", { value: [file], configurable: true });
     act(() => {
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(onAddImage).toHaveBeenCalledWith(file);
+  });
 
-    render({ addingImage: true });
-    expect(button("Adding image…").disabled).toBe(true);
+  it("holds the picture item while one uploads, and shows it on the button", () => {
+    render({ addingImage: true, openMenu: "insert" });
+    expect(menuItem("Adding image…").disabled).toBe(true);
+    expect(button("Insert (adding an image)").disabled).toBe(false);
+  });
+
+  it("sits in the top bar as a row of quiet buttons, and floats as a pill anywhere else", () => {
+    render({ dock: "top" });
+    let bar = container.querySelector('[role="toolbar"]') as HTMLElement;
+    expect((container.firstElementChild as HTMLElement).className).not.toContain("absolute");
+    expect(bar.className).not.toContain("notebook-floating-control");
+    expect(button("Highlighter (H)").className).toContain("border-transparent");
+
+    render({ dock: "bottom" });
+    bar = container.querySelector('[role="toolbar"]') as HTMLElement;
+    expect((container.firstElementChild as HTMLElement).className).toContain("absolute");
+    expect(bar.className).toContain("notebook-floating-control");
+    expect(button("Highlighter (H)").className).not.toContain("border-transparent");
+  });
+
+  it("opens the Insert menu beside its button, away from the edge it is docked to", () => {
+    const placement = (dock: NotebookToolbarDock) => {
+      render({ dock, openMenu: null });
+      render({ dock, openMenu: "insert" });
+      const style = menu()!.style;
+      return { top: style.top, bottom: style.bottom, left: style.left, right: style.right };
+    };
+    expect(placement("top")).toMatchObject({ top: "8px", bottom: "" });
+    expect(placement("bottom")).toMatchObject({ top: "", bottom: `${window.innerHeight + 8}px` });
+    expect(placement("left")).toMatchObject({ left: "8px", right: "" });
+    expect(placement("right")).toMatchObject({ left: "", right: `${window.innerWidth + 8}px` });
+  });
+
+  it("keeps a press on the menu from reaching the toolbar's drag", () => {
+    const onPointerDown = vi.fn();
+    act(() => {
+      root.render(
+        <NotebookDrawingToolbar
+          dock="top"
+          toolbarRef={null}
+          dockBindings={{ onPointerDown }}
+          tool="pen"
+          penColor="black"
+          highlighterColor="yellow"
+          openMenu="insert"
+          onSelectDrawingTool={onSelectDrawingTool}
+          onToggleTextTool={onToggleTextTool}
+          onToggleInsertMenu={onToggleInsertMenu}
+          onAddImage={onAddImage}
+          addingImage={false}
+          onAddGraph={onAddGraph}
+          undoDepth={0}
+          redoDepth={0}
+          onUndo={onUndo}
+          onRedo={onRedo}
+        />
+      );
+    });
+    act(() => {
+      menuItem("Graph").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    });
+    expect(onPointerDown).not.toHaveBeenCalled();
   });
 
   it("keeps side docks clear of the device safe area", () => {

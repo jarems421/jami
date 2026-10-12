@@ -36,7 +36,7 @@ const page = mapNotebookPageData("page-1", {
 
 describe("a practice question's answer", () => {
   it("is not shown until the student asks for it", () => {
-    act(() => root.render(<NotebookQuestionOverlay page={page} dockedTop={false} />));
+    act(() => root.render(<NotebookQuestionOverlay page={page} />));
     expect(container.textContent).toContain("Explain why the rate levels off.");
     expect(container.textContent).not.toContain("Another factor becomes limiting.");
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { memo, useRef, type ComponentPropsWithoutRef, type Ref } from "react";
-import { NOTEBOOK_PAGE_IMAGE_TYPES } from "@/lib/workspace/notebook-page-image-upload";
+import { memo, type ComponentPropsWithoutRef, type Ref } from "react";
+import NotebookToolbarInsertMenu from "@/components/workspace/NotebookToolbarInsertMenu";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
 import { getNotebookStrokePaintColor } from "@/lib/workspace/notebook-page-content";
 import {
@@ -14,9 +14,12 @@ import type { NotebookEditorTool } from "@/lib/workspace/notebook-page-state";
 
 export const NOTEBOOK_TOOL_SETTINGS_ID = "notebook-tool-settings";
 
-/** Position per dock edge. Side docks respect the device safe-area inset. */
-const DOCK_CLASS: Record<NotebookToolbarDock, string> = {
-  top: "left-1/2 top-[0.9rem] -translate-x-1/2",
+/**
+ * Where the toolbar floats, for the docks over the page. Side docks respect
+ * the device safe-area inset. The top dock is no float: the toolbar sits in
+ * the notebook's top bar (`NotebookEditorHeader`), clear of the page.
+ */
+const FLOATING_DOCK_CLASS: Record<Exclude<NotebookToolbarDock, "top">, string> = {
   right:
     "right-[calc(env(safe-area-inset-right,0px)+0.9rem)] top-1/2 -translate-y-1/2",
   bottom:
@@ -40,6 +43,7 @@ export type NotebookDrawingToolbarProps = {
    */
   onSelectDrawingTool: (tool: "pen" | "highlighter" | "eraser") => void;
   onToggleTextTool: () => void;
+  onToggleInsertMenu: () => void;
   /** A picture chosen from the device, to place on the current page. */
   onAddImage: (file: File) => void;
   addingImage: boolean;
@@ -68,6 +72,15 @@ function ToolColorBar({
   );
 }
 
+/**
+ * The notebook's drawing tools: pen, highlighter, eraser, text, Insert (a
+ * picture or a graph), then undo and redo.
+ *
+ * At home in the top bar, where it never covers the page: a row of quiet
+ * buttons, outlined only when picked, beside the title. Dragged out, it floats
+ * over the page at its left, right or bottom edge as a pill, and dragged back
+ * up it returns to the bar (`useNotebookToolbarDocking`).
+ */
 function NotebookDrawingToolbar({
   dock,
   toolbarRef,
@@ -78,6 +91,7 @@ function NotebookDrawingToolbar({
   openMenu,
   onSelectDrawingTool,
   onToggleTextTool,
+  onToggleInsertMenu,
   onAddImage,
   addingImage,
   onAddGraph,
@@ -87,10 +101,10 @@ function NotebookDrawingToolbar({
   onRedo,
 }: NotebookDrawingToolbarProps) {
   const sideDock = isNotebookToolbarSideDock(dock);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const inBar = dock === "top";
 
   return (
-    <div className={`pointer-events-none absolute z-40 ${DOCK_CLASS[dock]}`}>
+    <div className={inBar ? "relative" : `pointer-events-none absolute z-40 ${FLOATING_DOCK_CLASS[dock]}`}>
       <div
         ref={toolbarRef}
         role="toolbar"
@@ -99,7 +113,11 @@ function NotebookDrawingToolbar({
         title="Drag the toolbar to dock it to another edge"
         data-toolbar-dock={dock}
         {...dockBindings}
-        className={`notebook-dockable-toolbar notebook-floating-control pointer-events-auto flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1.5 ${
+        className={`notebook-dockable-toolbar pointer-events-auto flex items-center rounded-full border ${
+          inBar
+            ? "flex-wrap justify-center gap-0.5 border-transparent data-[toolbar-dragging=true]:bg-[var(--color-surface-panel-strong)] data-[toolbar-dragging=true]:shadow-e2"
+            : "notebook-floating-control gap-1 border-[var(--color-border)] p-1.5"
+        } ${
           sideDock ? "flex-col" : "flex-row"
         } cursor-grab data-[toolbar-dragging=true]:cursor-grabbing data-[toolbar-dragging=true]:border-[var(--color-border-strong)]`}
       >
@@ -108,6 +126,7 @@ function NotebookDrawingToolbar({
             label="Pen (P)"
             icon="pen"
             tutorialTarget="pen"
+            quiet={inBar}
             active={tool === "pen" || openMenu === "pen"}
             expanded={openMenu === "pen"}
             controls={NOTEBOOK_TOOL_SETTINGS_ID}
@@ -120,6 +139,7 @@ function NotebookDrawingToolbar({
           <ToolbarIconButton
             label="Highlighter (H)"
             icon="highlighter"
+            quiet={inBar}
             active={tool === "highlighter" || openMenu === "highlighter"}
             expanded={openMenu === "highlighter"}
             controls={NOTEBOOK_TOOL_SETTINGS_ID}
@@ -132,6 +152,7 @@ function NotebookDrawingToolbar({
           <ToolbarIconButton
             label="Eraser (E)"
             icon="eraser"
+            quiet={inBar}
             active={tool === "eraser" || openMenu === "eraser"}
             expanded={openMenu === "eraser"}
             controls={NOTEBOOK_TOOL_SETTINGS_ID}
@@ -141,31 +162,19 @@ function NotebookDrawingToolbar({
         <ToolbarIconButton
           label="Text box (T)"
           icon="text"
+          quiet={inBar}
           active={tool === "text"}
           onClick={onToggleTextTool}
         />
-
-        <ToolbarIconButton
-          label={addingImage ? "Adding image…" : "Add image"}
-          icon="image"
-          disabled={addingImage}
-          onClick={() => imageInputRef.current?.click()}
+        <NotebookToolbarInsertMenu
+          dock={dock}
+          open={openMenu === "insert"}
+          quiet={inBar}
+          onToggle={onToggleInsertMenu}
+          onAddImage={onAddImage}
+          addingImage={addingImage}
+          onAddGraph={onAddGraph}
         />
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept={NOTEBOOK_PAGE_IMAGE_TYPES.join(",")}
-          className="hidden"
-          tabIndex={-1}
-          aria-hidden="true"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            // Cleared so choosing the same file again still fires a change.
-            event.target.value = "";
-            if (file) onAddImage(file);
-          }}
-        />
-        <ToolbarIconButton label="Add graph" icon="graph" onClick={onAddGraph} />
         <span
           aria-hidden="true"
           className={`shrink-0 rounded-full bg-[var(--color-border)] ${
@@ -175,12 +184,14 @@ function NotebookDrawingToolbar({
         <ToolbarIconButton
           label="Undo (Ctrl+Z)"
           icon="undo"
+          quiet={inBar}
           disabled={undoDepth === 0}
           onClick={onUndo}
         />
         <ToolbarIconButton
           label="Redo (Ctrl+Shift+Z)"
           icon="redo"
+          quiet={inBar}
           disabled={redoDepth === 0}
           onClick={onRedo}
         />

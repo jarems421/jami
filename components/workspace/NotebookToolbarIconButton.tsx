@@ -238,6 +238,8 @@ export default function ToolbarIconButton({
   disabled = false,
   expanded,
   controls,
+  hasPopup,
+  quiet = false,
   tutorialTarget,
   onClick,
   children,
@@ -250,6 +252,13 @@ export default function ToolbarIconButton({
   disabled?: boolean;
   expanded?: boolean;
   controls?: string;
+  /** For a button that opens a menu. */
+  hasPopup?: "menu";
+  /**
+   * No outline until it is pressed or pointed at: for a row of tools sitting
+   * in a bar, where a ring round every one of them is noise.
+   */
+  quiet?: boolean;
   tutorialTarget?: string;
   onClick?: () => void;
   children?: ReactNode;
@@ -261,6 +270,7 @@ export default function ToolbarIconButton({
       aria-expanded={expanded}
       aria-pressed={pressed}
       aria-controls={controls}
+      aria-haspopup={hasPopup}
       title={label}
       disabled={disabled}
       data-notebook-toolbar-action="true"
@@ -269,7 +279,11 @@ export default function ToolbarIconButton({
       // tests and browser smokes can read state without matching on styling.
       data-active={active ? "true" : undefined}
       onClick={onClick}
-      className={`relative inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-full border text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
+      className={`relative inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-full border text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
+        quiet
+          ? "disabled:!bg-transparent"
+          : "disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)]"
+      } ${
         active
           /*
            * A selection ring and a lift at once. Splitting them into two elements to use
@@ -277,7 +291,9 @@ export default function ToolbarIconButton({
            */
           // eslint-disable-next-line no-restricted-syntax
           ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)] shadow-[0_0_0_3px_rgba(143,125,232,0.18),0_8px_18px_rgba(0,0,0,0.16)]"
-          : "border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:-translate-y-0.5 hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)] active:translate-y-0 active:scale-95"
+          : quiet
+            ? "border-transparent bg-transparent text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary active:scale-95"
+            : "border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:-translate-y-0.5 hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)] active:translate-y-0 active:scale-95"
       }`}
     >
       <NotebookIcon name={icon} />

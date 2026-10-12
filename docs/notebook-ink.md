@@ -651,6 +651,13 @@ Still to come:
 
 ## New tools
 
+- **The toolbar (12 October).** Made room for the new tools before they came:
+  - it starts in the notebook's top bar, centred between the title and the
+    panel buttons, as a row of quiet buttons that covers none of the page
+    (on a phone-sized screen, the row sits under the title);
+  - image and graph share one Insert menu;
+  - dragged out, it floats at the left, right or bottom edge as before, and
+    dragged back up it returns to the bar.
 - **Lasso (L).**
   - The loop is drawn with the pen or a mouse; touch still pans.
   - Handles move, resize and rotate the selection. Colour and thickness come

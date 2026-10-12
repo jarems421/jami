@@ -25,6 +25,7 @@ import {
   getNotebookToolbarDragVelocity,
   getNotebookToolbarSettleDuration,
   hasNotebookToolbarDragStarted,
+  NOTEBOOK_TOOLBAR_DEFAULT_DOCK,
   readNotebookToolbarDockPreference,
   saveNotebookToolbarDockPreference,
   snapNotebookToolbarOffsetToDevicePixels,
@@ -52,6 +53,8 @@ type NotebookToolbarDragState = {
   toolbarHeight: number;
   frameWidth: number;
   frameHeight: number;
+  /** How far above the frame the top bar reaches, which the toolbar may be carried into. */
+  topReach: number;
   originDock: NotebookToolbarDock;
   pointerType: string;
   samples: NotebookToolbarPointerSample[];
@@ -73,6 +76,8 @@ export type NotebookToolbarBindings = {
 
 type UseNotebookToolbarDockingOptions = {
   frameRef: RefObject<HTMLDivElement | null>;
+  /** The notebook's top bar, where the toolbar sits when docked `top`. */
+  topBarRef?: RefObject<HTMLElement | null>;
   frameSize: NotebookToolbarFrameSize;
   onDragStarted: () => void;
   prefersReducedMotion: boolean | (() => boolean);
@@ -86,14 +91,15 @@ type UseNotebookToolbarDockingResult = {
 
 export function useNotebookToolbarDocking({
   frameRef,
+  topBarRef,
   frameSize,
   onDragStarted,
   prefersReducedMotion,
 }: UseNotebookToolbarDockingOptions): UseNotebookToolbarDockingResult {
-  const [dock, setDock] = useState<NotebookToolbarDock>("bottom");
+  const [dock, setDock] = useState<NotebookToolbarDock>(NOTEBOOK_TOOLBAR_DEFAULT_DOCK);
   const [snapRevision, setSnapRevision] = useState(0);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const dockRef = useRef<NotebookToolbarDock>("bottom");
+  const dockRef = useRef<NotebookToolbarDock>(NOTEBOOK_TOOLBAR_DEFAULT_DOCK);
   const dragRef = useRef<NotebookToolbarDragState | null>(null);
   const pendingSnapRectRef = useRef<DOMRect | null>(null);
   const pendingSnapVelocityRef = useRef(0);
@@ -113,7 +119,7 @@ export function useNotebookToolbarDocking({
     const savedDock = readNotebookToolbarDockPreference();
     dockRef.current = savedDock;
     // The preference is intentionally restored after hydration so the server
-    // and first client render both use the default bottom dock.
+    // and first client render both use the default dock.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDock(savedDock);
   }, []);
@@ -226,6 +232,7 @@ export function useNotebookToolbarDocking({
           toolbarHeight: drag.toolbarHeight,
           frameWidth: drag.frameWidth,
           frameHeight: drag.frameHeight,
+          topReach: drag.topReach,
         }),
         window.devicePixelRatio
       );
@@ -260,6 +267,7 @@ export function useNotebookToolbarDocking({
 
       const frameRect = frame.getBoundingClientRect();
       const toolbarRect = toolbar.getBoundingClientRect();
+      const topBarRect = topBarRef?.current?.getBoundingClientRect();
       const toolbarAction =
         event.target instanceof Element
           ? event.target.closest<HTMLElement>(
@@ -281,6 +289,10 @@ export function useNotebookToolbarDocking({
         toolbarHeight: toolbarRect.height,
         frameWidth: frameRect.width,
         frameHeight: frameRect.height,
+        // Only from the bar: a toolbar floating over the page is clipped at the
+        // frame's edge, so it stops there, and lifting it into the bar drops it in.
+        topReach:
+          topBarRect && dockRef.current === "top" ? Math.max(0, frameRect.top - topBarRect.top) : 0,
         originDock: dockRef.current,
         pointerType: event.pointerType,
         samples: [
@@ -300,7 +312,7 @@ export function useNotebookToolbarDocking({
         safelySetPointerCapture(toolbar, event.pointerId);
       }
     },
-    [frameRef]
+    [frameRef, topBarRef]
   );
 
   const handlePointerMove = useCallback<PointerEventHandler<HTMLDivElement>>(

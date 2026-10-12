@@ -47,9 +47,13 @@ scroll sideways.** Long equations must scroll inside their own box.
    old ink and the new are both there, in place. Then open the same page with
    `NEXT_PUBLIC_ENABLE_JAMI_INK=false` (the js-draw fallback): it shows the
    same ink, and its thumbnail in the pages drawer matches.
-5. Use the toolbar: Pen (P), Highlighter (H), Eraser (E), Text box (T), Undo and
-   Redo, pen and highlighter colour and thickness, and pen smoothing. Undo steps
-   back whichever of ink or text happened last.
+5. Use the toolbar, which starts in the middle of the top bar and covers none
+   of the page, in either orientation: Pen (P), Highlighter (H), Eraser (E),
+   Text box (T), Insert (an image or a graph), Undo and Redo, pen and
+   highlighter colour and thickness, and pen smoothing. Undo steps back
+   whichever of ink or text happened last. Drag the toolbar out to the left,
+   right or bottom edge, where it floats over the page, and back up into the
+   top bar; it stays where it was left after a reload.
 6. Turn on Scribble to erase in the tool settings and scribble over a word. Only
    what was scribbled over disappears, whether the scribble zigzags or loops,
    from three or four quick passes. Then draw a quick circle round a word,

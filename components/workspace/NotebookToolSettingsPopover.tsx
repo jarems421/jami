@@ -21,7 +21,15 @@ import {
 import type { NotebookPenSettings } from "@/lib/workspace/notebook-pen-feel";
 import type { NotebookToolbarDock } from "@/lib/workspace/notebook-toolbar";
 
-const DOCK_CLASS: Record<NotebookToolbarDock, string> = {
+/**
+ * Where the panel hangs, by where the toolbar is: `top-bar` for the notebook's
+ * toolbar in its top bar, just under the bar; `top` under a toolbar floating
+ * at the top of its frame, as the exam working sheet's does.
+ */
+export type NotebookToolSettingsPlacement = NotebookToolbarDock | "top-bar";
+
+const DOCK_CLASS: Record<NotebookToolSettingsPlacement, string> = {
+  "top-bar": "left-1/2 top-3 -translate-x-1/2",
   top: "left-1/2 top-[4.85rem] -translate-x-1/2",
   right:
     "right-[calc(env(safe-area-inset-right,0px)+4.85rem)] top-1/2 -translate-y-1/2",
@@ -39,7 +47,7 @@ const ERASER_DOT_SIZE: Record<NotebookEraserSize, string> = {
 
 export type NotebookToolSettingsPopoverProps = {
   /** Which toolbar edge the popover hangs off. */
-  dock: NotebookToolbarDock;
+  dock: NotebookToolSettingsPlacement;
   /** The toolbar and this panel always agree on which tool is showing. */
   openMenu: NotebookToolMenu;
   pen: {
@@ -81,7 +89,8 @@ export default function NotebookToolSettingsPopover({
   highlighter,
   eraser,
 }: NotebookToolSettingsPopoverProps) {
-  if (!openMenu) return null;
+  // The Insert menu is the toolbar's own, and opens beside its button.
+  if (!openMenu || openMenu === "insert") return null;
 
   return (
     <div
