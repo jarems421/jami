@@ -25,7 +25,7 @@ const DOCK_CLASS: Record<NotebookToolbarDock, string> = {
     "left-[calc(env(safe-area-inset-left,0px)+0.9rem)] top-1/2 -translate-y-1/2",
 };
 
-type Props = {
+export type NotebookDrawingToolbarProps = {
   dock: NotebookToolbarDock;
   toolbarRef: Ref<HTMLDivElement>;
   /** Drag bindings from the docking controller. */
@@ -85,7 +85,7 @@ function NotebookDrawingToolbar({
   redoDepth,
   onUndo,
   onRedo,
-}: Props) {
+}: NotebookDrawingToolbarProps) {
   const sideDock = isNotebookToolbarSideDock(dock);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 

@@ -57,7 +57,7 @@ import { useNotebookPersistenceController } from "@/hooks/useNotebookPersistence
 import { useNotebookPlacedItems } from "@/hooks/useNotebookPlacedItems";
 import { useNotebookSwipeGesture } from "@/hooks/useNotebookSwipeGesture";
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
-import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
+import { useNotebookDrawingToolbar } from "@/hooks/useNotebookDrawingToolbar";
 import { useNotebookToolSettings } from "@/hooks/useNotebookToolSettings";
 import { useNotebookTouchInkHint } from "@/hooks/useNotebookTouchInkHint";
 import { useNotebookTutorBridge } from "@/hooks/useNotebookTutorBridge";
@@ -71,7 +71,6 @@ import {
 import { usePracticePaperRetake } from "@/hooks/usePracticePaperRetake";
 import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
 import { notebookPageHasWork } from "@/lib/workspace/notebook-assistant";
 import { notebookInkSvg } from "@/lib/workspace/notebook-ink-data";
 import {
@@ -728,16 +727,6 @@ export default function NotebookEditorPage() {
     },
   });
 
-  const handleToolbarUndo = useCallback(() => {
-    closeDrawingToolMenus();
-    handleUndo();
-  }, [closeDrawingToolMenus, handleUndo]);
-
-  const handleToolbarRedo = useCallback(() => {
-    closeDrawingToolMenus();
-    handleRedo();
-  }, [closeDrawingToolMenus, handleRedo]);
-
   const handleSelectPageFromDrawer = useCallback(
     (pageId: string) => {
       setPagesDrawerOpen(false);
@@ -750,15 +739,23 @@ export default function NotebookEditorPage() {
     void createPageAtEnd();
   }, [createPageAtEnd]);
 
-  const {
-    dock: toolbarDock,
-    toolbarRef: drawingToolbarRef,
-    toolbarBindings,
-  } = useNotebookToolbarDocking({
+  const { dock: toolbarDock, toolbarProps: drawingToolbarProps } = useNotebookDrawingToolbar({
     frameRef: pageFrameRef,
     frameSize,
-    onDragStarted: closeDrawingToolMenus,
-    prefersReducedMotion,
+    closeMenus: closeDrawingToolMenus,
+    undo: handleUndo,
+    redo: handleRedo,
+    tool,
+    penColor,
+    highlighterColor,
+    openMenu: openToolMenu,
+    onSelectDrawingTool: handleSelectDrawingTool,
+    onToggleTextTool: handleToggleTextTool,
+    onAddImage: handleAddImage,
+    addingImage,
+    onAddGraph: handleOpenNewGraph,
+    undoDepth,
+    redoDepth,
   });
 
   const inkEditorEvents = useNotebookInkEditorEvents({
@@ -1013,26 +1010,7 @@ export default function NotebookEditorPage() {
               bounce={createPageBounce}
             />
           ) : null}
-          {pageEditingEnabled ? (
-            <NotebookDrawingToolbar
-              dock={toolbarDock}
-              toolbarRef={drawingToolbarRef}
-              dockBindings={toolbarBindings}
-              tool={tool}
-              penColor={penColor}
-              highlighterColor={highlighterColor}
-              openMenu={openToolMenu}
-              onSelectDrawingTool={handleSelectDrawingTool}
-              onToggleTextTool={handleToggleTextTool}
-              onAddImage={handleAddImage}
-              addingImage={addingImage}
-              onAddGraph={handleOpenNewGraph}
-              undoDepth={undoDepth}
-              redoDepth={redoDepth}
-              onUndo={handleToolbarUndo}
-              onRedo={handleToolbarRedo}
-            />
-          ) : null}
+          {pageEditingEnabled ? <NotebookDrawingToolbar {...drawingToolbarProps} /> : null}
           <NotebookPageNavigation
             selectedPageIndex={selectedPageIndex}
             pageCount={pages.length}
