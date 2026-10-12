@@ -47,8 +47,9 @@ scroll sideways.** Long equations must scroll inside their own box.
    old ink and the new are both there, in place. Then open the same page with
    `NEXT_PUBLIC_ENABLE_JAMI_INK=false` (the js-draw fallback): it shows the
    same ink, and its thumbnail in the pages drawer matches.
-5. Use the toolbar, which starts in the middle of the top bar and covers none
-   of the page, in either orientation: Pen (P), Highlighter (H), Eraser (E),
+5. Use the toolbar, which starts in the middle of the top bar, outlined, and
+   covers none of the page, in either orientation; the ring round a pressed
+   tool is whole, at the ends too: Pen (P), Highlighter (H), Eraser (E),
    Text box (T), Insert (an image or a graph), Undo and Redo, pen and
    highlighter colour and thickness, and pen smoothing. Undo steps back
    whichever of ink, text, an image or a graph changed last: move an image
@@ -68,9 +69,12 @@ scroll sideways.** Long equations must scroll inside their own box.
    oval, a rectangle, a triangle and an arrow, keeping the pen still at the
    end of each: each snaps to its shape, a near-level one level. Keep the pen
    down and move it: the shape grows, shrinks and turns with it, and a nudge
-   does not tilt a level one. Undo once: the stroke as you drew it comes back;
-   undo again: it goes. A small 'o', a 'C' and a figure of eight stay as
-   drawn. On an exam working sheet a held circle is left as drawn.
+   does not tilt a level one; sizing it over some writing erases nothing.
+   Draw a square and carry on up its first side again, pausing where it
+   closes or not: it is still a level square of the size drawn. Undo once:
+   the stroke as you drew it comes back; undo again: it goes. A small 'o', a
+   'C' and a figure of eight stay as drawn. On an exam working sheet a held
+   circle is left as drawn.
 6b. Press Ruler. Move it with one finger and turn it with two: the angle reads
    out and settles on 0, 15, 30 and so on; the page does not pan. Draw along
    either edge with the pen and the highlighter: the line runs exactly along
@@ -81,7 +85,8 @@ scroll sideways.** Long equations must scroll inside their own box.
    the pen, and land where you let go with no jump or flicker. A tap inside
    the box moves nothing. Pull the corner: they all grow and shrink (the
    text box takes its new width when you let go). Swing the round handle:
-   ink, image and graph turn, the text box stays upright. Pick a colour and
+   ink, image and graph turn, the text box stays upright. Pinch the page with
+   two fingers while the lasso is out: it zooms. Pick a colour and
    press Thicker, then Thinner. Undo steps back one gesture at a time: one
    undo puts the writing, image, graph and text box back together. Press
    Delete: it all goes, and one undo brings back all but the image. Reload:
@@ -103,8 +108,9 @@ scroll sideways.** Long equations must scroll inside their own box.
 12. Pinch in on a page. One finger pans it the way the rest of the iPad
     scrolls, with momentum, even with Low Power Mode on; the Pencil keeps
     writing and never moves the page; a resting palm while writing does not
-    move it either; pinching in and out still zooms about your fingers; back
-    at fit, a sideways swipe turns the page again.
+    move it either, nor change the zoom when it lands to start writing;
+    pinching in and out still zooms about your fingers; back at fit, a
+    sideways swipe turns the page again.
 13. With Low Power Mode on, open a notebook: within a couple of seconds it
     says Low Power Mode is slowing writing down. Turn it off in Settings and
     come back: the note goes.

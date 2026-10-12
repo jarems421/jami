@@ -612,7 +612,11 @@ Still to come:
     touch while ink is being drawn). Two fingers are refused to scrolling, so
     the pinch, still the notebook's own, keeps its pointers; it holds the
     scroller still and places the sheet in the scrolled content until it
-    commits. The controller follows the scroll with the live pan and commits
+    commits. It moves nothing until the fingers spread or close by 32 px, or
+    carry their middle 24 px (`engageNotebookPinch`), and then takes up from
+    there: a hand resting on the glass to write touches it in two places,
+    and their settling zoomed the page a little. A pinch the system calls
+    off, as iPadOS does a palm's, leaves the page where it found it. The controller follows the scroll with the live pan and commits
     it 120 ms after the scroll settles. The sheet clips with `overflow: clip`:
     clipped with `hidden` it was a scroll container of its own, and Chrome
     gave the finger's pan to it rather than to the scroller.
@@ -657,8 +661,10 @@ Still to come:
 
 - **The toolbar (12 October).** Made room for the new tools before they came:
   - it starts in the notebook's top bar, centred between the title and the
-    panel buttons, as a row of quiet buttons that covers none of the page
-    (on a phone-sized screen, the row sits under the title);
+    panel buttons, as an outlined row of quiet buttons that covers none of
+    the page (on a phone-sized screen, the row sits under the title); the
+    outline says it can be moved, and its padding keeps a pressed tool's
+    ring whole, which the toolbar's paint containment cut off at its edges;
   - image and graph share one Insert menu;
   - dragged out, it floats at the left, right or bottom edge as before, and
     dragged back up it returns to the bar.
@@ -705,6 +711,8 @@ Still to come:
   - A tapered stroke is a filled outline, so Thicker traces round it in its
     own colour and Thinner only takes that back off; the highlighter keeps its
     weight.
+  - Fingers go on to the page's own handling (`page`), as they do from the
+    ink beneath, so they pinch, pan and turn pages with the lasso out.
   - Images and graphs have an optional `rotation`, absent when upright, which
     older builds ignore. Text boxes move and resize but stay upright.
   - Notebook pages only, and Jami Ink only: on js-draw, the fallback, the
@@ -732,6 +740,14 @@ Still to come:
     under it. A turn under 3 degrees is drift and ignored, eased into the
     full turn by 10, so a levelled shape stays level and never jumps. An
     arrow leans towards the nearest 45 degrees, as a line does.
+  - Except that after a circle, oval or polygon snaps, the pen's first 24 px
+    say what it is doing (`followHeld` in `stroke-session.ts`): going on
+    within 12 px of the shape, or of the stroke drawn for it, is going round
+    again -- as a hand often does past where it closed, and a pause there
+    snaps it first -- and the shape stays as it snapped; leaving them sizes
+    and turns it from where the pen left, so nothing jumps.
+  - A stroke that snapped is never a scribble: the back and forth of sizing
+    it erased the writing under it.
   - It lifts as a `shape` item, drawn live with that item's own path and
     paint, so the lift changes no pixel. Undo takes it back to the stroke as
     drawn, and a second undo removes that.

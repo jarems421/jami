@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from "react";
 import {
+  engageNotebookPinch,
   getNotebookLivePinchTransform,
   getNotebookPageZoomAfterPinch,
   getPinchDistance,
@@ -68,6 +69,15 @@ export type NotebookPinchZoomState = {
    */
   scrollX: number;
   scrollY: number;
+  /**
+   * The fingers have moved far enough to mean it (`engageNotebookPinch`).
+   * Until then the sheet is held where the pinch found it, so a pinch that
+   * ends there changes nothing: a hand resting to write touches in two places.
+   */
+  engaged: boolean;
+  /** Where the sheet's top left was on screen when the pinch began. */
+  startLeft: number;
+  startTop: number;
 };
 
 /**
@@ -517,6 +527,9 @@ export function useNotebookViewportController({
       pendingZoom: layoutRef.current.zoom,
       startPageHeight: rect.height,
       startPageWidth: rect.width,
+      engaged: false,
+      startLeft: rect.left,
+      startTop: rect.top,
     };
   }, [cancelPinchAnimationFrame, pageFrameRef, pageSurfaceRef]);
 
@@ -694,13 +707,33 @@ export function useNotebookViewportController({
       if (first && second) {
         const centerX = (first.clientX + second.clientX) / 2;
         const centerY = (first.clientY + second.clientY) / 2;
-        pinch.pendingZoom = getNotebookPageZoomAfterPinch({
-          startDistance: pinch.startDistance,
-          currentDistance: getPinchDistance(first, second),
-          startZoom: pinch.startZoom,
-        });
-        pinch.lastCenterX = centerX;
-        pinch.lastCenterY = centerY;
+        const distance = getPinchDistance(first, second);
+        if (!pinch.engaged) {
+          const engaged = engageNotebookPinch({
+            startDistance: pinch.startDistance,
+            distance,
+            startCenter: { x: pinch.startCenterX, y: pinch.startCenterY },
+            center: { x: centerX, y: centerY },
+          });
+          if (engaged) {
+            pinch.engaged = true;
+            pinch.startDistance = engaged.startDistance;
+            pinch.startCenterX = engaged.startCenter.x;
+            pinch.startCenterY = engaged.startCenter.y;
+            // The page point under the fingers from here: the sheet has not moved yet.
+            pinch.anchorFx = (engaged.startCenter.x - pinch.startLeft) / pinch.startPageWidth;
+            pinch.anchorFy = (engaged.startCenter.y - pinch.startTop) / pinch.startPageHeight;
+          }
+        }
+        if (pinch.engaged) {
+          pinch.pendingZoom = getNotebookPageZoomAfterPinch({
+            startDistance: pinch.startDistance,
+            currentDistance: distance,
+            startZoom: pinch.startZoom,
+          });
+          pinch.lastCenterX = centerX;
+          pinch.lastCenterY = centerY;
+        }
         // Pointer events can outpace iPad paint. Keep only the latest two-finger
         // sample and write one anchored compositor transform per animation frame.
         queueLivePinchTransform();
@@ -731,6 +764,13 @@ export function useNotebookViewportController({
       safelyReleasePointerCapture(event.currentTarget, event.pointerId);
       if (wasPinching) {
         const pinch = pinchZoomRef.current;
+        if (pinch && options.cancelled) {
+          // A gesture the system called off -- as iPadOS does a palm's --
+          // leaves the page where the pinch found it.
+          pinch.pendingZoom = pinch.startZoom;
+          pinch.lastCenterX = pinch.startCenterX;
+          pinch.lastCenterY = pinch.startCenterY;
+        }
         if (pinch) finalizePinchCommit(pinch);
         pinchZoomRef.current = null;
         onClearSwipeCandidateRef.current();

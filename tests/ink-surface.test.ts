@@ -309,6 +309,16 @@ describe("strokes snapped on a hold", () => {
     expect(surface.historyState()).toEqual({ undoDepth: 2, redoDepth: 0 });
   });
 
+  it("keeps what snapped, and erases nothing, however the pen moved while sizing it", () => {
+    const { surface, fake, clock } = setup();
+    load(surface, WORD);
+    drawHeldCircle(surface, clock);
+    // Sizing it back and forth over the word looks like a scribble out.
+    expect(surface.endStroke({ band: bandAt(100, 40, 200, 70), majorExtent: 200 })).toBe("committed");
+    expect(fake.shown.items.map((item) => item.kind)).toEqual(["outline", "shape"]);
+    expect(fake.shown.items[0].id).toBe(WORD.id);
+  });
+
   it("undoes back to the stroke as it was drawn, then away, and redoes both", () => {
     const { surface, fake, clock } = setup();
     load(surface);

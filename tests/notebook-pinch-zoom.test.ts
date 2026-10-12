@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  engageNotebookPinch,
   getNotebookLivePinchTransform,
   getNotebookPagePanAfterPinch,
+  NOTEBOOK_PINCH_PAN_SLOP,
+  NOTEBOOK_PINCH_ZOOM_SLOP,
 } from "@/lib/workspace/notebook-inking";
 import { getNotebookViewportLayout } from "@/lib/workspace/notebook-viewport";
 
@@ -226,5 +229,26 @@ describe("notebook pinch zoom anchoring", () => {
     const after = anchorScreenPositionAt(1.001).x;
 
     expect(Math.abs(after - before)).toBeLessThan(1);
+  });
+});
+
+describe("two fingers moving the page only once they mean it", () => {
+  const start = { startDistance: 200, startCenter: { x: 300, y: 300 } };
+
+  it("moves nothing while they spread, close or drift less than the slop", () => {
+    expect(engageNotebookPinch({ ...start, distance: 220, center: { x: 310, y: 305 } })).toBeNull();
+    expect(engageNotebookPinch({ ...start, distance: 180, center: { x: 300, y: 290 } })).toBeNull();
+  });
+
+  it("zooms from the edge of the slop, keeping the fingers' middle where it is", () => {
+    const spread = engageNotebookPinch({ ...start, distance: 250, center: { x: 305, y: 300 } });
+    expect(spread).toEqual({ startDistance: 200 + NOTEBOOK_PINCH_ZOOM_SLOP, startCenter: { x: 305, y: 300 } });
+    const closed = engageNotebookPinch({ ...start, distance: 150, center: { x: 300, y: 300 } });
+    expect(closed?.startDistance).toBe(200 - NOTEBOOK_PINCH_ZOOM_SLOP);
+  });
+
+  it("pans from the edge of the slop, along the way the fingers went", () => {
+    const carried = engageNotebookPinch({ ...start, distance: 200, center: { x: 300, y: 340 } });
+    expect(carried).toEqual({ startDistance: 200, startCenter: { x: 300, y: 300 + NOTEBOOK_PINCH_PAN_SLOP } });
   });
 });

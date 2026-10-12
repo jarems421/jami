@@ -794,6 +794,19 @@ describe("snapping to a shape on hold", () => {
   });
   const circleStart = sample(400, 300, 0);
   const lastTime = circle[circle.length - 1].timeStamp;
+  const circleEnd = circle[circle.length - 1];
+
+  /** The pen moving straight out from the circle's middle, from where the stroke ended, `by` client px a step. */
+  function outward(session: InkStrokeSession, clock: InkFakeClock, steps: number, by: number) {
+    const out = { x: circleEnd.clientX - 300, y: circleEnd.clientY - 300 };
+    const length = Math.hypot(out.x, out.y);
+    for (let step = 1; step <= steps; step += 1) {
+      const reach = 1 + (step * by) / length;
+      const each = sample(300 + out.x * reach, 300 + out.y * reach, lastTime + 501 + step * 8);
+      clock.advanceTo(each.timeStamp);
+      session.move([each]);
+    }
+  }
 
   function drawCircle(shapes: boolean) {
     const clock = new InkFakeClock();
@@ -836,11 +849,7 @@ describe("snapping to a shape on hold", () => {
     const drawn = draws[draws.length - 1];
     clock.advanceTo(lastTime + 501);
     // Out from the middle, well past the hold's reach.
-    for (let step = 1; step <= 12; step += 1) {
-      const each = sample(400 + step * 5, 300, lastTime + 501 + step * 8);
-      clock.advanceTo(each.timeStamp);
-      session.move([each]);
-    }
+    outward(session, clock, 12, 5);
     const result = session.lift();
     const shape = result?.snapped?.shape;
     expect(shape?.type).toBe("ellipse");
@@ -851,6 +860,73 @@ describe("snapping to a shape on hold", () => {
     expect(result?.path).toBe(draws[draws.length - 1].path);
     expect(result?.path).toEqual(inkShapePath(shape, 2));
     expect(result?.snapped?.drawn).toEqual({ path: drawn.path, paint: drawn.paint });
+  });
+
+  it("starts sizing from where the pen leaves the shape, with no jump", () => {
+    const { session, clock } = drawCircle(true);
+    clock.advanceTo(lastTime + 501);
+    // Just off the circle: the shape takes up the pen from here.
+    outward(session, clock, 4, 4);
+    const shape = session.lift()?.snapped?.shape;
+    expect(shape?.type).toBe("ellipse");
+    if (shape?.type !== "ellipse") return;
+    expect(Math.abs(shape.rx - 50)).toBeLessThan(2);
+  });
+
+  /**
+   * A square drawn round once at a steady pace, a sample every 4 ms, resting
+   * where it closes until it snaps, then on up its first side again.
+   */
+  function squareGoneOver(share: number) {
+    const corners = [
+      { x: 200, y: 600 },
+      { x: 200, y: 200 },
+      { x: 600, y: 200 },
+      { x: 600, y: 600 },
+      { x: 200, y: 600 },
+    ];
+    const samples: InkPointerSample[] = [];
+    let time = 0;
+    const along = (from: { x: number; y: number }, to: { x: number; y: number }, part = 1) => {
+      const steps = Math.round((Math.hypot(to.x - from.x, to.y - from.y) * part) / 6);
+      for (let step = 1; step <= steps; step += 1) {
+        time += 4;
+        const t = (step / steps) * part;
+        samples.push(sample(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, time));
+      }
+    };
+    for (let side = 0; side < 4; side += 1) along(corners[side], corners[side + 1]);
+    for (let rest = 0; rest < 125; rest += 1) {
+      time += 4;
+      samples.push(sample(200, 600, time));
+    }
+    along(corners[0], corners[1], share);
+    const clock = new InkFakeClock();
+    const session = new InkStrokeSession({
+      tool: penTool({ settings: GUIDED, shapes: true }),
+      mapping: MAPPING,
+      sink: recordingSink().sink,
+      first: sample(200, 600, 0),
+      timers: clock.timers,
+    });
+    for (const each of samples) {
+      clock.advanceTo(each.timeStamp);
+      session.move([each]);
+    }
+    return session.lift()?.snapped?.shape;
+  }
+
+  it("keeps a square that snapped where it closed while the pen goes on round it", () => {
+    for (const share of [0.3, 0.6, 1]) {
+      const shape = squareGoneOver(share);
+      expect(shape?.type).toBe("polygon");
+      if (shape?.type !== "polygon") return;
+      // Upright and its drawn size, 200 page units a side: not turned or
+      // shrunk by the pen going back up its first side.
+      const [a, b] = shape.corners;
+      expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeCloseTo(200, -1);
+      expect(Math.min(Math.abs(a.x - b.x), Math.abs(a.y - b.y))).toBeLessThan(1);
+    }
   });
 
   it("leaves a circle as drawn where shapes are not allowed", () => {

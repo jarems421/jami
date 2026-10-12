@@ -597,6 +597,52 @@ function heldTurn(turn: number): number {
   return Math.sign(turn) * (ADJUST_FULL_TURN * (3 * s * s - 2 * s ** 3) + span * (s ** 3 - s * s));
 }
 
+/** How far a point is from a shape's outline, in page units (for an ellipse, along the line from its centre). */
+function outlineDistance(geometry: InkShapeGeometry, point: InkPoint): number {
+  switch (geometry.type) {
+    case "line":
+    case "arrow":
+      return distanceToSegment(point, geometry.from, geometry.to);
+    case "polygon": {
+      const { corners } = geometry;
+      let nearest = Infinity;
+      for (let index = 0; index < corners.length; index += 1) {
+        nearest = Math.min(nearest, distanceToSegment(point, corners[index], corners[(index + 1) % corners.length]));
+      }
+      return nearest;
+    }
+    case "ellipse": {
+      const cos = Math.cos(geometry.rotation);
+      const sin = Math.sin(geometry.rotation);
+      const dx = point.x - geometry.cx;
+      const dy = point.y - geometry.cy;
+      const u = dx * cos + dy * sin;
+      const v = -dx * sin + dy * cos;
+      const radius = Math.hypot(u, v);
+      if (radius === 0) return Math.min(geometry.rx, geometry.ry);
+      const onEllipse = (geometry.rx * geometry.ry) / Math.hypot((geometry.ry * u) / radius, (geometry.rx * v) / radius);
+      return Math.abs(radius - onEllipse);
+    }
+  }
+}
+
+/**
+ * How far a point is from going over a shape again, in page units: from its
+ * outline, or from the stroke drawn for it, whichever is nearer -- a hand
+ * going round again follows one or the other.
+ */
+export function inkShapeTraceDistance(
+  geometry: InkShapeGeometry,
+  drawn: readonly InkPoint[],
+  point: InkPoint
+): number {
+  let nearest = outlineDistance(geometry, point);
+  for (let index = 1; index < drawn.length; index += 1) {
+    nearest = Math.min(nearest, distanceToSegment(point, drawn[index - 1], drawn[index]));
+  }
+  return nearest;
+}
+
 /**
  * The shape as the pen moves on while it is still down: turned and scaled
  * about its anchor so that the point under the pen when it snapped follows the

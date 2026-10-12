@@ -90,7 +90,11 @@ export type InkSurface = {
   }): void;
   /** Returns how far ahead of the line the predicted tip was drawn, in CSS pixels (0 for none). */
   moveStroke(samples: readonly InkPointerSample[], predicted?: readonly InkPointerSample[]): number;
-  /** `"empty"`: the stroke had nothing worth keeping. `"scribbled"`: it erased ink instead. */
+  /**
+   * `"empty"`: the stroke had nothing worth keeping. `"scribbled"`: it erased
+   * ink instead -- never a stroke that snapped on a hold, whose back and forth
+   * afterwards was sizing what it snapped to.
+   */
   endStroke(scribble?: InkScribble | null): "committed" | "scribbled" | "empty";
   cancelStroke(): void;
   /** `at`, and every point after, in page units. */
@@ -245,7 +249,7 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
       if (!current) return "empty";
       stroke = null;
 
-      if (scribble && current.pen) {
+      if (scribble && current.pen && !current.session.snappedOnHold) {
         const covered = planInkScribbleErase({
           doc,
           candidates: index.query(scribble.band.bounds),

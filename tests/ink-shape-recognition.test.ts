@@ -2,7 +2,12 @@
 
 import { describe, expect, it } from "vitest";
 import type { InkPoint, InkShapeGeometry } from "@/lib/ink/model";
-import { adjustInkShape, recognizeInkShape, type InkRecognizedShape } from "@/lib/ink/tools/shape-recognition";
+import {
+  adjustInkShape,
+  inkShapeTraceDistance,
+  recognizeInkShape,
+  type InkRecognizedShape,
+} from "@/lib/ink/tools/shape-recognition";
 
 /**
  * Shapes as a hand draws them: a sample every few units, a tremor on each, a
@@ -336,5 +341,35 @@ describe("adjusting a snapped shape while the pen stays down", () => {
     expect(aimed.from).toEqual({ x: 100, y: 300 });
     expect(Math.abs(aimed.to.y - 300)).toBeLessThan(1);
     expect(aimed.to.x).toBeGreaterThan(400);
+  });
+});
+
+describe("going over a snapped shape again", () => {
+  const square: InkShapeGeometry = {
+    type: "polygon",
+    corners: [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 },
+    ],
+  };
+
+  it("is measured from the shape's outline", () => {
+    expect(inkShapeTraceDistance(square, [], { x: 50, y: 4 })).toBeCloseTo(4);
+    expect(inkShapeTraceDistance(square, [], { x: 50, y: 50 })).toBeCloseTo(50);
+    const oval: InkShapeGeometry = { type: "ellipse", cx: 0, cy: 0, rx: 80, ry: 40, rotation: Math.PI / 2 };
+    // Turned a quarter: its long axis runs down the page.
+    expect(inkShapeTraceDistance(oval, [], { x: 0, y: 86 })).toBeCloseTo(6);
+    expect(inkShapeTraceDistance(oval, [], { x: 46, y: 0 })).toBeCloseTo(6);
+  });
+
+  it("or from the stroke drawn for it, where that is nearer", () => {
+    // A first side drawn bowed out above the side it snapped to.
+    const drawn = [
+      { x: 0, y: -12 },
+      { x: 100, y: -12 },
+    ];
+    expect(inkShapeTraceDistance(square, drawn, { x: 50, y: -14 })).toBeCloseTo(2);
   });
 });

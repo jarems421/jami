@@ -304,6 +304,58 @@ describe("useNotebookViewportController", () => {
     expect(swipeEnd).not.toHaveBeenCalled();
   });
 
+  /** The scale the sheet is drawn at mid-pinch, or 1 for none. */
+  const liveScale = () => Number(/scale\(([^)]+)\)/.exec(surface.style.transform)?.[1] ?? 1);
+
+  it("keeps the page still for a resting hand's two touches as they shift a little", () => {
+    act(() => {
+      handles.controller.handleTouchPointerDown(pointerEvent({ pointerId: 1, clientX: 200, clientY: 200 }));
+      handles.controller.handleTouchPointerDown(pointerEvent({ pointerId: 2, clientX: 260, clientY: 230 }));
+      // Not moved yet: where the pinch holds the sheet.
+      handles.controller.handleTouchPointerMove(pointerEvent({ pointerId: 2, clientX: 260, clientY: 230 }));
+    });
+    const held = surface.style.transform;
+    act(() => {
+      handles.controller.handleTouchPointerMove(pointerEvent({ pointerId: 2, clientX: 280, clientY: 236 }));
+      handles.controller.handleTouchPointerMove(pointerEvent({ pointerId: 1, clientX: 194, clientY: 204 }));
+    });
+    expect(surface.style.transform).toBe(held);
+    expect(liveScale()).toBe(1);
+    act(() => {
+      handles.controller.handleTouchPointerEnd(pointerEvent({ pointerId: 2 }));
+    });
+    expect(handles.controller.layout.zoom).toBe(1);
+  });
+
+  it("takes a pinch up from the edge of its slop, with no jump", () => {
+    act(() => {
+      handles.controller.handleTouchPointerDown(pointerEvent({ pointerId: 1, clientX: 200, clientY: 200 }));
+      handles.controller.handleTouchPointerDown(pointerEvent({ pointerId: 2, clientX: 400, clientY: 200 }));
+      // Just past the slop: barely any zoom yet.
+      handles.controller.handleTouchPointerMove(pointerEvent({ pointerId: 2, clientX: 434, clientY: 200 }));
+    });
+    expect(liveScale()).toBeGreaterThan(1);
+    expect(liveScale()).toBeLessThan(1.02);
+    act(() => {
+      handles.controller.handleTouchPointerMove(pointerEvent({ pointerId: 2, clientX: 600, clientY: 200 }));
+    });
+    expect(liveScale()).toBeGreaterThan(1.5);
+  });
+
+  it("puts the page back where a pinch found it when the system calls the pinch off", () => {
+    act(() => {
+      handles.controller.handleTouchPointerDown(pointerEvent({ pointerId: 1, clientX: 200, clientY: 200 }));
+      handles.controller.handleTouchPointerDown(pointerEvent({ pointerId: 2, clientX: 400, clientY: 400 }));
+      handles.controller.handleTouchPointerMove(pointerEvent({ pointerId: 2, clientX: 700, clientY: 700 }));
+    });
+    expect(liveScale()).toBeGreaterThan(1);
+    act(() => {
+      handles.controller.handleTouchPointerEnd(pointerEvent({ pointerId: 2 }), { cancelled: true });
+    });
+    expect(handles.controller.isPinchActive()).toBe(false);
+    expect(handles.controller.layout.zoom).toBe(1);
+  });
+
   it("delegates a single-finger release to page navigation", () => {
     act(() => {
       handles.controller.handleTouchPointerDown(

@@ -493,6 +493,47 @@ export function getNotebookPageZoomAfterPinch(input: {
   );
 }
 
+/**
+ * Screen pixels two fingers have to spread or close by, or carry their middle,
+ * before they move the page. A hand resting on the glass to write touches it
+ * in two places, which shift as it settles, and each of those shifts zoomed
+ * the page a little; a pinch meant is past this in its first moments.
+ */
+export const NOTEBOOK_PINCH_ZOOM_SLOP = 32;
+export const NOTEBOOK_PINCH_PAN_SLOP = 24;
+
+/**
+ * Where a two-finger gesture counts from once it has gone past the slop, or
+ * null while it has not. What went past the slop starts from the slop's edge,
+ * the rest from where the fingers are now, so the page takes the gesture up
+ * from there without a jump.
+ */
+export function engageNotebookPinch(input: {
+  startDistance: number;
+  distance: number;
+  startCenter: { x: number; y: number };
+  center: { x: number; y: number };
+}): { startDistance: number; startCenter: { x: number; y: number } } | null {
+  const spread = input.distance - input.startDistance;
+  const shiftX = input.center.x - input.startCenter.x;
+  const shiftY = input.center.y - input.startCenter.y;
+  const shift = Math.hypot(shiftX, shiftY);
+  const zooms = Math.abs(spread) >= NOTEBOOK_PINCH_ZOOM_SLOP;
+  const pans = shift >= NOTEBOOK_PINCH_PAN_SLOP;
+  if (!zooms && !pans) return null;
+  return {
+    startDistance: zooms
+      ? Math.max(1, input.startDistance + Math.sign(spread) * NOTEBOOK_PINCH_ZOOM_SLOP)
+      : input.distance,
+    startCenter: pans
+      ? {
+          x: input.startCenter.x + (shiftX / shift) * NOTEBOOK_PINCH_PAN_SLOP,
+          y: input.startCenter.y + (shiftY / shift) * NOTEBOOK_PINCH_PAN_SLOP,
+        }
+      : input.center,
+  };
+}
+
 export function clampInkPoint(
   point: NotebookInkPoint,
   width: number,

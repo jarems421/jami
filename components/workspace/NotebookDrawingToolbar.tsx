@@ -118,9 +118,13 @@ function NotebookDrawingToolbar({
         title="Drag the toolbar to dock it to another edge"
         data-toolbar-dock={dock}
         {...dockBindings}
+        // In the bar it is outlined, so it reads as something that can be
+        // picked up and moved, and padded as it is floating, so the ring round
+        // a pressed or focused tool is never cut off by the toolbar's paint
+        // containment.
         className={`notebook-dockable-toolbar pointer-events-auto flex items-center rounded-full border ${
           inBar
-            ? "flex-wrap justify-center gap-0.5 border-transparent data-[toolbar-dragging=true]:bg-[var(--color-surface-panel-strong)] data-[toolbar-dragging=true]:shadow-e2"
+            ? "flex-wrap justify-center gap-0.5 border-[var(--color-border)] p-1.5 data-[toolbar-dragging=true]:bg-[var(--color-surface-panel-strong)] data-[toolbar-dragging=true]:shadow-e2"
             : "notebook-floating-control gap-1 border-[var(--color-border)] p-1.5"
         } ${
           sideDock ? "flex-col" : "flex-row"

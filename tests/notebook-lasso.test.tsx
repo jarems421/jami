@@ -135,7 +135,7 @@ function setUp() {
       <>
         {/* The picture, as the image layer shows it. */}
         <div data-notebook-placed="image:img" />
-        <NotebookLassoLayer lasso={lasso} />
+        <NotebookLassoLayer lasso={lasso} page={fingers} />
       </>
     );
   }
@@ -159,10 +159,18 @@ function setUp() {
   };
 }
 
-function pointer(type: string, x: number, y: number) {
+/** The page's own handling of fingers, as the lasso hands them on. */
+const fingers = {
+  onPointerDown: vi.fn(),
+  onPointerMove: vi.fn(),
+  onPointerUp: vi.fn(),
+  onPointerCancel: vi.fn(),
+};
+
+function pointer(type: string, x: number, y: number, pointerType = "pen") {
   const layer = container.querySelector("[data-notebook-lasso]")!;
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
-  Object.defineProperties(event, { pointerId: { value: 1 }, pointerType: { value: "pen" } });
+  Object.defineProperties(event, { pointerId: { value: 1 }, pointerType: { value: pointerType } });
   act(() => {
     layer.dispatchEvent(event);
   });
@@ -281,6 +289,21 @@ describe("the lasso", () => {
     undo();
     act(() => controller.refresh());
     expect(outline()).toBe(pickedUp);
+  });
+
+  it("hands fingers on to the page, so they still pinch and pan, and picks nothing up with them", () => {
+    const { edits } = setUp();
+    Object.values(fingers).forEach((handler) => handler.mockClear());
+    pointer("pointerdown", 50, 50, "touch");
+    pointer("pointermove", 300, 300, "touch");
+    pointer("pointerup", 300, 300, "touch");
+    pointer("pointercancel", 300, 300, "touch");
+    expect(fingers.onPointerDown).toHaveBeenCalledTimes(1);
+    expect(fingers.onPointerMove).toHaveBeenCalledTimes(1);
+    expect(fingers.onPointerUp).toHaveBeenCalledTimes(1);
+    expect(fingers.onPointerCancel).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[aria-label="Selection"]')).toBeNull();
+    expect(edits).toEqual([]);
   });
 
   it("deletes everything picked up, as one undo step", () => {

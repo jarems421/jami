@@ -994,7 +994,7 @@ export default function NotebookEditorPage() {
                     pageColor={pageColor}
                     editingEnabled={pageEditingEnabled}
                   />
-                  <NotebookLassoLayer lasso={lasso} />
+                  <NotebookLassoLayer lasso={lasso} page={liveInkEditorProps} />
                 </>
               ) : null
             }

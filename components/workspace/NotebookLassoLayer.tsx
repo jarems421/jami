@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import type { NotebookInkEditorProps } from "@/components/workspace/notebook-ink-editor-types";
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import type { NotebookLassoController, NotebookLassoLift } from "@/hooks/useNotebookLasso";
 import type { InkBox, InkPoint } from "@/lib/ink/model";
@@ -192,8 +193,9 @@ function release(carried: Carried) {
  * The lasso on the page: draw a loop round what to pick up, then drag inside
  * the box to move it, pull the corner to resize it, or swing the round handle
  * to turn it. The bar under it recolours ink, makes it thicker or thinner, or
- * deletes everything picked up. The pen and the mouse use it; fingers pass on
- * to the page.
+ * deletes everything picked up. The pen and the mouse use it; fingers go on
+ * to the page's own handling (`page`), as they do from the ink beneath, so
+ * they still pinch, pan and turn pages with the lasso out.
  *
  * A drag renders nothing while it moves: the ink is lifted off the page and
  * carried as one picture painted once, the placed things by CSS on their own
@@ -201,7 +203,14 @@ function release(carried: Carried) {
  * Where the drag ends everything is put down for real (`useNotebookLasso`),
  * and what stood in for it goes once that is drawn, in the same frame.
  */
-export default function NotebookLassoLayer({ lasso }: { lasso: NotebookLassoController }) {
+export default function NotebookLassoLayer({
+  lasso,
+  page,
+}: {
+  lasso: NotebookLassoController;
+  /** What the page does with fingers: pinch, pan and page turns. */
+  page: Pick<NotebookInkEditorProps, "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel">;
+}) {
   const ghostHostRef = useRef<HTMLDivElement | null>(null);
   const outlineRef = useRef<SVGPolygonElement | null>(null);
   const stemRef = useRef<SVGLineElement | null>(null);
@@ -287,7 +296,11 @@ export default function NotebookLassoLayer({ lasso }: { lasso: NotebookLassoCont
   const geometry = selection ? boxGeometry(selection.box, selection.transform) : null;
 
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch" || gestureRef.current) return;
+    if (event.pointerType === "touch") {
+      page.onPointerDown(event);
+      return;
+    }
+    if (gestureRef.current) return;
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     const at = pagePoint(rect, event);
@@ -323,6 +336,10 @@ export default function NotebookLassoLayer({ lasso }: { lasso: NotebookLassoCont
   };
 
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      page.onPointerMove(event);
+      return;
+    }
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     event.stopPropagation();
@@ -353,6 +370,11 @@ export default function NotebookLassoLayer({ lasso }: { lasso: NotebookLassoCont
   };
 
   const end = (event: ReactPointerEvent<HTMLDivElement>, cancelled: boolean) => {
+    if (event.pointerType === "touch") {
+      if (cancelled) page.onPointerCancel(event);
+      else page.onPointerUp(event);
+      return;
+    }
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     gestureRef.current = null;

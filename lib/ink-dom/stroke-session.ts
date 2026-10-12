@@ -8,7 +8,12 @@ import {
   type InkRuler,
   type InkRulerEdge,
 } from "@/lib/ink/tools/ruler";
-import { adjustInkShape, recognizeInkShape, type InkRecognizedShape } from "@/lib/ink/tools/shape-recognition";
+import {
+  adjustInkShape,
+  inkShapeTraceDistance,
+  recognizeInkShape,
+  type InkRecognizedShape,
+} from "@/lib/ink/tools/shape-recognition";
 import { browserInkTimers, InkHoldDetector, type InkTimers } from "@/lib/ink-dom/hold-detector";
 import type { InkLiveTip, InkRenderer } from "@/lib/ink-dom/renderer";
 import { inkColorForTool } from "@/lib/ink-dom/stroke-color";
@@ -53,9 +58,10 @@ import {
  * A pen held still at the end of a stroke snaps it: to a straight line, which
  * the pen builder judges and then aims at the pen (`straighten` in `pen.ts`),
  * or, when the tool allows shapes, to a circle, an oval, a polygon or an arrow
- * (`shape-recognition.ts`), which the pen then sizes and turns until it lifts.
- * The lift keeps what was snapped and the stroke as it was drawn before, which
- * undoing the snap brings back.
+ * (`shape-recognition.ts`), which the pen then sizes and turns until it lifts
+ * -- unless, after a closed shape, it goes on along it, going round again
+ * (`followHeld`). The lift keeps what was snapped and the stroke as it was
+ * drawn before, which undoing the snap brings back.
  *
  * With the ruler out, a stroke that lands within `RULER_REACH_PX` of one of its
  * long edges is held to that edge for its whole length, pen or highlighter.
@@ -164,6 +170,31 @@ const DEFAULT_PRESSURE = 0.5;
 const HIGHLIGHTER_PRESSURE = 1;
 
 const NO_SAMPLES: readonly InkPointerSample[] = [];
+/**
+ * Screen pixels the pen may be from a closed shape it has snapped to, or from
+ * the stroke drawn for it, and still be going over it again.
+ */
+const TRACE_REACH_PX = 12;
+/** How far it goes on along it, after the snap, to be going over it rather than sizing it. */
+const TRACE_DECIDE_PX = 24;
+
+/**
+ * A shape holding still snapped the stroke to, as the pen has sized and
+ * turned it since. `follow` is what the pen is doing with it: not yet clear,
+ * going over it again (which changes nothing), or sizing it from `at`.
+ */
+type Held = {
+  shape: InkRecognizedShape;
+  at: InkPoint;
+  geometry: InkShapeGeometry;
+  width: number;
+  /** The stroke as drawn when it snapped, in page units. */
+  drawnPoints: readonly InkPoint[];
+  follow: "deciding" | "tracing" | "sizing";
+  /** Screen pixels the pen has gone since the snap, while deciding, and where it last was. */
+  travelled: number;
+  last: InkPoint;
+};
 
 /** Whether a path draws anything: it starts at a finite point and goes somewhere. */
 function hasGeometry(path: readonly InkPathCommand[]): boolean {
@@ -204,8 +235,7 @@ export class InkStrokeSession {
   /** One screen pixel, in page units. */
   private readonly pixelSize: number;
   /** The shape holding still made the stroke, as the pen has sized and turned it since. */
-  private held: { shape: InkRecognizedShape; at: InkPoint; geometry: InkShapeGeometry; width: number } | null =
-    null;
+  private held: Held | null = null;
   /** The stroke as drawn when holding still snapped it: what undoing the snap brings back. */
   private drawn: { path: InkPathCommand[]; paint: InkPaint } | null = null;
   /** The ruler edge this stroke is held to, if it landed by one. */
@@ -319,9 +349,7 @@ export class InkStrokeSession {
 
     if (added) {
       if (this.held) {
-        const held = this.held;
-        held.geometry = adjustInkShape(held.shape, held.at, { x: this.penX, y: this.penY }, this.pixelSize);
-        this.lastPath = inkShapePath(held.geometry, held.width);
+        this.followHeld(this.held);
       } else if (this.pen) {
         const geometry = this.pen.geometry();
         this.lastPath = geometry.path;
@@ -390,6 +418,14 @@ export class InkStrokeSession {
     return snapped
       ? { layer: this.layer, path: this.lastPath, paint: this.lastPaint, snapped }
       : { layer: this.layer, path: this.lastPath, paint: this.lastPaint };
+  }
+
+  /**
+   * Holding still has made the stroke a line or a shape. Where the pen goes
+   * after that is aiming or sizing it, not writing: none of it is a scribble.
+   */
+  get snappedOnHold(): boolean {
+    return this.drawn !== null;
   }
 
   /** What holding still made the stroke, as the lift keeps it, or null if it was never snapped. */
@@ -496,11 +532,21 @@ export class InkStrokeSession {
       this.lastPaint = penInkPaint(line.paint, this.color);
     } else {
       const width = this.pen.width();
-      const shape = this.shapes
-        ? recognizeInkShape(this.pen.extent().points, { width, pixelSize: this.pixelSize })
-        : null;
+      const points = this.pen.extent().points;
+      const shape = this.shapes ? recognizeInkShape(points, { width, pixelSize: this.pixelSize }) : null;
       if (!shape) return;
-      this.held = { shape, at: { x: this.penX, y: this.penY }, geometry: shape.geometry, width };
+      const at = { x: this.penX, y: this.penY };
+      const closed = shape.geometry.type === "polygon" || shape.geometry.type === "ellipse";
+      this.held = {
+        shape,
+        at,
+        geometry: shape.geometry,
+        width,
+        drawnPoints: closed ? [...points] : [],
+        follow: closed ? "deciding" : "sizing",
+        travelled: 0,
+        last: at,
+      };
       this.lastPath = inkShapePath(shape.geometry, width);
       this.lastPaint = penInkPaint({ kind: "stroke", width }, this.color);
     }
@@ -511,6 +557,30 @@ export class InkStrokeSession {
     this.hold = null;
     this.sink.drawLive(this.lastPath, this.lastPaint);
     this.tipShown = false;
+  }
+
+  /**
+   * The pen moving on with a shape snapped. After a closed one, its first
+   * pixels say what it is doing: going on along the shape, or along the stroke
+   * drawn for it -- going round again, as a hand often does past where it
+   * closed -- leaves the shape as it snapped; leaving them sizes and turns
+   * it, from where the pen left, so nothing jumps.
+   */
+  private followHeld(held: Held): void {
+    const pen = { x: this.penX, y: this.penY };
+    if (held.follow === "deciding") {
+      held.travelled += Math.hypot(pen.x - held.last.x, pen.y - held.last.y) / this.pixelSize;
+      held.last = pen;
+      if (inkShapeTraceDistance(held.shape.geometry, held.drawnPoints, pen) > TRACE_REACH_PX * this.pixelSize) {
+        held.follow = "sizing";
+        held.at = pen;
+      } else if (held.travelled >= TRACE_DECIDE_PX) {
+        held.follow = "tracing";
+      }
+    }
+    if (held.follow !== "sizing") return;
+    held.geometry = adjustInkShape(held.shape, held.at, pen, this.pixelSize);
+    this.lastPath = inkShapePath(held.geometry, held.width);
   }
 
   /**
