@@ -110,7 +110,7 @@ describe("useNotebookInkController undo ordering", () => {
     });
 
     act(() => {
-      ink.undo();
+      ink.undoStep();
     });
 
     // The regression this fixes: ink used to win regardless of order.
@@ -126,7 +126,7 @@ describe("useNotebookInkController undo ordering", () => {
     landInkCommand();
 
     act(() => {
-      ink.undo();
+      ink.undoStep();
     });
 
     expect(inkUndo).toHaveBeenCalledTimes(1);
@@ -143,7 +143,7 @@ describe("useNotebookInkController undo ordering", () => {
     landInkCommand();                       // stroke B
 
     act(() => {
-      ink.undo();
+      ink.undoStep();
     });
     expect(inkUndo).toHaveBeenCalledTimes(1);           // stroke B
 
@@ -152,21 +152,21 @@ describe("useNotebookInkController undo ordering", () => {
     inkRedoDepth += 1;
     act(() => {
       ink.handleInkHistoryChange(inkUndoDepth, inkRedoDepth);
-      ink.undo();
+      ink.undoStep();
     });
     expect(inkUndo).toHaveBeenCalledTimes(1);           // now the text move
     expect(store.read().textBlocks).toEqual([block("a")]);
 
     act(() => {
-      ink.undo();
+      ink.undoStep();
     });
     expect(inkUndo).toHaveBeenCalledTimes(2);           // finally stroke A
   });
 
   it("does nothing when both histories are empty", () => {
     act(() => {
-      ink.undo();
-      ink.redo();
+      ink.undoStep();
+      ink.redoStep();
     });
     expect(inkUndo).not.toHaveBeenCalled();
     expect(inkRedo).not.toHaveBeenCalled();
@@ -176,12 +176,12 @@ describe("useNotebookInkController undo ordering", () => {
   it("redoes a text edit that was undone last", () => {
     act(() => {
       ink.recordTextEdit([block("a")], [block("b")]);
-      ink.undo();
+      ink.undoStep();
     });
     expect(store.read().textBlocks).toEqual([block("a")]);
 
     act(() => {
-      ink.redo();
+      ink.redoStep();
     });
     expect(store.read().textBlocks).toEqual([block("b")]);
   });
@@ -189,7 +189,7 @@ describe("useNotebookInkController undo ordering", () => {
   it("drops the redo branch once a new edit lands", () => {
     act(() => {
       ink.recordTextEdit([block("a")], [block("b")]);
-      ink.undo();
+      ink.undoStep();
     });
     expect(ink.redoDepth).toBe(1);
 
@@ -210,6 +210,91 @@ describe("useNotebookInkController undo ordering", () => {
     expect(ink.undoDepth).toBe(2);
   });
 
+  it("hands changes to images and graphs back for the page to apply", () => {
+    const edit = {
+      kind: "images" as const,
+      previous: [{ id: "i", x: 0, y: 0 }],
+      next: [{ id: "i", x: 40, y: 0 }],
+    };
+    landInkCommand();
+    vi.advanceTimersByTime(10);
+    act(() => {
+      ink.recordPlacedEdit(edit);
+    });
+    expect(ink.redoDepth).toBe(0);
+
+    let steps: ReturnType<NotebookInkController["undoStep"]> = [];
+    act(() => {
+      steps = ink.undoStep();
+    });
+    // The move, not the stroke before it.
+    expect(steps).toEqual([{ edit: expect.objectContaining(edit), direction: "undo" }]);
+    expect(inkUndo).not.toHaveBeenCalled();
+
+    act(() => {
+      steps = ink.redoStep();
+    });
+    expect(steps).toEqual([{ edit: expect.objectContaining(edit), direction: "redo" }]);
+  });
+
+  it("undoes and redoes what one lasso drag moved -- ink, text and pictures -- as one step", () => {
+    // The editor reports its new depth as it steps, as the real one does.
+    inkUndo.mockImplementation(() => {
+      inkUndoDepth -= 1;
+      inkRedoDepth += 1;
+      ink.handleInkHistoryChange(inkUndoDepth, inkRedoDepth);
+    });
+    inkRedo.mockImplementation(() => {
+      inkUndoDepth += 1;
+      inkRedoDepth -= 1;
+      ink.handleInkHistoryChange(inkUndoDepth, inkRedoDepth);
+    });
+    const moved = { kind: "images" as const, previous: [{ id: "i", x: 0, y: 0 }], next: [{ id: "i", x: 40, y: 0 }] };
+    landInkCommand(); // a stroke before
+    vi.advanceTimersByTime(10);
+    act(() => {
+      ink.together(() => {
+        inkUndoDepth += 1;
+        ink.handleInkHistoryChange(inkUndoDepth, 0);
+        ink.recordPlacedEdit(moved);
+        ink.recordTextEdit([block("a")], [block("b")]);
+      });
+    });
+    act(() => {
+      ink.commitUi();
+    });
+    expect(ink.undoDepth).toBe(4);
+
+    let steps: ReturnType<NotebookInkController["undoStep"]> = [];
+    vi.advanceTimersByTime(10);
+    act(() => {
+      steps = ink.undoStep();
+    });
+    expect(inkUndo).toHaveBeenCalledTimes(1);
+    expect(store.read().textBlocks).toEqual([block("a")]);
+    expect(steps).toEqual([{ edit: expect.objectContaining(moved), direction: "undo" }]);
+
+    // The stroke before it is a step of its own.
+    vi.advanceTimersByTime(10);
+    act(() => {
+      steps = ink.undoStep();
+    });
+    expect(inkUndo).toHaveBeenCalledTimes(2);
+    expect(steps).toEqual([]);
+
+    vi.advanceTimersByTime(10);
+    act(() => {
+      ink.redoStep(); // the stroke
+    });
+    vi.advanceTimersByTime(10);
+    act(() => {
+      steps = ink.redoStep();
+    });
+    expect(inkRedo).toHaveBeenCalledTimes(2);
+    expect(store.read().textBlocks).toEqual([block("b")]);
+    expect(steps).toEqual([{ edit: expect.objectContaining(moved), direction: "redo" }]);
+  });
+
   it("forgets both histories when the page changes", () => {
     landInkCommand();
     act(() => {
@@ -220,7 +305,7 @@ describe("useNotebookInkController undo ordering", () => {
     expect(ink.redoDepth).toBe(0);
 
     act(() => {
-      ink.undo();
+      ink.undoStep();
     });
     expect(inkUndo).not.toHaveBeenCalled();
   });

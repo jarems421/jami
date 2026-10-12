@@ -51,7 +51,9 @@ scroll sideways.** Long equations must scroll inside their own box.
    of the page, in either orientation: Pen (P), Highlighter (H), Eraser (E),
    Text box (T), Insert (an image or a graph), Undo and Redo, pen and
    highlighter colour and thickness, and pen smoothing. Undo steps back
-   whichever of ink or text happened last. Drag the toolbar out to the left,
+   whichever of ink, text, an image or a graph changed last: move an image
+   and a graph by hand and undo puts each back, and redo moves it again.
+   Deleting an image cannot be undone. Drag the toolbar out to the left,
    right or bottom edge, where it floats over the page, and back up into the
    top bar; it stays where it was left after a reload.
 6. Turn on Scribble to erase in the tool settings and scribble over a word. Only
@@ -75,11 +77,15 @@ scroll sideways.** Long equations must scroll inside their own box.
    it however the hand wanders. A stroke started away from it is untouched.
    Press Ruler again to put it away. The exam working sheet has the same ruler.
 6c. Press Lasso (L) and draw a loop round some writing, an image, a graph and a
-   text box. Drag inside the box: they all move together. Pull the corner:
-   they all grow and shrink. Swing the round handle: ink, image and graph
-   turn, the text box stays upright. Pick a colour and press Thicker, then
-   Thinner. Undo steps back one gesture at a time. Press Delete: it all goes.
-   Reload: the moved and turned image and graph are where you left them.
+   text box. Drag inside the box: they all move together, keeping up with
+   the pen, and land where you let go with no jump or flicker. A tap inside
+   the box moves nothing. Pull the corner: they all grow and shrink (the
+   text box takes its new width when you let go). Swing the round handle:
+   ink, image and graph turn, the text box stays upright. Pick a colour and
+   press Thicker, then Thinner. Undo steps back one gesture at a time: one
+   undo puts the writing, image, graph and text box back together. Press
+   Delete: it all goes, and one undo brings back all but the image. Reload:
+   the moved and turned image and graph are where you left them.
 7. On a phone, a notebook shows "Notebook editing works best on iPad or
    desktop." with "Continue anyway"; typed notes still work. An iPad mini held
    upright gets the full notebook, with no such notice. With a tool's settings

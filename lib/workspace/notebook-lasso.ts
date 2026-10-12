@@ -34,6 +34,13 @@ export function lassoBoxFrame(box: NotebookGraphBlock | NotebookTextBlock): Lass
   return { x: box.x, y: box.y, width: box.width, height: box.height, rotation: "rotation" in box ? (box.rotation ?? 0) : 0 };
 }
 
+/** Whether something placed is where a frame says, to within a hair of rounding. */
+export function sameLassoFrame(a: LassoFrame, b: LassoFrame | null): boolean {
+  if (!b) return false;
+  const near = (left: number, right: number) => Math.abs(left - right) < 1e-6;
+  return near(a.x, b.x) && near(a.y, b.y) && near(a.width, b.width) && near(a.height, b.height) && near(a.rotation, b.rotation);
+}
+
 /** The four corners of something placed, turned as it is drawn. */
 export function lassoPlacedBox(frame: LassoFrame): InkPoint[] {
   const cx = frame.x + frame.width / 2;

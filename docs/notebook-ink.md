@@ -672,9 +672,36 @@ Still to come:
     ways), swing the round handle to turn. A bar under it recolours ink (a
     highlighter stays see-through), makes it thicker or thinner, or deletes
     everything picked up.
-  - Ink edits are one undo step per gesture (`InkSurface.beginEdit`,
-    `showEdit`, `endEdit`); images and graphs save as their own moves always
-    have; text boxes go through the text history.
+  - A drag renders nothing while it moves, and changes the page only where
+    it ends:
+    - once the pen has gone 3 px (so a tap never nudges the selection), the
+      ink is lifted off the page (`InkSurface.hideItems`) and painted once
+      onto a canvas of its own (`lib/ink-dom/lasso-ghost.ts`), which a CSS
+      transform carries;
+    - images, graphs and text boxes are carried by the CSS `translate`,
+      `rotate` and `scale` of their own elements (marked
+      `data-notebook-placed`), which their layers never set; a text box is
+      only carried, upright and its own size, and takes its new width at the
+      end;
+    - the box and its bar are moved by their attributes;
+    - at the end the ink is put down where the drag left it (`endEdit(items)`),
+      images and graphs save as their own moves do, and text boxes go
+      through the text history; the stand-ins go in the same frame as the
+      real things are drawn. A drag that ends where it began, or the lasso
+      put down mid-drag, puts everything back and saves nothing.
+  - A drag, or Delete, is one undo step for everything it touched: the
+    notebook's history (`useNotebookInkController`) records it in one group
+    (`together`), ink stamps included, and steps the group as one.
+  - Images and graphs are in the notebook's undo history whether the lasso
+    or the student's own hand moved them (`useNotebookPlacedItems`): every
+    change to a graph, and an image moved, resized or turned. Deleting an
+    image deletes its uploaded file, so that is never undone, and undo never
+    brings back anything deleted since (`stepPlacedHistory`).
+  - While ink is lifted, the surface's committed document (what a save
+    reads) is still the page from before the drag, and loading another page
+    drops the edit.
+  - Recolouring and Thicker or Thinner are one undo step each
+    (`beginEdit`, `showEdit`, `endEdit`).
   - A tapered stroke is a filled outline, so Thicker traces round it in its
     own colour and Thinner only takes that back off; the highlighter keeps its
     weight.

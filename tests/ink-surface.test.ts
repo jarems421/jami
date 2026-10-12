@@ -368,6 +368,53 @@ describe("lasso edits", () => {
     expect(surface.document().items[0]).toBe(original);
   });
 
+  it("lifts ink off the page for a drag and puts it down where the drag ended, as one undo step", () => {
+    const { surface, changes } = setup();
+    const original = rect("a", 100, 100, 140, 140);
+    const other = rect("b", 400, 400, 440, 440);
+    load(surface, original, other);
+    const before = surface.document();
+    surface.beginEdit();
+    surface.hideItems(["a"]);
+    expect(surface.items(["a"])).toEqual([]);
+    // A save while it is lifted still finds it where it was.
+    expect(surface.document()).toBe(before);
+    expect(surface.hasInk()).toBe(true);
+    const moved = rect("a", 300, 100, 340, 140);
+    surface.endEdit([moved]);
+    expect(surface.document().items).toEqual([moved, other]);
+    expect(surface.historyState().undoDepth).toBe(1);
+    expect(changes.count).toBe(1);
+    surface.undo();
+    expect(surface.document().items).toEqual([original, other]);
+  });
+
+  it("records nothing when lifted ink is put down where it was", () => {
+    const { surface, changes } = setup();
+    const original = rect("a", 100, 100, 140, 140);
+    load(surface, original);
+    const before = surface.document();
+    surface.beginEdit();
+    surface.hideItems(["a"]);
+    surface.endEdit([original]);
+    expect(surface.document().items).toEqual(before.items);
+    expect(surface.historyState().undoDepth).toBe(0);
+    expect(changes.count).toBe(0);
+  });
+
+  it("drops an edit in progress when another page loads", () => {
+    const { surface, changes } = setup();
+    load(surface, rect("a", 100, 100, 140, 140));
+    surface.beginEdit();
+    surface.hideItems(["a"]);
+    const next = rect("z", 500, 500, 540, 540);
+    load(surface, next);
+    expect(surface.busy).toBe(false);
+    surface.endEdit([rect("a", 300, 100, 340, 140)]);
+    expect(surface.document().items).toEqual([next]);
+    expect(changes.count).toBe(0);
+  });
+
   it("deletes what was picked up as one step", () => {
     const { surface } = setup();
     load(surface, rect("a", 100, 100, 140, 140), rect("b", 400, 400, 440, 440));

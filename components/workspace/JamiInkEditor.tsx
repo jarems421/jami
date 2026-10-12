@@ -182,8 +182,15 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
             items: (ids) => surfaceRef.current?.items(ids) ?? [],
             beginEdit: () => surfaceRef.current?.beginEdit(),
             showEdit: (items) => surfaceRef.current?.showEdit(items),
-            endEdit: () => surfaceRef.current?.endEdit(),
+            hideItems: (ids) => surfaceRef.current?.hideItems(ids),
+            endEdit: (items) => surfaceRef.current?.endEdit(items),
             removeItems: (ids) => surfaceRef.current?.removeItems(ids),
+            whenVisibleDrawn: (callback) => {
+              const surface = surfaceRef.current;
+              if (surface) return surface.whenVisibleDrawn(callback);
+              callback();
+              return () => undefined;
+            },
           },
         };
       },

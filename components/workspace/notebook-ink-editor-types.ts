@@ -42,7 +42,7 @@ export type NotebookInkEditorHandle = {
 
 export type NotebookInkLasso = Pick<
   InkSurface,
-  "inkInLoop" | "items" | "beginEdit" | "showEdit" | "endEdit" | "removeItems"
+  "inkInLoop" | "items" | "beginEdit" | "showEdit" | "hideItems" | "endEdit" | "removeItems" | "whenVisibleDrawn"
 >;
 
 export type NotebookInkEditorCallbacks = {

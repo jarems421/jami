@@ -359,6 +359,8 @@ function NotebookGraphLayer({
       {displayedGraphs.map((graph) => (
         <div
           key={graph.id}
+          // What a lasso drag carries about (`NotebookLassoLayer`).
+          data-notebook-placed={`graph:${graph.id}`}
           className="pointer-events-none absolute z-10 overflow-hidden rounded-sm border border-slate-950/15"
           style={styleFor(graph)}
         >

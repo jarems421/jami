@@ -72,6 +72,8 @@ function NotebookPlacedImage({ image }: { image: NotebookImageRef }) {
 
   return (
     <div
+      // What a lasso drag carries about (`NotebookLassoLayer`).
+      data-notebook-placed={`image:${image.id}`}
       className="pointer-events-none absolute z-10 overflow-hidden rounded-sm"
       style={styleFor(image)}
     >
@@ -148,12 +150,12 @@ function NotebookImageLayer({
   const frameRef = useRef<number | null>(null);
   const [draft, setDraft] = useState<NotebookImageRef | null>(null);
   /*
-   * Where each image was left, held until its save lands.
+   * Where each image was left, held until its save settles.
    *
-   * The page's images keep their previous geometry until the write returns, so
-   * dropping the preview at pointer-up snapped the image back for that window
-   * and forward again after. Kept per image, so moving a second image while the
-   * first is still saving does not put the first one back.
+   * The notebook page shows a move at once too (`useNotebookPlacedItems`);
+   * this keeps the layer from snapping an image back while it saves whatever
+   * its host does. Kept per image, so moving a second image while the first
+   * is still saving does not put the first one back.
    */
   const [pending, setPending] = useState<Pending>({});
   const pendingRef = useRef<Pending>({});

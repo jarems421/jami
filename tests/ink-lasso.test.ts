@@ -9,7 +9,15 @@ import {
   thickenInkItem,
   transformInkItem,
 } from "@/lib/ink/tools/lasso";
-import { lassoBoxFrame, lassoImageFrame, lassoPlacedBox, transformLassoGraph, transformLassoImage, transformLassoText } from "@/lib/workspace/notebook-lasso";
+import {
+  lassoBoxFrame,
+  lassoImageFrame,
+  lassoPlacedBox,
+  sameLassoFrame,
+  transformLassoGraph,
+  transformLassoImage,
+  transformLassoText,
+} from "@/lib/workspace/notebook-lasso";
 import { normalizeNotebookImageRefs } from "@/lib/workspace/notebooks";
 import { normalizeNotebookGraphBlocks } from "@/lib/workspace/notebook-graphs";
 
@@ -118,5 +126,17 @@ describe("what the lasso does to things placed on the page", () => {
     const corners = lassoPlacedBox(lassoImageFrame({ id: "i", x: 0, y: 0, displayWidth: 100, displayHeight: 100, rotation: Math.PI / 4 }));
     expect(Math.min(...corners.map((corner) => corner.y))).toBeCloseTo(50 - 50 * Math.SQRT2);
     expect(lassoBoxFrame({ id: "t", x: 1, y: 2, width: 3, height: 4, text: "", outlineVisible: false }).rotation).toBe(0);
+  });
+
+  it("tells whether something placed is still where the lasso left it", () => {
+    const image = { id: "i", x: 80, y: 80, displayWidth: 40, displayHeight: 40 };
+    const left = lassoImageFrame(transformLassoImage(image, transform));
+    // The same move made again, and read back through a save's rounding.
+    expect(sameLassoFrame(left, lassoImageFrame(transformLassoImage(image, transform)))).toBe(true);
+    expect(sameLassoFrame(left, { ...left, x: left.x + 1e-9 })).toBe(true);
+    // Moved since, or gone.
+    expect(sameLassoFrame(left, { ...left, x: left.x + 1 })).toBe(false);
+    expect(sameLassoFrame(left, { ...left, rotation: 0 })).toBe(false);
+    expect(sameLassoFrame(left, null)).toBe(false);
   });
 });

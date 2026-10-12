@@ -103,13 +103,16 @@ export type InkSurface = {
   /** The items with these ids, in page order. */
   items(ids: readonly string[]): InkItem[];
   /**
-   * An edit made in many small steps (the lasso dragging what it picked up):
-   * `beginEdit`, then `showEdit` with the items as they are now, as often as
-   * wanted, then `endEdit`, which records the whole edit as one undo step.
+   * An edit made in steps, recorded as one undo step: `beginEdit`, then
+   * `showEdit` with items as they are now (restyled in place), or
+   * `hideItems` to take some off the page while something else shows them
+   * (the lasso dragging what it picked up), then `endEdit` -- given items,
+   * it puts them where the ones with their ids were when the edit began.
    */
   beginEdit(): void;
   showEdit(items: readonly InkItem[]): void;
-  endEdit(): void;
+  hideItems(ids: readonly string[]): void;
+  endEdit(items?: readonly InkItem[]): void;
   /** Takes these items off the page, as one undo step. */
   removeItems(ids: readonly string[]): void;
   /** A stroke or an erase is in progress. */
@@ -120,9 +123,10 @@ export type InkSurface = {
   hasInk(): boolean;
   historyState(): { undoDepth: number; redoDepth: number };
   /**
-   * The committed document, which a stroke in progress is not yet part of.
-   * Never changed in place: an edit makes a new one, so the same object back
-   * means nothing has changed since.
+   * The committed document, which a stroke or an edit in progress is not yet
+   * part of: while the lasso drags ink, a save finds it where it was picked
+   * up, never missing. Never changed in place: an edit makes a new one, so
+   * the same object back means nothing has changed since.
    */
   document(): InkDocument;
   destroy(): void;
@@ -202,6 +206,8 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
     load(page) {
       if (destroyed) return;
       dropGestures();
+      // An edit begun on the old page has nothing left to finish on this one.
+      editStart = null;
       cancelWarmUp?.();
       doc = page;
       index.clear();
@@ -333,10 +339,21 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
       if (!isEmptyChange(change)) apply(change);
     },
 
-    endEdit() {
+    hideItems(ids) {
+      if (!editStart) return;
+      const change = inkRemoveChange(doc, ids);
+      if (!isEmptyChange(change)) apply(change);
+    },
+
+    endEdit(items) {
       const start = editStart;
       editStart = null;
       if (!start) return;
+      if (items) {
+        const placed = applyInkChange(start, inkReplaceChange(start, new Map(items.map((item) => [item.id, [item]]))));
+        const putBack = inkDiffChange(doc, placed);
+        if (!isEmptyChange(putBack)) apply(putBack);
+      }
       const change = inkDiffChange(start, doc);
       if (!isEmptyChange(change)) recorded(change);
     },
@@ -363,10 +380,10 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
       recorded(change);
     },
 
-    hasInk: () => doc.items.length > 0,
+    hasInk: () => (editStart ?? doc).items.length > 0,
     historyState: () => ({ undoDepth: history.undoDepth, redoDepth: history.redoDepth }),
 
-    document: () => doc,
+    document: () => editStart ?? doc,
 
     destroy() {
       if (destroyed) return;

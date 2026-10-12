@@ -242,8 +242,6 @@ export default function NotebookEditorPage() {
     setInkReady,
     isInteracting: isInkInteracting,
     recordTextEdit,
-    undo: handleUndo,
-    redo: handleRedo,
     clearInk: clearPageInk,
     handleInkChange,
     handleInkHistoryChange,
@@ -426,6 +424,8 @@ export default function NotebookEditorPage() {
     handleSaveGraph,
     handleTutorGraphInsert,
     lasso,
+    undo: handleUndo,
+    redo: handleRedo,
   } = useNotebookPlacedItems({
     userId,
     notebookId,
@@ -438,7 +438,7 @@ export default function NotebookEditorPage() {
     success,
     showError,
     showThrownError,
-    lassoInput: { inkEditorRef, recordTextEdit, markUnsaved: markPageUnsaved },
+    shared: { inkEditorRef, history: ink, markUnsaved: markPageUnsaved },
   });
   const placedItemsEditingEnabled =
     notebookToolMovesPlacedItems(tool) && pageEditingEnabled && !isPhoneLayout;

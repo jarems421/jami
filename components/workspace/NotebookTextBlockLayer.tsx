@@ -318,6 +318,8 @@ function NotebookTextBlockLayer({
         return (
           <div
             key={block.id}
+            // What a lasso drag carries about (`NotebookLassoLayer`).
+            data-notebook-placed={`text:${block.id}`}
             className={`notebook-text-object absolute rounded-sm border bg-transparent transition-[border-color,box-shadow] duration-150 ${
               editingEnabled ? "pointer-events-auto" : "pointer-events-none"
             } ${

@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import type { NotebookInkEditorHandle } from "@/components/workspace/notebook-ink-editor-types";
+import type { NotebookInkController } from "@/hooks/useNotebookInkController";
 import { useNotebookLasso } from "@/hooks/useNotebookLasso";
 import type { NotebookLoader } from "@/hooks/useNotebookLoader";
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
@@ -12,10 +13,15 @@ import {
   type NotebookGraphDraft,
 } from "@/lib/workspace/notebook-graphs";
 import {
+  placedHistoryChange,
+  stepPlacedHistory,
+  type NotebookPlacedStep,
+} from "@/lib/workspace/notebook-history";
+import {
   notebookToolMovesPlacedItems,
   type NotebookEditorTool,
 } from "@/lib/workspace/notebook-page-state";
-import type { NotebookImageRef, NotebookTextBlock } from "@/lib/workspace/notebooks";
+import type { NotebookImageRef } from "@/lib/workspace/notebooks";
 import {
   addUploadedImageToNotebookPage,
   deleteUploadedNotebookImageFile,
@@ -39,20 +45,24 @@ type UseNotebookPlacedItemsOptions = {
   success: (message: string) => void;
   showError: (message: string) => void;
   showThrownError: (error: unknown, fallback: string) => void;
-  /** What the lasso needs beyond images and graphs: the ink, and the text history. */
-  lassoInput: {
+  /** What is shared with the rest of the page: the ink, for the lasso, and the undo history. */
+  shared: {
     inkEditorRef: RefObject<NotebookInkEditorHandle | null>;
-    recordTextEdit: (previous: NotebookTextBlock[], next: NotebookTextBlock[]) => void;
+    history: Pick<NotebookInkController, "recordTextEdit" | "recordPlacedEdit" | "together" | "undoStep" | "redoStep">;
     markUnsaved: () => void;
   };
 };
 
 /**
- * Images and graphs placed on a notebook page: what is selected, and every
- * write that adds, moves, edits or removes one.
+ * Images and graphs placed on a notebook page: what is selected, every write
+ * that adds, moves, edits or removes one, and undo and redo for the page.
  *
  * Both are single fields on the page record, saved on their own rather than
- * with the page's ink and text, so a move never waits on an autosave.
+ * with the page's ink and text, so a move never waits on an autosave. Their
+ * changes join the page's undo history (`useNotebookInkController`), which
+ * hands them back here to apply: every change to a graph, and an image moved,
+ * resized or turned. Deleting an image deletes its file, so that is never
+ * undone.
  */
 export function useNotebookPlacedItems({
   userId,
@@ -66,8 +76,9 @@ export function useNotebookPlacedItems({
   success,
   showError,
   showThrownError,
-  lassoInput,
+  shared,
 }: UseNotebookPlacedItemsOptions) {
+  const { recordPlacedEdit, together, undoStep, redoStep, recordTextEdit } = shared.history;
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
   /** The id of the graph open in the editor, "new" while one is being made, or null. */
@@ -182,30 +193,52 @@ export function useNotebookPlacedItems({
   );
 
   /*
+   * Shown at once and saved behind, and recorded for undo unless it is an undo
+   * or a redo itself. A refused write puts back what was there.
+   *
    * Images are their own field, so a move no longer flushes the page first or
    * touches its revision -- the flush was there to dodge a conflict the image
    * write itself was causing, and it put a save round-trip in front of every
    * drop.
    */
-  const handleImagesCommit = useCallback(
-    (imageRefs: NotebookImageRef[]) => {
+  const commitImages = useCallback(
+    (imageRefs: NotebookImageRef[], record: boolean) => {
       const pageId = pageState.read().selectedPage?.id;
       if (!userId || !notebookId || !pageId) return Promise.resolve();
-      latestImageRefsRef.current = { pageId, imageRefs };
+      const before = currentImageRefsFor(pageId);
+      const change = record ? placedHistoryChange(before, imageRefs, { addsAndRemovals: false }) : null;
+      if (change) recordPlacedEdit({ kind: "images", ...change });
+      applyPageImages(pageId, imageRefs, Date.now());
+      const stillLatest = () => latestImageRefsRef.current?.imageRefs === imageRefs;
       return queueWrite(async () => {
         const result = await updateNotebookPageImages(userId, {
           notebookId,
           pageId,
           imageRefs,
         });
-        applyPageImages(pageId, imageRefs, result.updatedAt);
+        // A newer edit already on screen is not replaced by this older one.
+        if (stillLatest()) applyPageImages(pageId, imageRefs, result.updatedAt);
       }).catch((error: unknown) => {
-        latestImageRefsRef.current = null;
+        if (stillLatest()) applyPageImages(pageId, before, Date.now());
         showThrownError(error, "That image could not be moved. Try again.");
         throw error;
       });
     },
-    [applyPageImages, notebookId, pageState, queueWrite, showThrownError, userId]
+    [
+      applyPageImages,
+      currentImageRefsFor,
+      notebookId,
+      pageState,
+      queueWrite,
+      recordPlacedEdit,
+      showThrownError,
+      userId,
+    ]
+  );
+
+  const handleImagesCommit = useCallback(
+    (imageRefs: NotebookImageRef[]) => commitImages(imageRefs, true),
+    [commitImages]
   );
 
   /** Resolves true once the image is on the page; failures are shown here. */
@@ -249,20 +282,22 @@ export function useNotebookPlacedItems({
     ]
   );
 
-  const handleDeleteImage = useCallback(
-    (imageId: string) => {
+  /** Deletes images, and the files of uploaded ones, which is why it is never undone. */
+  const deleteImages = useCallback(
+    (imageIds: readonly string[]) => {
       const pageId = pageState.read().selectedPage?.id;
       if (!userId || !notebookId || !pageId) return;
+      const ids = new Set(imageIds);
       const before = currentImageRefsFor(pageId);
-      const removed = before.find((image) => image.id === imageId);
-      if (!removed) return;
-      const imageRefs = before.filter((image) => image.id !== imageId);
+      const removed = before.filter((image) => ids.has(image.id));
+      if (removed.length === 0) return;
+      const imageRefs = before.filter((image) => !ids.has(image.id));
       setSelectedImageId(null);
       // Gone at once; put back only if the page write is refused.
       applyPageImages(pageId, imageRefs, Date.now());
       void queueWrite(async () => {
         await updateNotebookPageImages(userId, { notebookId, pageId, imageRefs });
-        await deleteUploadedNotebookImageFile(removed);
+        await Promise.all(removed.map(deleteUploadedNotebookImageFile));
       }).catch((error: unknown) => {
         applyPageImages(pageId, before, Date.now());
         showThrownError(error, "That image could not be deleted. Try again.");
@@ -270,6 +305,8 @@ export function useNotebookPlacedItems({
     },
     [applyPageImages, currentImageRefsFor, notebookId, pageState, queueWrite, showThrownError, userId]
   );
+
+  const handleDeleteImage = useCallback((imageId: string) => deleteImages([imageId]), [deleteImages]);
 
   const currentGraphBlocksFor = useCallback(
     (pageId: string) => {
@@ -292,14 +329,17 @@ export function useNotebookPlacedItems({
   );
 
   /*
-   * Shown at once and saved behind, through the shared write queue. A refused
-   * write puts back what was there and says so, so callers do not report
-   * failures themselves.
+   * Shown at once and saved behind, through the shared write queue, and
+   * recorded for undo unless it is an undo or a redo itself. A refused write
+   * puts back what was there and says so, so callers do not report failures
+   * themselves.
    */
   const writePageGraphs = useCallback(
-    async (pageId: string, graphBlocks: NotebookGraphBlock[], failureMessage: string) => {
+    async (pageId: string, graphBlocks: NotebookGraphBlock[], failureMessage: string, record = true) => {
       if (!userId || !notebookId) return false;
       const before = currentGraphBlocksFor(pageId);
+      const change = record ? placedHistoryChange(before, graphBlocks, { addsAndRemovals: true }) : null;
+      if (change) recordPlacedEdit({ kind: "graphs", ...change });
       applyPageGraphs(pageId, graphBlocks, Date.now());
       const stillLatest = () => latestGraphBlocksRef.current?.graphBlocks === graphBlocks;
       try {
@@ -315,7 +355,7 @@ export function useNotebookPlacedItems({
         return false;
       }
     },
-    [applyPageGraphs, currentGraphBlocksFor, notebookId, queueWrite, showThrownError, userId]
+    [applyPageGraphs, currentGraphBlocksFor, notebookId, queueWrite, recordPlacedEdit, showThrownError, userId]
   );
 
   const handleGraphsCommit = useCallback(
@@ -436,26 +476,67 @@ export function useNotebookPlacedItems({
     [handleDeleteGraph, handleGraphsCommit, handleSelectGraph, selectedGraphId]
   );
 
+  /** What undo or redo handed back for images and graphs: saved, and not recorded again. */
+  const applyPlacedSteps = useCallback(
+    (steps: NotebookPlacedStep[]) => {
+      const pageId = pageState.read().selectedPage?.id;
+      if (!pageId) return;
+      for (const { edit, direction } of steps) {
+        const undoing = direction === "undo";
+        if (edit.kind === "images") {
+          const imageRefs = stepPlacedHistory(
+            currentImageRefsFor(pageId),
+            undoing ? edit.next : edit.previous,
+            undoing ? edit.previous : edit.next
+          );
+          // A refused write is shown, and put back, by the commit itself.
+          commitImages(imageRefs, false).catch(() => undefined);
+        } else {
+          const graphBlocks = stepPlacedHistory(
+            currentGraphBlocksFor(pageId),
+            undoing ? edit.next : edit.previous,
+            undoing ? edit.previous : edit.next
+          );
+          void writePageGraphs(pageId, graphBlocks, "That graph could not be changed. Try again.", false);
+        }
+      }
+    },
+    [commitImages, currentGraphBlocksFor, currentImageRefsFor, pageState, writePageGraphs]
+  );
+
   const lasso = useNotebookLasso({
     active: tool === "lasso" && !isPhoneLayout,
     pageId: openPageId,
-    inkEditorRef: lassoInput.inkEditorRef,
+    inkEditorRef: shared.inkEditorRef,
     placed: {
       images: () => (openPageId ? currentImageRefsFor(openPageId) : []),
       graphs: () => (openPageId ? currentGraphBlocksFor(openPageId) : []),
-      showImages: (imageRefs) => openPageId && applyPageImages(openPageId, imageRefs, Date.now()),
-      showGraphs: (graphBlocks) => openPageId && applyPageGraphs(openPageId, graphBlocks, Date.now()),
-      saveImages: (imageRefs) => void handleImagesCommit(imageRefs),
+      saveImages: (imageRefs) => void handleImagesCommit(imageRefs).catch(() => undefined),
       saveGraphs: (graphBlocks) => void handleGraphsCommit(graphBlocks),
+      deleteImages,
       texts: () => pageState.read().textBlocks,
       setTexts: (textBlocks) => pageState.setTextBlocks(textBlocks),
-      recordTexts: lassoInput.recordTextEdit,
-      markUnsaved: lassoInput.markUnsaved,
+      recordTexts: recordTextEdit,
+      markUnsaved: shared.markUnsaved,
+      together,
     },
   });
+  const { refresh: refreshLasso } = lasso;
+
+  // What the lasso holds may have moved: its box goes with it.
+  const undo = useCallback(() => {
+    applyPlacedSteps(undoStep());
+    refreshLasso();
+  }, [applyPlacedSteps, refreshLasso, undoStep]);
+  const redo = useCallback(() => {
+    applyPlacedSteps(redoStep());
+    refreshLasso();
+  }, [applyPlacedSteps, redoStep, refreshLasso]);
 
   return {
     lasso,
+    undo,
+    redo,
     imageLayerProps,
     graphLayerProps,
     selectedImageId,
