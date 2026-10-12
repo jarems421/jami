@@ -13,6 +13,7 @@ let root: Root;
 const onSelectDrawingTool = vi.fn();
 const onToggleTextTool = vi.fn();
 const onToggleInsertMenu = vi.fn();
+const onToggleRuler = vi.fn();
 const onAddImage = vi.fn();
 const onAddGraph = vi.fn();
 const onUndo = vi.fn();
@@ -26,6 +27,7 @@ function render(
     undoDepth: number;
     redoDepth: number;
     addingImage: boolean;
+    rulerShown: boolean;
   }> = {}
 ) {
   act(() => {
@@ -41,6 +43,8 @@ function render(
         onSelectDrawingTool={onSelectDrawingTool}
         onToggleTextTool={onToggleTextTool}
         onToggleInsertMenu={onToggleInsertMenu}
+        rulerShown={overrides.rulerShown ?? false}
+        onToggleRuler={onToggleRuler}
         onAddImage={onAddImage}
         addingImage={overrides.addingImage ?? false}
         onAddGraph={onAddGraph}
@@ -260,6 +264,8 @@ describe("NotebookDrawingToolbar", () => {
           onSelectDrawingTool={onSelectDrawingTool}
           onToggleTextTool={onToggleTextTool}
           onToggleInsertMenu={onToggleInsertMenu}
+          rulerShown={false}
+          onToggleRuler={onToggleRuler}
           onAddImage={onAddImage}
           addingImage={false}
           onAddGraph={onAddGraph}
@@ -301,5 +307,14 @@ describe("NotebookDrawingToolbar", () => {
     render({ dock: "top" });
     const bar = container.querySelector('[role="toolbar"]') as HTMLElement;
     expect(bar.dataset.toolbarDock).toBe("top");
+  });
+
+  it("puts the ruler out and away, and shows when it is out", () => {
+    render();
+    expect(button("Ruler").getAttribute("aria-pressed")).toBe("false");
+    click("Ruler");
+    expect(onToggleRuler).toHaveBeenCalledTimes(1);
+    render({ rulerShown: true });
+    expect(button("Put the ruler away").getAttribute("aria-pressed")).toBe("true");
   });
 });

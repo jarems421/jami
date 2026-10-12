@@ -31,7 +31,10 @@ function renderToolbar(handlers: Handlers, openMenu: "pen" | "insert" | null = "
     const toolbar = useNotebookDrawingToolbar({
       frameRef,
       frameSize: { width: 800, height: 600 },
-      ...handlers,
+      closeMenus: handlers.closeMenus,
+      undo: handlers.undo,
+      redo: handlers.redo,
+      drawingTools: { setMenuOpen: handlers.setMenuOpen, rulerShown: false, toggleRuler: () => undefined },
       tool: "pen",
       penColor: "black",
       highlighterColor: "yellow",

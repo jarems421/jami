@@ -45,6 +45,7 @@ type UseNotebookLiveInkLayerOptions = {
     NotebookDrawingToolState,
     | "eraserMode"
     | "scribbleToErase"
+    | "rulerShown"
     | "penColor"
     | "penSettings"
     | "penThicknessPercent"
@@ -100,6 +101,7 @@ export function useNotebookLiveInkLayer({
   const {
     eraserMode,
     scribbleToErase,
+    rulerShown,
     penColor,
     penSettings,
     penThicknessPercent,
@@ -197,6 +199,7 @@ export function useNotebookLiveInkLayer({
       eraserMode,
       scribbleToErase,
       shapesOnHold: true,
+      rulerShown,
       penColor,
       penSettings,
       penThickness: getPenWidthFromPercent(penThicknessPercent),
@@ -228,6 +231,7 @@ export function useNotebookLiveInkLayer({
       penSettings,
       penThicknessPercent,
       scribbleToErase,
+      rulerShown,
       tool,
       windows.ink,
     ]

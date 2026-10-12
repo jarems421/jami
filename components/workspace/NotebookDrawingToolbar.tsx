@@ -44,6 +44,8 @@ export type NotebookDrawingToolbarProps = {
   onSelectDrawingTool: (tool: "pen" | "highlighter" | "eraser") => void;
   onToggleTextTool: () => void;
   onToggleInsertMenu: () => void;
+  rulerShown: boolean;
+  onToggleRuler: () => void;
   /** A picture chosen from the device, to place on the current page. */
   onAddImage: (file: File) => void;
   addingImage: boolean;
@@ -74,7 +76,7 @@ function ToolColorBar({
 
 /**
  * The notebook's drawing tools: pen, highlighter, eraser, text, Insert (a
- * picture or a graph), then undo and redo.
+ * picture or a graph), the ruler, then undo and redo.
  *
  * At home in the top bar, where it never covers the page: a row of quiet
  * buttons, outlined only when picked, beside the title. Dragged out, it floats
@@ -92,6 +94,8 @@ function NotebookDrawingToolbar({
   onSelectDrawingTool,
   onToggleTextTool,
   onToggleInsertMenu,
+  rulerShown,
+  onToggleRuler,
   onAddImage,
   addingImage,
   onAddGraph,
@@ -174,6 +178,14 @@ function NotebookDrawingToolbar({
           onAddImage={onAddImage}
           addingImage={addingImage}
           onAddGraph={onAddGraph}
+        />
+        <ToolbarIconButton
+          label={rulerShown ? "Put the ruler away" : "Ruler"}
+          icon="ruler"
+          quiet={inBar}
+          active={rulerShown}
+          pressed={rulerShown}
+          onClick={onToggleRuler}
         />
         <span
           aria-hidden="true"

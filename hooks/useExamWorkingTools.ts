@@ -63,6 +63,8 @@ export function useExamWorkingTools({
   // and nothing on the first paint depends on them.
   const [penSettings, setPenSettings] = useState(readNotebookPenSettings);
   const [scribbleToErase, setScribbleToErase] = useState(readNotebookScribbleErasePreference);
+  /** The ruler, the one new note-taking tool the exam sheet has. Not saved. */
+  const [rulerShown, setRulerShown] = useState(false);
   const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>(initialTools.highlighterColor);
   const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(
     initialTools.highlighterThicknessPercent
@@ -176,6 +178,8 @@ export function useExamWorkingTools({
   return {
     tool,
     openMenu,
+    rulerShown,
+    toggleRuler: () => setRulerShown((shown) => !shown),
     selectTool,
     pickTool,
     closeMenu,
@@ -193,6 +197,7 @@ export function useExamWorkingTools({
       penSettings,
       penThickness: widths.pen,
       scribbleToErase,
+      rulerShown,
     },
   };
 }

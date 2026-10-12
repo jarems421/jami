@@ -693,11 +693,16 @@ Still to come:
   - Pen only; the highlighter never snaps. The exam working sheet straightens
     lines and nothing more (`shapesOnHold` is a notebook page's prop alone),
     and js-draw, the fallback, straightens lines only.
-- **Ruler.**
-  - Fingers that start on the ruler move and turn it instead of panning.
-  - It has an angle readout with detents, and the pen within 16 px of an edge
-    draws along it.
-  - It is not saved. On the exam sheet it is the only new tool.
+- **Ruler (done, 12 October).** The Ruler button on the toolbar puts it out
+  across the page and away again (`lib/ink/tools/ruler.ts`, `NotebookRuler`).
+  - One finger on it moves it, two turn it about the point between them; it
+    never pans the page. Its angle shows in the middle and settles on every
+    15 degrees within 2.
+  - A pen or highlighter stroke that lands within 16 px of a long edge is held
+    to that edge for its whole length; the pen goes through the ruler to the
+    ink, so a stroke can start on the edge itself. No predicted tip along it.
+  - It is not saved, and it zooms with the page. On the exam sheet it is the
+    only new tool. Jami Ink only: js-draw, the fallback, has no ruler.
 
 ## Migration
 
@@ -748,7 +753,7 @@ fallback to js-draw.
    thumbnails and previews, the static page and the editors (see Saving and
    Migration). The exam sheet keeps SVG until its rules allow the encoding,
    and swipe bitmaps moved to stage 7.
-6. **New tools.** Shapes on hold (done), then the ruler and the lasso. The
+6. **New tools.** Shapes on hold and the ruler (done), then the lasso. The
    owner's second iPad round.
 7. **Performance.**
    - A worker renderer, only if the gates need it.

@@ -57,6 +57,7 @@ export default function ExamSheetToolbar({
   penColor,
   highlighterColor,
   onSelectTool,
+  ruler,
   settings,
   canUndo,
   canRedo,
@@ -74,6 +75,7 @@ export default function ExamSheetToolbar({
   penColor: NotebookStrokeColor;
   highlighterColor: NotebookStrokeColor;
   onSelectTool: (tool: ExamWorkingTool) => void;
+  ruler: { shown: boolean; onToggle: () => void };
   settings: Pick<NotebookToolSettingsPopoverProps, "pen" | "highlighter" | "eraser">;
   canUndo: boolean;
   canRedo: boolean;
@@ -134,6 +136,14 @@ export default function ExamSheetToolbar({
             </ToolbarIconButton>
           </div>
         ))}
+        <ToolbarIconButton
+          label={ruler.shown ? "Put the ruler away" : "Ruler"}
+          icon="ruler"
+          active={ruler.shown}
+          pressed={ruler.shown}
+          disabled={disabled}
+          onClick={ruler.onToggle}
+        />
         <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-[var(--color-border)]" />
         {/*
           * Offered even when the sheet is all printed pages.

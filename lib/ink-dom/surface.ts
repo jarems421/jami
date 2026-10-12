@@ -20,6 +20,7 @@ import {
   type InkShapeItem,
 } from "@/lib/ink/model";
 import { InkSpatialIndex } from "@/lib/ink/spatial-index";
+import type { InkRuler } from "@/lib/ink/tools/ruler";
 import { planInkScribbleErase } from "@/lib/ink/tools/scribble-erase";
 import type { InkTimers } from "@/lib/ink-dom/hold-detector";
 import {
@@ -78,7 +79,13 @@ export type InkSurface = {
   beginGesture(): void;
   endGesture(): void;
   whenVisibleDrawn(callback: () => void): () => void;
-  beginStroke(input: { tool: InkStrokeTool; mapping: InkScreenMapping; first: InkPointerSample }): void;
+  /** `ruler`, when it is out, holds a stroke landing by one of its edges to that edge. */
+  beginStroke(input: {
+    tool: InkStrokeTool;
+    mapping: InkScreenMapping;
+    first: InkPointerSample;
+    ruler?: InkRuler | null;
+  }): void;
   /** Returns how far ahead of the line the predicted tip was drawn, in CSS pixels (0 for none). */
   moveStroke(samples: readonly InkPointerSample[], predicted?: readonly InkPointerSample[]): number;
   /** `"empty"`: the stroke had nothing worth keeping. `"scribbled"`: it erased ink instead. */
@@ -196,11 +203,11 @@ export function createInkSurface(host: HTMLElement, options: InkSurfaceOptions):
     endGesture: () => renderer.endGesture(),
     whenVisibleDrawn: (callback) => renderer.whenVisibleDrawn(callback),
 
-    beginStroke({ tool, mapping, first }) {
+    beginStroke({ tool, mapping, first, ruler }) {
       if (destroyed) return;
       dropGestures();
       stroke = {
-        session: new InkStrokeSession({ tool, mapping, sink: renderer, first, timers: options.timers }),
+        session: new InkStrokeSession({ tool, mapping, sink: renderer, first, timers: options.timers, ruler }),
         pen: tool.kind === "pen",
       };
     },

@@ -2,6 +2,12 @@ import { createInkChiselBuilder, type InkChiselBuilder } from "@/lib/ink/geometr
 import { createInkPenBuilder, type InkPenBuilder } from "@/lib/ink/geometry/pen";
 import type { InkColor, InkLayer, InkPaint, InkPathCommand, InkPoint, InkShapeGeometry } from "@/lib/ink/model";
 import { inkShapePath } from "@/lib/ink/shapes";
+import {
+  inkRulerEdgeNear,
+  projectOntoInkRulerEdge,
+  type InkRuler,
+  type InkRulerEdge,
+} from "@/lib/ink/tools/ruler";
 import { adjustInkShape, recognizeInkShape, type InkRecognizedShape } from "@/lib/ink/tools/shape-recognition";
 import { browserInkTimers, InkHoldDetector, type InkTimers } from "@/lib/ink-dom/hold-detector";
 import type { InkLiveTip, InkRenderer } from "@/lib/ink-dom/renderer";
@@ -50,6 +56,9 @@ import {
  * (`shape-recognition.ts`), which the pen then sizes and turns until it lifts.
  * The lift keeps what was snapped and the stroke as it was drawn before, which
  * undoing the snap brings back.
+ *
+ * With the ruler out, a stroke that lands within `RULER_REACH_PX` of one of its
+ * long edges is held to that edge for its whole length, pen or highlighter.
  *
  * The highlighter shows its footprints while it moves, but what is saved is
  * their traced outline (`build()`), whose edge pixels differ from the
@@ -125,6 +134,8 @@ export type InkStrokeSessionInput = {
   first: InkPointerSample;
   /** For the hold that straightens a line; the window's by default. */
   timers?: InkTimers;
+  /** The ruler, when it is out. */
+  ruler?: InkRuler | null;
 };
 
 export { inkColorForTool, penInkPaint };
@@ -137,6 +148,9 @@ export { inkColorForTool, penInkPaint };
  * a pause to look at the page does.
  */
 export const HIGHLIGHTER_SETTLE_MS = 50;
+
+/** How near a ruler's edge, in screen pixels, a stroke has to land to be drawn along it. */
+export const RULER_REACH_PX = 16;
 
 /** js-draw's `Pen.toStrokePoint`: the least pressure a width is made from, and the width without pressure. */
 const PRESSURE_FLOOR = 0.3;
@@ -194,6 +208,8 @@ export class InkStrokeSession {
     null;
   /** The stroke as drawn when holding still snapped it: what undoing the snap brings back. */
   private drawn: { path: InkPathCommand[]; paint: InkPaint } | null = null;
+  /** The ruler edge this stroke is held to, if it landed by one. */
+  private readonly edge: InkRulerEdge | null;
   /** The newest point of the stroke, in page units: where the pen is when it holds still. */
   private penX: number;
   private penY: number;
@@ -211,7 +227,7 @@ export class InkStrokeSession {
   private finished = false;
   private cancelled = false;
 
-  constructor({ tool, mapping, sink, first, timers }: InkStrokeSessionInput) {
+  constructor({ tool, mapping, sink, first, timers, ruler = null }: InkStrokeSessionInput) {
     this.layer = tool.kind;
     this.color = tool.color;
     this.sink = sink;
@@ -238,11 +254,10 @@ export class InkStrokeSession {
     const pixelSize = 1 / this.scale;
     this.pixelSize = pixelSize;
     this.shapes = tool.kind === "pen" && tool.shapes;
-    const start = {
-      x: (first.clientX - this.left) / this.scale,
-      y: (first.clientY - this.top) / this.scale,
-      width: this.widthOf(first.pressure),
-    };
+    const landed = { x: (first.clientX - this.left) / this.scale, y: (first.clientY - this.top) / this.scale };
+    this.edge = ruler ? inkRulerEdgeNear(ruler, landed, RULER_REACH_PX * pixelSize) : null;
+    const onEdge = this.edge ? projectOntoInkRulerEdge(this.edge, landed) : landed;
+    const start = { x: onEdge.x, y: onEdge.y, width: this.widthOf(first.pressure) };
     this.penX = start.x;
     this.penY = start.y;
 
@@ -254,7 +269,8 @@ export class InkStrokeSession {
         { feel: getNotebookPenFeelFromSettings(settings), pixelSize, tapered: this.usePressure }
       );
       // A see-through colour would darken where the tip and the line overlap.
-      this.tracker = tool.predictTip && tool.color.a >= 1 ? new NotebookPredictedTip() : null;
+      // Nor along a ruler, where the browser's guess would stray off the edge.
+      this.tracker = tool.predictTip && tool.color.a >= 1 && !this.edge ? new NotebookPredictedTip() : null;
       this.tracker?.observe([{ x: first.clientX, y: first.clientY, time: first.timeStamp }]);
       const geometry = this.pen.geometry();
       this.lastPath = geometry.path;
@@ -454,8 +470,9 @@ export class InkStrokeSession {
     const settled = this.smoother.next(seed);
     if (this.hold !== null && this.hold.move(settled.x, settled.y, timeStamp)) return false;
 
-    const x = (settled.x - this.left) / this.scale;
-    const y = (settled.y - this.top) / this.scale;
+    let x = (settled.x - this.left) / this.scale;
+    let y = (settled.y - this.top) / this.scale;
+    if (this.edge) ({ x, y } = projectOntoInkRulerEdge(this.edge, { x, y }));
     this.penX = x;
     this.penY = y;
     // A shape follows the pen now; the stroke under it is finished.

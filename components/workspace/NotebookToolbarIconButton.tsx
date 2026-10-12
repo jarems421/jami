@@ -34,7 +34,8 @@ export type NotebookIconName =
   | "zoom-out"
   | "pointer"
   | "lasso"
-  | "sheet";
+  | "sheet"
+  | "ruler";
 
 // Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
 // caps/joins, and shared optical margins, so the set reads as one family.
@@ -77,6 +78,12 @@ export function NotebookIcon({ name }: { name: NotebookIconName }) {
       ) : null}
       {name === "text" ? (
         <path {...common} d="M6 7.4V5.4h12v2M12 5.4v13.2M9.5 18.6h5" />
+      ) : null}
+      {name === "ruler" ? (
+        <>
+          <rect {...common} x="2.6" y="8.2" width="18.8" height="7.6" rx="1.6" transform="rotate(-30 12 12)" />
+          <path {...common} d="m7.6 13.9-1-1.7M10.3 12.3l-1.5-2.6M13 10.8l-1-1.7M15.7 9.2l-1.5-2.6" />
+        </>
       ) : null}
       {name === "sheet" ? (
         <>

@@ -38,6 +38,7 @@ import {
   shouldExpectNotebookCaptureLoss,
   type NotebookInkPointerEventType,
 } from "@/lib/workspace/notebook-ink-contact";
+import type { InkRuler } from "@/lib/ink/tools/ruler";
 import type { NotebookInkStyle, NotebookInkTool } from "@/lib/workspace/notebook-ink-types";
 import { shouldSuppressNotebookNativeInkPointer } from "@/lib/workspace/notebook-interaction-lock";
 import { NIB_ANGLE_DEFAULT, NotebookNibAngleTracker } from "@/lib/workspace/notebook-nib-angle";
@@ -51,6 +52,8 @@ type LiveInputs = NotebookInkStyle & {
   readOnly: boolean;
   scribbleToErase: boolean;
   shapesOnHold: boolean;
+  /** The ruler, while it is out: a stroke landing by one of its edges is drawn along it. */
+  ruler: InkRuler | null;
   page: {
     onPointerDown: SurfacePointerHandler;
     onPointerMove: SurfacePointerHandler;
@@ -91,6 +94,7 @@ export function useJamiInkPointerInput({
   readOnly,
   scribbleToErase,
   shapesOnHold,
+  ruler = null,
   reportInteraction,
   page,
   trace = null,
@@ -107,6 +111,7 @@ export function useJamiInkPointerInput({
   scribbleToErase: boolean;
   /** Holding the pen still may snap shapes, not only lines. */
   shapesOnHold: boolean;
+  ruler?: InkRuler | null;
   reportInteraction: (active: boolean) => void;
   /** The page's handlers, for pointers ink does not take. */
   page: LiveInputs["page"];
@@ -116,9 +121,9 @@ export function useJamiInkPointerInput({
   const { surfaceRef, loadedRef, getMapping, measureNow, peekMapping, settle } = engine;
   const { activeTool, eraserThickness } = style;
 
-  const liveRef = useRef<LiveInputs>({ ...style, readOnly, scribbleToErase, shapesOnHold, page });
+  const liveRef = useRef<LiveInputs>({ ...style, readOnly, scribbleToErase, shapesOnHold, ruler, page });
   useLayoutEffect(() => {
-    liveRef.current = { ...style, readOnly, scribbleToErase, shapesOnHold, page };
+    liveRef.current = { ...style, readOnly, scribbleToErase, shapesOnHold, ruler, page };
   });
 
   const activeRef = useRef<ActiveContact | null>(null);
@@ -270,6 +275,7 @@ export function useJamiInkPointerInput({
           }),
           mapping,
           first: native,
+          ruler: live.ruler,
         });
         const watchScribble = live.scribbleToErase && tool === "pen";
         if (watchScribble) {

@@ -68,6 +68,11 @@ scroll sideways.** Long equations must scroll inside their own box.
    does not tilt a level one. Undo once: the stroke as you drew it comes back;
    undo again: it goes. A small 'o', a 'C' and a figure of eight stay as
    drawn. On an exam working sheet a held circle is left as drawn.
+6b. Press Ruler. Move it with one finger and turn it with two: the angle reads
+   out and settles on 0, 15, 30 and so on; the page does not pan. Draw along
+   either edge with the pen and the highlighter: the line runs exactly along
+   it however the hand wanders. A stroke started away from it is untouched.
+   Press Ruler again to put it away. The exam working sheet has the same ruler.
 7. On a phone, a notebook shows "Notebook editing works best on iPad or
    desktop." with "Continue anyway"; typed notes still work.
 

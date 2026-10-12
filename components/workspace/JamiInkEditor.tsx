@@ -1,7 +1,8 @@
 "use client";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { InkStatsOverlay, useInkStatsEnabled } from "@/components/workspace/InkStatsOverlay";
 import { NotebookEraserCursor } from "@/components/workspace/NotebookEraserCursor";
+import NotebookRuler from "@/components/workspace/NotebookRuler";
 import type {
   NotebookInkEditorHandle,
   NotebookInkEditorProps,
@@ -10,7 +11,9 @@ import { useJamiInkPointerInput } from "@/hooks/useJamiInkPointerInput";
 import { useJamiInkSurface } from "@/hooks/useJamiInkSurface";
 import { useNotebookInkEditorCallbacks } from "@/hooks/useNotebookInkEditorCallbacks";
 import type { InkDocument } from "@/lib/ink/model";
+import { initialInkRuler } from "@/lib/ink/tools/ruler";
 import { InkInputTrace } from "@/lib/ink-dom/input-trace";
+import { inkClientToPage } from "@/lib/ink-dom/surface-viewport";
 import { jamiInkData } from "@/lib/workspace/notebook-ink-data";
 import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
@@ -55,6 +58,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
       readOnly = false,
       scribbleToErase = false,
       shapesOnHold = false,
+      rulerShown = false,
     },
     forwardedRef
   ) {
@@ -102,6 +106,15 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
       lifecycleRef,
       reportInteraction,
     });
+    // Kept while it is put away, so it comes back where it was left.
+    const [ruler, setRuler] = useState(() => initialInkRuler({ width: pageWidth, height: pageHeight }));
+    const toPage = useCallback(
+      (clientX: number, clientY: number) => {
+        const mapping = engine.getMapping();
+        return mapping ? inkClientToPage(mapping, clientX, clientY) : null;
+      },
+      [engine]
+    );
     const traceEnabled = useInkStatsEnabled();
     const readoutRef = useRef<HTMLDivElement | null>(null);
     const trace = useMemo(
@@ -118,6 +131,7 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
       readOnly,
       scribbleToErase,
       shapesOnHold,
+      ruler: rulerShown ? ruler : null,
       reportInteraction,
       page: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
       trace,
@@ -184,6 +198,15 @@ export const JamiInkEditor = forwardRef<NotebookInkEditorHandle, NotebookInkEdit
           }`}
           {...pointerInput.surfaceHandlers}
         />
+        {rulerShown ? (
+          <NotebookRuler
+            ruler={ruler}
+            page={{ width: pageWidth, height: pageHeight }}
+            toPage={toPage}
+            onChange={setRuler}
+            ink={pointerInput.surfaceHandlers}
+          />
+        ) : null}
         {activeTool === "eraser" ? (
           <NotebookEraserCursor ref={eraserCursorRef} diameter={pointerInput.eraserCursorDiameter} />
         ) : null}

@@ -743,7 +743,7 @@ export default function NotebookEditorPage() {
     frameRef: pageFrameRef,
     frameSize,
     closeMenus: closeDrawingToolMenus,
-    setMenuOpen: drawingTools.setMenuOpen,
+    drawingTools,
     undo: handleUndo,
     redo: handleRedo,
     tool,

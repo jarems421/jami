@@ -31,6 +31,9 @@ export function useNotebookDrawingToolState() {
   const [highlighterMenuOpen, setHighlighterMenuOpen] = useState(false);
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
   const [insertMenuOpen, setInsertMenuOpen] = useState(false);
+  /** The ruler is out over the page. Not saved: it goes when the notebook closes. */
+  const [rulerShown, setRulerShown] = useState(false);
+  const toggleRuler = useCallback(() => setRulerShown((shown) => !shown), []);
   // The stored preferences are read on the client after mount, so the server
   // and the first client render agree. See `readNotebookScribbleErasePreference`
   // and `readNotebookPenSettings`.
@@ -96,6 +99,8 @@ export function useNotebookDrawingToolState() {
     setEraserMenuOpen,
     scribbleToErase,
     setScribbleToErase,
+    rulerShown,
+    toggleRuler,
   };
 }
 

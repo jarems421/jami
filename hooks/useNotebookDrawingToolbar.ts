@@ -4,11 +4,11 @@ import { useCallback, useRef, type RefObject } from "react";
 import type { NotebookDrawingToolbarProps } from "@/components/workspace/NotebookDrawingToolbar";
 import { useNotebookToolbarDocking, type NotebookToolbarFrameSize } from "@/hooks/useNotebookToolbarDocking";
 import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
-import type { NotebookToolMenu } from "@/lib/workspace/notebook-toolbar";
+import type { NotebookDrawingToolState } from "@/hooks/useNotebookWorkspaceState";
 
 type ToolbarState = Omit<
   NotebookDrawingToolbarProps,
-  "dock" | "toolbarRef" | "dockBindings" | "onUndo" | "onRedo" | "onToggleInsertMenu"
+  "dock" | "toolbarRef" | "dockBindings" | "onUndo" | "onRedo" | "onToggleInsertMenu" | "rulerShown" | "onToggleRuler"
 >;
 
 /**
@@ -22,7 +22,7 @@ export function useNotebookDrawingToolbar({
   frameRef,
   frameSize,
   closeMenus,
-  setMenuOpen,
+  drawingTools,
   undo,
   redo,
   ...state
@@ -30,7 +30,7 @@ export function useNotebookDrawingToolbar({
   frameRef: RefObject<HTMLDivElement | null>;
   frameSize: NotebookToolbarFrameSize;
   closeMenus: () => void;
-  setMenuOpen: (menu: Exclude<NotebookToolMenu, null>, open: boolean) => void;
+  drawingTools: Pick<NotebookDrawingToolState, "setMenuOpen" | "rulerShown" | "toggleRuler">;
   undo: () => void;
   redo: () => void;
 }) {
@@ -51,6 +51,7 @@ export function useNotebookDrawingToolbar({
     redo();
   }, [closeMenus, redo]);
   const insertOpen = state.openMenu === "insert";
+  const { setMenuOpen, rulerShown, toggleRuler } = drawingTools;
   const onToggleInsertMenu = useCallback(() => setMenuOpen("insert", !insertOpen), [insertOpen, setMenuOpen]);
   const toolbarProps: NotebookDrawingToolbarProps = {
     ...state,
@@ -60,6 +61,8 @@ export function useNotebookDrawingToolbar({
     onUndo,
     onRedo,
     onToggleInsertMenu,
+    rulerShown,
+    onToggleRuler: toggleRuler,
   };
   return { dock, topBarRef, toolbarProps };
 }

@@ -264,6 +264,7 @@ function ExamScratchpad({
         penColor={tools.penColor}
         highlighterColor={tools.highlighterColor}
         onSelectTool={pressTool}
+        ruler={{ shown: tools.rulerShown, onToggle: tools.toggleRuler }}
         settings={tools.settings}
         canUndo={sheet.history.undo > 0}
         canRedo={sheet.history.redo > 0}

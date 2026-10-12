@@ -84,4 +84,6 @@ export type NotebookInkEditorProps = NotebookInkStyle &
      * only; js-draw straightens lines alone.
      */
     shapesOnHold?: boolean;
+    /** The ruler is out over the page: moved and turned with the fingers, drawn along with the pen. Jami Ink only. */
+    rulerShown?: boolean;
   };
