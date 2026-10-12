@@ -717,7 +717,8 @@ Still to come:
     15 degrees within 2.
   - A pen or highlighter stroke that lands within 16 px of a long edge is held
     to that edge for its whole length; the pen goes through the ruler to the
-    ink, so a stroke can start on the edge itself. No predicted tip along it.
+    ink, so a stroke can start on the edge itself. The predicted tip leads it,
+    held to the edge too.
   - It is not saved, and it zooms with the page. On the exam sheet it is the
     only new tool. Jami Ink only: js-draw, the fallback, has no ruler.
 

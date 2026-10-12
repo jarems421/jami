@@ -118,4 +118,28 @@ describe("drawing along the ruler", () => {
     const spread = ys(session.lift()?.path);
     expect(Math.max(...spread) - Math.min(...spread)).toBeGreaterThan(3);
   });
+
+  it("still leads the line with a predicted tip, held to the edge", () => {
+    const tips: unknown[] = [];
+    const live: InkLiveSink = {
+      beginLive: () => undefined,
+      drawLive: (_path, _paint, tip) => tips.push(tip ?? null),
+      cancelLive: () => undefined,
+    };
+    const session = new InkStrokeSession({
+      tool: { ...pen, predictTip: true },
+      mapping,
+      sink: live,
+      first: { clientX: 112, clientY: 262, pressure: 0.5, timeStamp: 0 },
+      ruler: FLAT,
+    });
+    // A straight run by the edge, which the browser guesses carries on drifting off it.
+    const samples = Array.from({ length: 12 }, (_, index) => ({ clientX: 120 + index * 4, clientY: 262, pressure: 0.5, timeStamp: 4 + index * 4 }));
+    const last = samples[samples.length - 1];
+    const ahead = [1, 2].map((step) => ({ ...last, clientX: last.clientX + step * 4, clientY: last.clientY - step * 0.5, timeStamp: last.timeStamp + step * 4 }));
+    session.move(samples, ahead);
+    const tip = tips.at(-1) as { path: Array<{ y: number }> } | null;
+    expect(tip).not.toBeNull();
+    for (const command of tip!.path) expect(command.y).toBeCloseTo(270, 6);
+  });
 });

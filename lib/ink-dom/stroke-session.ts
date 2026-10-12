@@ -269,8 +269,7 @@ export class InkStrokeSession {
         { feel: getNotebookPenFeelFromSettings(settings), pixelSize, tapered: this.usePressure }
       );
       // A see-through colour would darken where the tip and the line overlap.
-      // Nor along a ruler, where the browser's guess would stray off the edge.
-      this.tracker = tool.predictTip && tool.color.a >= 1 && !this.edge ? new NotebookPredictedTip() : null;
+      this.tracker = tool.predictTip && tool.color.a >= 1 ? new NotebookPredictedTip() : null;
       this.tracker?.observe([{ x: first.clientX, y: first.clientY, time: first.timeStamp }]);
       const geometry = this.pen.geometry();
       this.lastPath = geometry.path;
@@ -546,11 +545,10 @@ export class InkStrokeSession {
     if (!end || !(end.width > 0)) return null;
     const path: InkPathCommand[] = [{ op: "M", x: end.x, y: end.y }];
     for (let index = 0; index < points.length; index += 1) {
-      path.push({
-        op: "L",
-        x: (points[index].x - this.left) / this.scale,
-        y: (points[index].y - this.top) / this.scale,
-      });
+      const ahead = { x: (points[index].x - this.left) / this.scale, y: (points[index].y - this.top) / this.scale };
+      // Along a ruler the guess is held to the edge too, as the line will be.
+      const { x, y } = this.edge ? projectOntoInkRulerEdge(this.edge, ahead) : ahead;
+      path.push({ op: "L", x, y });
     }
     return {
       path,
