@@ -19,7 +19,15 @@ const MAX_NOTEBOOK_LOCAL_INK_LENGTH = 5_000_000;
 const MAX_NOTEBOOK_LOCAL_DRAFT_LENGTH = 6_000_000;
 
 export const NOTEBOOK_DRAFT_VERSION = 1;
-export const NOTEBOOK_DRAFT_IDLE_MS = 350;
+/**
+ * How long the page has to stay unchanged before a recovery copy is written.
+ *
+ * Writing one encodes the page on the main thread, and a pen that comes down
+ * while it runs waits for it. At 350ms it landed in the ordinary pause between
+ * two words; a second is longer than those and still loses at most a second of
+ * work to a crash, with the page itself autosaved too.
+ */
+export const NOTEBOOK_DRAFT_IDLE_MS = 1_000;
 
 export type NotebookPageDraft = {
   version: typeof NOTEBOOK_DRAFT_VERSION;

@@ -252,8 +252,25 @@ function checkedLayerCode(code: number): number {
   return code;
 }
 
+/**
+ * Each item's payload, worked out once. Items are never changed in place
+ * (`model.ts`) and a payload reads nothing but its own item, so a page saved
+ * again after one more stroke encodes that stroke and copies the rest: saves
+ * and recovery drafts run between strokes, where their time is the time the
+ * next stroke waits to start.
+ */
+const payloads = new WeakMap<InkItem, { kind: number; payload: Uint8Array }>();
+
 /** The kind code and the payload bytes of an item. */
 function itemPayload(item: InkItem): { kind: number; payload: Uint8Array } {
+  const known = payloads.get(item);
+  if (known) return known;
+  const worked = workItemPayload(item);
+  payloads.set(item, worked);
+  return worked;
+}
+
+function workItemPayload(item: InkItem): { kind: number; payload: Uint8Array } {
   const body = new ByteWriter();
   switch (item.kind) {
     case "outline":

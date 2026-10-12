@@ -212,3 +212,19 @@ describe("js-draw fixtures through import, export and import", () => {
     });
   }
 });
+
+describe("writing a page again", () => {
+  it("writes each item as it is now, not as an earlier item it replaced", () => {
+    const item = (r: number) => ({
+      kind: "outline" as const,
+      id: "a",
+      layer: "pen" as const,
+      path: [
+        { op: "M" as const, x: 1, y: 2 },
+        { op: "L" as const, x: 30, y: 40 },
+      ],
+      paint: { fill: { r, g: 0, b: 0, a: 1 }, stroke: null, opacity: 1 },
+    });
+    expect(inkToSvg({ version: 3, items: [item(10)] })).not.toBe(inkToSvg({ version: 3, items: [item(200)] }));
+  });
+});

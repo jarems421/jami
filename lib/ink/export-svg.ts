@@ -22,7 +22,21 @@ function pathElement(d: string, attributes: string): string {
   return `<path d="${d}" ${attributes}></path>`;
 }
 
+/**
+ * Each item's element, written once: items are never changed in place
+ * (`model.ts`), so the SVG of a page saved again after one more stroke is that
+ * stroke's element and the ones already written.
+ */
+const elements = new WeakMap<InkItem, string | null>();
+
 function itemElement(item: InkItem): string | null {
+  if (elements.has(item)) return elements.get(item) ?? null;
+  const element = writeItemElement(item);
+  elements.set(item, element);
+  return element;
+}
+
+function writeItemElement(item: InkItem): string | null {
   if (item.kind === "unknown") return null;
   if (item.kind === "shape") {
     const d = formatSvgPathData(inkShapePath(item.shape, item.width), PATH_DECIMALS);

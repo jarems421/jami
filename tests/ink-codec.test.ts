@@ -297,3 +297,26 @@ describe("ink codec", () => {
     expect(stored).toBeLessThan(svg * 0.4);
   });
 });
+
+describe("encoding a page again", () => {
+  it("writes each item's own bytes, not an earlier item's it once replaced", () => {
+    const black = { r: 17, g: 24, b: 39, a: 1 };
+    const red = { r: 220, g: 38, b: 38, a: 1 };
+    const item = (color: typeof black) => ({
+      kind: "outline" as const,
+      id: "a",
+      layer: "pen" as const,
+      path: [
+        { op: "M" as const, x: 1, y: 2 },
+        { op: "L" as const, x: 30, y: 40 },
+      ],
+      paint: { fill: color, stroke: null, opacity: 1 },
+    });
+    const first = { version: 3 as const, items: [item(black)] };
+    const encoded = encodeInkDocument(first);
+    expect(encodeInkDocument(first)).toBe(encoded);
+    // Recoloured, as the lasso does: a new item in its place.
+    const again = decodeInkDocument(encodeInkDocument({ version: 3, items: [item(red)] }));
+    expect(again?.items[0].kind === "outline" && again.items[0].paint.fill).toEqual(red);
+  });
+});
