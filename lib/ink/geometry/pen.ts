@@ -16,13 +16,16 @@ import {
   TURN_ARM_RATIO,
   TURN_ARM_MAXIMUM_REACH,
   UNMISTAKABLE_CORNER_DEGREES,
+  WIDTH_SMOOTHING_RADIUS,
   CORNER_SLOWDOWN,
 } from "@/lib/ink/geometry/pen-tuning";
 import { aimAlongGuides } from "@/lib/ink/geometry/aim";
-import { cubic, line, move, penOutline } from "@/lib/ink/geometry/pen-outline";
+import { createPenOutliner, cubic, line, move } from "@/lib/ink/geometry/pen-outline";
 import {
+  penHalfWidthAt,
   penHalfWidthsAlong,
   penWidthVaries,
+  shapedPenPressureAt,
   shapePenPressure,
 } from "@/lib/ink/geometry/pen-widths";
 import { Vec, type InkExtent } from "@/lib/ink/geometry/vector";
@@ -293,12 +296,12 @@ export function createInkPenBuilder(
    * vanished entirely -- whereas reaching further out for the arm answers the
    * same question over a run long enough for the answer to mean something.
    */
-  const turnsAlong = (shape: Vec[]) => {
+  const turnsAlong = (shape: Vec[], from: number) => {
     const turns = new Array<number>(shape.length).fill(0);
     /** Turn per unit of the run it was measured over -- see `cornersAlong`. */
     const curvatures = new Array<number>(shape.length).fill(0);
     const last = shape.length - 1;
-    for (let index = 1; index < last; index += 1) {
+    for (let index = Math.max(1, from); index < last; index += 1) {
       const here = shape[index];
       const { back, forward } = turnNeighbourIndicesAt(shape, index);
       const arriving = here.minus(shape[back]);
@@ -345,33 +348,78 @@ export function createInkPenBuilder(
    */
   const settledCorners: boolean[] = [];
   const cornersAlong = (shape: Vec[]) => {
-    const verdicts = judgeCornersAlong(shape);
-    for (let index = settledCorners.length; index + 3 < points.length; index += 1) {
+    const from = settledCorners.length;
+    const verdicts = judgeCornersAlong(shape, from);
+    for (let index = from; index + 3 < points.length; index += 1) {
       settledCorners.push(verdicts[index]);
     }
-    for (let index = 0; index < settledCorners.length; index += 1) verdicts[index] = settledCorners[index];
+    for (let index = 0; index < from; index += 1) verdicts[index] = settledCorners[index];
     return verdicts;
   };
-  const judgeCornersAlong = (shape: Vec[]) => {
-    const { turns, curvatures } = turnsAlong(shape);
-    const peaks = pending ? [...arrivalPeaks, segmentPeak] : arrivalPeaks;
+  /** Verdicts from `from` on; the ones before it are settled and not looked at again. */
+  const judgeCornersAlong = (shape: Vec[], from: number) => {
+    // A verdict reads the curvature either side of its point.
+    const { turns, curvatures } = turnsAlong(shape, from - 1);
+    const peakAt = (index: number) =>
+      index < arrivalPeaks.length
+        ? arrivalPeaks[index]
+        : pending && index === arrivalPeaks.length
+          ? segmentPeak
+          : null;
     /** Whether the pen slowed into this point -- see `CORNER_SLOWDOWN`. */
     const slowedAt = (index: number) => {
       const speed = speedsAt[index] ?? null;
-      const around = fastestOf(peaks[index] ?? null, peaks[index + 1] ?? null);
+      const around = fastestOf(peakAt(index), peakAt(index + 1));
       if (speed === null || around === null || around <= 0) return true;
       return speed <= around * CORNER_SLOWDOWN;
     };
-    return turns.map((turn, index) => {
-      if (turn >= unmistakableCorner) return true;
-      if (turn > 0 && !slowedAt(index)) return false;
-      if (turn < cornerRadians) return false;
-      const around = Math.max(
-        curvatures[index - 1] ?? 0,
-        curvatures[index + 1] ?? 0
-      );
-      return curvatures[index] >= around * cornerDominance;
-    });
+    const verdicts = new Array<boolean>(shape.length).fill(false);
+    for (let index = Math.max(0, from); index < shape.length; index += 1) {
+      const turn = turns[index];
+      if (turn >= unmistakableCorner) verdicts[index] = true;
+      else if (turn > 0 && !slowedAt(index)) verdicts[index] = false;
+      else if (turn < cornerRadians) verdicts[index] = false;
+      else {
+        const around = Math.max(curvatures[index - 1] ?? 0, curvatures[index + 1] ?? 0);
+        verdicts[index] = curvatures[index] >= around * cornerDominance;
+      }
+    }
+    return verdicts;
+  };
+
+  /** Eased points that can no longer move, from the start of the stroke. */
+  const easedKept: Vec[] = [];
+  const easedPointAt = (shape: Vec[], corners: boolean[], index: number): Vec => {
+    if (index === 0 || index === shape.length - 1) return shape[index];
+    const previous = shape[index - 1];
+    const here = shape[index];
+    const next = shape[index + 1];
+    if (corners[index]) return here;
+
+    /*
+     * Towards the point on the line between the neighbours that sits as
+     * far along it as this point sits along the stroke -- not towards
+     * that line's middle.
+     *
+     * They are the same when the neighbours are evenly spaced. Pencil
+     * packets are not: one lands a pixel away and the next eleven, and the
+     * middle of that long line is deep inside a fast turn. Eased towards
+     * it, the point was pulled in by a whole pixel, the turn came out
+     * dented, and the sample beside the dent read as a little point
+     * poking out of a curve -- at every corner setting, since none of
+     * them reaches easing.
+     */
+    const before = here.distanceTo(previous);
+    const after = next.distanceTo(here);
+    const share = before + after > 0 ? before / (before + after) : 0.5;
+    const target = previous.plus(next.minus(previous).times(share));
+    const shift = target.minus(here).times(easeTowardsNeighbours);
+    // Easing is for the hand's wobble, which is a fraction of a pixel. A
+    // larger move is not taking wobble out, it is reshaping the turn.
+    const length = shift.magnitude();
+    return length > maximumEase
+      ? here.plus(shift.times(maximumEase / length))
+      : here.plus(shift);
   };
 
   /**
@@ -384,48 +432,16 @@ export function createInkPenBuilder(
    */
   const easedShape = (shape: Vec[], corners: boolean[]) => {
     if (shape.length < 3 || easeTowardsNeighbours <= 0) return shape;
-
-    const eased: Vec[] = [shape[0]];
-    for (let index = 1; index < shape.length - 1; index += 1) {
-      const previous = shape[index - 1];
-      const here = shape[index];
-      const next = shape[index + 1];
-      if (corners[index]) {
-        eased.push(here);
-        continue;
-      }
-
-      /*
-       * Towards the point on the line between the neighbours that sits as
-       * far along it as this point sits along the stroke -- not towards
-       * that line's middle.
-       *
-       * They are the same when the neighbours are evenly spaced. Pencil
-       * packets are not: one lands a pixel away and the next eleven, and the
-       * middle of that long line is deep inside a fast turn. Eased towards
-       * it, the point was pulled in by a whole pixel, the turn came out
-       * dented, and the sample beside the dent read as a little point
-       * poking out of a curve -- at every corner setting, since none of
-       * them reaches easing.
-       */
-      const before = here.distanceTo(previous);
-      const after = next.distanceTo(here);
-      const share = before + after > 0 ? before / (before + after) : 0.5;
-      const target = previous.plus(next.minus(previous).times(share));
-      const shift = target.minus(here).times(easeTowardsNeighbours);
-      // Easing is for the hand's wobble, which is a fraction of a pixel. A
-      // larger move is not taking wobble out, it is reshaping the turn.
-      const length = shift.magnitude();
-      eased.push(
-        length > maximumEase
-          ? here.plus(shift.times(maximumEase / length))
-          : here.plus(shift)
-      );
+    // Settled once its corner verdict is: its neighbours are kept by then.
+    while (easedKept.length < settledCorners.length) {
+      easedKept.push(easedPointAt(shape, corners, easedKept.length));
     }
-    eased.push(shape[shape.length - 1]);
+    const eased = easedKept.slice();
+    for (let index = eased.length; index < shape.length; index += 1) {
+      eased.push(easedPointAt(shape, corners, index));
+    }
     return eased;
   };
-
   /** Whichever straight line the stroke has been aimed at so far. */
   const straightLine = (from: Vec, to: Vec): InkPenGeometry => ({
     path: [move(from), line(to)],
@@ -498,6 +514,68 @@ export function createInkPenBuilder(
    * `liveTip` below.
    */
   let lastTip: InkPenTip | null = null;
+
+  /*
+   * What the geometry has worked out about the stroke behind the pen, kept
+   * from packet to packet.
+   *
+   * Every stage reads only a few points either side of the one it is working
+   * on -- corners and tangents two, widths two, easing one -- and the points
+   * themselves never change once kept. So once the points it reads are kept and
+   * settled, a stage's answer at a point is final, and it is worked out once
+   * rather than again for the whole stroke on every packet: the time a packet
+   * takes stops growing with the stroke's length. Measured on a 2,000-sample
+   * stroke, the last packets took 1.8ms each, worked out from scratch.
+   *
+   * Exactly what working it all out would give: the same code, at the same
+   * point, on the same numbers (`ink-pen-outliner.test.ts`, and the goldens).
+   */
+  const tangentsKept: Array<[arriving: Vec, leaving: Vec]> = [];
+  const alongKept: Vec[] = [];
+  const strokedKept: InkPathCommand[] = [];
+  const shapedKept: number[] = [];
+  let shapedTotal = 0;
+  const halfKept: number[] = [];
+  /** The sum of the shaped widths up to and including each kept one. */
+  const widthSums: number[] = [];
+  const outliner = createPenOutliner();
+
+  /** Every sample's width, pressure-shaped (`shapePenPressure`), the kept ones once only. */
+  const sampledWidthsNow = () => {
+    const response = feel.pressureResponse;
+    if (response === 1 || response === 0) return pressureShaped(shapeWidths());
+    while (shapedKept.length < widths.length) {
+      const index = shapedKept.length;
+      shapedTotal += widths[index];
+      shapedKept.push(shapedPenPressureAt(widths[index], shapedTotal, index + 1, response));
+    }
+    const sampled = shapedKept.slice();
+    if (pending) {
+      sampled.push(shapedPenPressureAt(pendingWidth, shapedTotal + pendingWidth, widths.length + 1, response));
+    }
+    return sampled;
+  };
+
+  /** Half the width at each point (`penHalfWidthsAlong`), the settled ones once only. */
+  const halfWidthsNow = (sampled: number[], count: number) => {
+    const settles = Math.max(0, widths.length - WIDTH_SMOOTHING_RADIUS);
+    while (halfKept.length < settles) {
+      const index = halfKept.length;
+      widthSums.push((index > 0 ? widthSums[index - 1] : 0) + sampled[index]);
+      halfKept.push(penHalfWidthAt(sampled, index, index + 1, widthSums[index], feel.minimumWidthFraction));
+    }
+    const half = halfKept.slice();
+    let seen = half.length;
+    let seenTotal = seen > 0 ? widthSums[seen - 1] : 0;
+    for (let index = half.length; index < count; index += 1) {
+      if (index < sampled.length) {
+        seen += 1;
+        seenTotal += sampled[index];
+      }
+      half.push(penHalfWidthAt(sampled, index, seen, seenTotal, feel.minimumWidthFraction));
+    }
+    return half;
+  };
 
   const geometry = (): InkPenGeometry => {
     if (straightened) {
@@ -625,9 +703,24 @@ export function createInkPenBuilder(
      * steady width still takes the stroked path above: identical on screen,
      * and half the geometry to store and reparse.
      */
-    const sampledWidths = pressureShaped(shapeWidths());
+    // A tangent reads the eased points two either side, so it settles two
+    // behind the corner verdicts.
+    const settledTangents = Math.max(0, settledCorners.length - 2);
+    while (tangentsKept.length < settledTangents) {
+      const index = tangentsKept.length;
+      tangentsKept.push([tangentAt(index, false), tangentAt(index, true)]);
+    }
+    const tangent = (index: number, outgoing: boolean) =>
+      index < tangentsKept.length ? tangentsKept[index][outgoing ? 1 : 0] : tangentAt(index, outgoing);
+
+    const sampledWidths = sampledWidthsNow();
     if (tapered || penWidthVaries(sampledWidths)) {
-      const halfWidths = halfWidthsAlong(sampledWidths, shape.length);
+      // Widths settle as the stroke goes on, except at no pressure at all,
+      // which is the whole stroke's one average (`shapePenPressure`).
+      const widthsSettle = feel.pressureResponse !== 0;
+      const halfWidths = widthsSettle
+        ? halfWidthsNow(sampledWidths, shape.length)
+        : halfWidthsAlong(sampledWidths, shape.length);
       const last = shape.length - 1;
       /*
        * The way the centreline runs through each point, which its edge points
@@ -646,8 +739,8 @@ export function createInkPenBuilder(
        * instead (`penOutline`).
        */
       const alongAt = (index: number) => {
-        const arriving = tangentAt(index, false);
-        const leaving = tangentAt(index, true);
+        const arriving = tangent(index, false);
+        const leaving = tangent(index, true);
         if (arriving.magnitude() > 0 && leaving.magnitude() > 0) {
           const bisector = arriving.normalized().plus(leaving.normalized());
           return bisector.magnitude() < REVERSAL_BISECTOR_FLOOR ? leaving : bisector;
@@ -655,21 +748,23 @@ export function createInkPenBuilder(
         return leaving.magnitude() === 0 ? arriving : leaving;
       };
 
+      while (alongKept.length < settledTangents) alongKept.push(alongAt(alongKept.length));
+      const along = alongKept.slice();
+      for (let index = along.length; index < shape.length; index += 1) along.push(alongAt(index));
+
       // The end cap is a half circle of this radius about the last point.
       lastTip = { x: shape[last].x, y: shape[last].y, width: halfWidths[last] * 2 };
       return {
-        path: penOutline({
-          shape,
-          halfWidths,
-          corners,
-          along: shape.map((_, index) => alongAt(index)),
-        }),
+        path: outliner.outline(
+          { shape, halfWidths, corners, along },
+          widthsSettle ? Math.min(settledTangents, halfKept.length) : 0
+        ),
         paint: { kind: "fill" },
       };
     }
 
-    const commands: InkPathCommand[] = [];
-    for (let index = 0; index < shape.length - 1; index += 1) {
+    // A piece settles once both its tangents have.
+    const segmentAt = (index: number): InkPathCommand => {
       const from = at(index);
       const to = at(index + 1);
       // Direction from the neighbours, length from this segment -- capped
@@ -683,20 +778,21 @@ export function createInkPenBuilder(
         length,
         index + 2 < shape.length ? at(index + 2).distanceTo(to) : null
       );
-      const armOut = tangentAt(index, true);
-      const armIn = tangentAt(index + 1, false);
-      commands.push(
-        cubic(
-          armOut.magnitude() > 0
-            ? from.plus(armOut.normalized().times(reachOut))
-            : from,
-          armIn.magnitude() > 0
-            ? to.minus(armIn.normalized().times(reachIn))
-            : to,
-          to
-        )
+      const armOut = tangent(index, true);
+      const armIn = tangent(index + 1, false);
+      return cubic(
+        armOut.magnitude() > 0
+          ? from.plus(armOut.normalized().times(reachOut))
+          : from,
+        armIn.magnitude() > 0
+          ? to.minus(armIn.normalized().times(reachIn))
+          : to,
+        to
       );
-    }
+    };
+    while (strokedKept.length < settledTangents - 1) strokedKept.push(segmentAt(strokedKept.length));
+    const commands = strokedKept.slice();
+    for (let index = commands.length; index < shape.length - 1; index += 1) commands.push(segmentAt(index));
 
     lastTip = { x: shape[shape.length - 1].x, y: shape[shape.length - 1].y, width };
     return { path: [move(shape[0]), ...commands], paint: { kind: "stroke", width } };

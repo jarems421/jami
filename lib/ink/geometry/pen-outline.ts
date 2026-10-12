@@ -91,188 +91,292 @@ const square = (direction: Vec) => Vec.of(-direction.y, direction.x);
  */
 type Join = "none" | "round" | "inside";
 
-export function penOutline({ shape, halfWidths, corners, along }: PenOutlineInput): InkPathCommand[] {
-  const last = shape.length - 1;
+/**
+ * How far behind the points that may still change the outline is worked out
+ * again on each call. Everything at a point reads a few points either side --
+ * its edges, its joins, the cubics either side -- and a fold found at one point
+ * can move the join one point back on each of the `FOLD_PASSES`; this covers
+ * all of it with room to spare.
+ */
+const OUTLINE_MARGIN = 16;
 
-  /** The way the line arrives at a point, from the nearest point before it that is somewhere else. */
-  const directionInto = (index: number) => {
-    for (let back = index - 1; back >= 0; back -= 1) {
-      const step = shape[index].minus(shape[back]);
-      if (step.magnitude() > 0) return step.normalized();
-    }
-    return null;
-  };
-  const directionOutOf = (index: number) => {
-    for (let ahead = index + 1; ahead <= last; ahead += 1) {
-      const step = shape[ahead].minus(shape[index]);
-      if (step.magnitude() > 0) return step.normalized();
-    }
-    return null;
-  };
-  /** How far the line turns at each point, in radians; the ends count as straight. */
-  const turns = shape.map((_, index) => {
-    if (index === 0 || index === last) return 0;
-    const into = directionInto(index);
-    const outOf = directionOutOf(index);
-    return into && outOf ? Math.acos(Math.max(-1, Math.min(1, into.dot(outOf)))) : 0;
-  });
-  /** Whether the line turns towards its left edge -- or straight back, which counts as left. */
-  const turnsLeft = shape.map((_, index) => {
-    const into = directionInto(index);
-    const outOf = directionOutOf(index);
-    return !into || !outOf || into.x * outOf.y - into.y * outOf.x >= 0;
-  });
-  const joins = shape.map(
-    (_, index): Join =>
-      index > 0 &&
-      index < last &&
-      corners[index] &&
-      Math.max(turns[index - 1], turns[index + 1]) <= turns[index] * JOIN_NEIGHBOUR_TURN_SHARE
-        ? "round"
-        : "none"
-  );
-  /** Whether an edge leaves its run at a point: at every round join, and on the inside of an inside one. */
-  const breaks = (index: number, left: boolean) =>
-    joins[index] === "round" || (joins[index] === "inside" && turnsLeft[index] === left);
-
-  /*
-   * Which way each end faces.
-   *
-   * From the end to the first point at least a half width along, not to the
-   * nearest: a Pencil's first and last samples can sit a fraction of a pixel
-   * apart in any direction, and the cap faced wherever that fraction pointed --
-   * sideways or back into the stroke, leaving the end looking cut off. Within
-   * the end's own run, so a hook the joins have kept still ends where it went.
-   */
-  const endDirections = () => {
-    let ahead = 1;
-    while (ahead < last && joins[ahead] === "none" && shape[ahead].distanceTo(shape[0]) < halfWidths[0]) ahead += 1;
-    let back = last - 1;
-    while (back > 0 && joins[back] === "none" && shape[back].distanceTo(shape[last]) < halfWidths[last]) back -= 1;
-    const fallback = directionOutOf(0) ?? Vec.of(1, 0);
-    const start = shape[ahead].minus(shape[0]);
-    const end = shape[last].minus(shape[back]);
-    return {
-      start: start.magnitude() > 0 ? start.normalized() : fallback,
-      end: end.magnitude() > 0 ? end.normalized() : fallback,
-    };
-  };
-
+export type PenOutliner = {
   /**
-   * Which way each edge point is pushed, arriving at a point and leaving it:
-   * square to the line through it, or where the edge leaves its run there,
-   * square to the step either side.
+   * The outline of the stroke as it stands. `stable` is how many of its first
+   * points have inputs (centreline, half width, corner, direction) that will
+   * never change again: everything worked out about the outline that far
+   * back is kept from the last call rather than worked out again, so a long
+   * stroke costs no more per packet than a short one. Zero works it all out.
+   *
+   * Exactly the outline worked out from scratch would give: the cubics, joins
+   * and caps are the same objects' worth of numbers, made by the same code.
    */
-  const normalsAlong = () => {
-    const { start, end } = endDirections();
-    const through: Vec[] = [];
-    const into: Vec[] = [];
-    const outOf: Vec[] = [];
-    for (let index = 0; index <= last; index += 1) {
-      if (index === 0 || index === last) {
-        const normal = square(index === 0 ? start : end);
-        through.push(normal);
-        into.push(normal);
-        outOf.push(normal);
-        continue;
+  outline(input: PenOutlineInput, stable: number): InkPathCommand[];
+};
+
+/**
+ * Outlines one stroke, packet after packet, keeping what each call worked out
+ * about the points the stroke has moved on from (`PenOutliner`).
+ */
+export function createPenOutliner(): PenOutliner {
+  /** How many points the last call outlined, and how many of them were stable. */
+  let outlined = 0;
+  let stableBefore = 0;
+  const turns: number[] = [];
+  const turnsLeft: boolean[] = [];
+  const joins: Join[] = [];
+  /** Per step (from a point to the next): whether its edges were ever seen to fold. */
+  const touched: boolean[] = [];
+  /** The edge normals at each point, before any join: square to the line through it, into it and out of it. */
+  const through: Vec[] = [];
+  const into: Vec[] = [];
+  const outOf: Vec[] = [];
+  /** Per step: its cubic on each edge, and the join that follows it there. */
+  const leftPieces: InkPathCommand[][] = [];
+  const rightPieces: InkPathCommand[][] = [];
+  /** How far along the start's direction was read, which a recomputation must not reach. */
+  let startReach = 0;
+
+  function work(input: PenOutlineInput, from: number): InkPathCommand[] | null {
+    const { shape, halfWidths, corners, along } = input;
+    const last = shape.length - 1;
+    for (const list of [turns, turnsLeft, joins, touched, through, into, outOf, leftPieces, rightPieces]) {
+      list.length = Math.min(list.length, shape.length);
+    }
+
+    /** The way the line arrives at a point, from the nearest point before it that is somewhere else. */
+    const directionInto = (index: number) => {
+      for (let back = index - 1; back >= 0; back -= 1) {
+        const step = shape[index].minus(shape[back]);
+        if (step.magnitude() > 0) return step.normalized();
       }
-      const direction = along[index];
-      through.push(
-        square(direction.magnitude() > 0 ? direction.normalized() : (directionOutOf(index) ?? start))
-      );
-      into.push(square(directionInto(index) ?? start));
-      outOf.push(square(directionOutOf(index) ?? end));
-    }
-    const pushed = (left: boolean) => ({
-      into: through.map((normal, index) => (breaks(index, left) ? into[index] : normal)),
-      outOf: through.map((normal, index) => (breaks(index, left) ? outOf[index] : normal)),
-    });
-    return { left: pushed(true), right: pushed(false), start, end };
-  };
+      return null;
+    };
+    const directionOutOf = (index: number) => {
+      for (let ahead = index + 1; ahead <= last; ahead += 1) {
+        const step = shape[ahead].minus(shape[index]);
+        if (step.magnitude() > 0) return step.normalized();
+      }
+      return null;
+    };
 
-  /*
-   * Where the edges fold, wherever the centreline does not come to a point.
-   *
-   * A turn tight against the width -- a slip a pixel long, a hairpin in a small
-   * loop -- folds the inside edge backwards over the step beside it, or swaps
-   * the edges' sides outright. Either is caught on the step itself, at the
-   * sharper turn of its two ends: an inside edge folding alone is mended on the
-   * inside, and anything more is joined in full.
-   */
-  let normals = normalsAlong();
-  for (let pass = 0; pass < FOLD_PASSES; pass += 1) {
-    const { left, right } = normals;
-    // A fold shows on the steps either side of the turn that makes it. Joined
-    // from one, it is mended on both, which only the next pass can see.
-    const joinedNow = new Set<number>();
+    // How far the line turns at each point, in radians, the ends counting as
+    // straight; and whether it turns towards its left edge -- or straight
+    // back, which counts as left.
+    const recount = Math.max(0, from - 2);
+    for (let index = recount; index <= last; index += 1) {
+      const intoDirection = directionInto(index);
+      const outOfDirection = directionOutOf(index);
+      turns[index] =
+        index === 0 || index === last || !intoDirection || !outOfDirection
+          ? 0
+          : Math.acos(Math.max(-1, Math.min(1, intoDirection.dot(outOfDirection))));
+      turnsLeft[index] =
+        !intoDirection ||
+        !outOfDirection ||
+        intoDirection.x * outOfDirection.y - intoDirection.y * outOfDirection.x >= 0;
+    }
+    for (let index = from; index <= last; index += 1) {
+      joins[index] =
+        index > 0 &&
+        index < last &&
+        corners[index] &&
+        Math.max(turns[index - 1], turns[index + 1]) <= turns[index] * JOIN_NEIGHBOUR_TURN_SHARE
+          ? "round"
+          : "none";
+    }
+    /** Whether an edge leaves its run at a point: at every round join, and on the inside of an inside one. */
+    const breaks = (index: number, left: boolean) =>
+      joins[index] === "round" || (joins[index] === "inside" && turnsLeft[index] === left);
+
+    /*
+     * Which way each end faces.
+     *
+     * From the end to the first point at least a half width along, not to the
+     * nearest: a Pencil's first and last samples can sit a fraction of a pixel
+     * apart in any direction, and the cap faced wherever that fraction pointed --
+     * sideways or back into the stroke, leaving the end looking cut off. Within
+     * the end's own run, so a hook the joins have kept still ends where it went.
+     */
+    let start = Vec.of(1, 0);
+    let end = Vec.of(1, 0);
+    const endDirections = () => {
+      let ahead = 1;
+      while (ahead < last && joins[ahead] === "none" && shape[ahead].distanceTo(shape[0]) < halfWidths[0]) ahead += 1;
+      let back = last - 1;
+      while (back > 0 && joins[back] === "none" && shape[back].distanceTo(shape[last]) < halfWidths[last]) back -= 1;
+      const fallback = directionOutOf(0) ?? Vec.of(1, 0);
+      const startStep = shape[ahead].minus(shape[0]);
+      const endStep = shape[last].minus(shape[back]);
+      start = startStep.magnitude() > 0 ? startStep.normalized() : fallback;
+      end = endStep.magnitude() > 0 ? endStep.normalized() : fallback;
+      startReach = ahead;
+    };
+
+    /*
+     * Which way each edge point is pushed, arriving at a point and leaving it:
+     * square to the line through it, or where the edge leaves its run there,
+     * square to the step either side.
+     */
+    const placeNormals = () => {
+      endDirections();
+      for (let index = recount; index <= last; index += 1) {
+        if (index === 0 || index === last) {
+          const normal = square(index === 0 ? start : end);
+          through[index] = normal;
+          into[index] = normal;
+          outOf[index] = normal;
+          continue;
+        }
+        const direction = along[index];
+        through[index] = square(
+          direction.magnitude() > 0 ? direction.normalized() : (directionOutOf(index) ?? start)
+        );
+        into[index] = square(directionInto(index) ?? start);
+        outOf[index] = square(directionOutOf(index) ?? end);
+      }
+    };
+    const leftInto = (index: number) => (breaks(index, true) ? into[index] : through[index]);
+    const leftOutOf = (index: number) => (breaks(index, true) ? outOf[index] : through[index]);
+    const rightInto = (index: number) => (breaks(index, false) ? into[index] : through[index]);
+    const rightOutOf = (index: number) => (breaks(index, false) ? outOf[index] : through[index]);
+    placeNormals();
+
+    /*
+     * Where the edges fold, wherever the centreline does not come to a point.
+     *
+     * A turn tight against the width -- a slip a pixel long, a hairpin in a small
+     * loop -- folds the inside edge backwards over the step beside it, or swaps
+     * the edges' sides outright. Either is caught on the step itself, at the
+     * sharper turn of its two ends: an inside edge folding alone is mended on the
+     * inside, and anything more is joined in full.
+     */
+    const firstStep = Math.max(0, from - 1);
+    for (let index = firstStep; index < last; index += 1) touched[index] = false;
+    for (let pass = 0; pass < FOLD_PASSES; pass += 1) {
+      // A fold shows on the steps either side of the turn that makes it. Joined
+      // from one, it is mended on both, which only the next pass can see.
+      const joinedNow = new Set<number>();
+      for (let index = firstStep; index < last; index += 1) {
+        const step = shape[index + 1].minus(shape[index]);
+        const fromWidth = halfWidths[index];
+        const toWidth = halfWidths[index + 1];
+        const leftFolds =
+          step.plus(leftInto(index + 1).times(toWidth)).minus(leftOutOf(index).times(fromWidth)).dot(step) < 0;
+        const rightFolds =
+          step.minus(rightInto(index + 1).times(toWidth)).plus(rightOutOf(index).times(fromWidth)).dot(step) < 0;
+        const twisted =
+          leftOutOf(index).dot(leftInto(index + 1)) < 0 || rightOutOf(index).dot(rightInto(index + 1)) < 0;
+        if (!twisted && !leftFolds && !rightFolds) continue;
+        touched[index] = true;
+        if (joinedNow.has(index) || joinedNow.has(index + 1)) continue;
+        const candidates = [index, index + 1].filter((at) => at > 0 && at < last && joins[at] !== "round");
+        if (candidates.length === 0) continue;
+        const sharper = candidates.reduce((best, at) => (turns[at] > turns[best] ? at : best));
+        // Behind the points being worked out again: only working it all out is exact.
+        if (sharper < from) return null;
+        const inside = !twisted && leftFolds !== rightFolds && turnsLeft[sharper] === leftFolds;
+        joins[sharper] = joins[sharper] === "none" && inside ? "inside" : "round";
+        joinedNow.add(sharper);
+      }
+      if (joinedNow.size === 0) break;
+      placeNormals();
+    }
+
+    const leftIn = (index: number) => shape[index].plus(leftInto(index).times(halfWidths[index]));
+    const leftOut = (index: number) => shape[index].plus(leftOutOf(index).times(halfWidths[index]));
+    const rightIn = (index: number) => shape[index].minus(rightInto(index).times(halfWidths[index]));
+    const rightOut = (index: number) => shape[index].minus(rightOutOf(index).times(halfWidths[index]));
+
+    /**
+     * Where an edge leaves its run: through the point on the inside of the turn,
+     * round about it on the outside. A turn straight back on itself goes round on
+     * the right.
+     */
+    const joinOn = (index: number, side: "left" | "right"): InkPathCommand[] => {
+      const joinFrom = side === "left" ? leftIn(index) : rightOut(index);
+      const joinTo = side === "left" ? leftOut(index) : rightIn(index);
+      if (turnsLeft[index] === (side === "left")) return [line(shape[index]), line(joinTo)];
+      const arriving = directionInto(index) ?? start;
+      const leaving = directionOutOf(index) ?? end;
+      return roundAbout(shape[index], joinFrom, joinTo, arriving.minus(leaving), halfWidths[index]);
+    };
+
+    /*
+     * Each edge, a step at a time: the step's cubic through its run (the run
+     * runs between the points where the edge leaves it), and the join at its
+     * far end if the run ends there. The left edge runs out from the start;
+     * the right comes back from the end, and each run on it starts on the
+     * edge's way into its first point and ends on its way out of its last.
+     */
+    for (let index = Math.max(0, from - 3); index < last; index += 1) {
+      // The left edge, out from `index` to `index + 1`. A run starts on the
+      // edge's way out of its first point, and every other point is on its way in.
+      const leftRunStartsHere = index === 0 || breaks(index, true);
+      const leftRunStartedBefore = !leftRunStartsHere && (index - 1 === 0 || breaks(index - 1, true));
+      const leftRunEndsNext = index + 1 === last || breaks(index + 1, true);
+      const leftPoint = (at: number) =>
+        (at === index && leftRunStartsHere) || (at === index - 1 && leftRunStartedBefore) ? leftOut(at) : leftIn(at);
+      const leftFirst = leftRunStartsHere ? index : index - 1;
+      const leftLast = leftRunEndsNext ? index + 1 : index + 2;
+      const piece = [
+        edgeCubic(
+          (at) => leftPoint(Math.min(Math.max(at, leftFirst), leftLast)),
+          index,
+          !leftRunStartsHere,
+          !leftRunEndsNext
+        ),
+      ];
+      if (index + 1 < last && breaks(index + 1, true)) piece.push(...joinOn(index + 1, "left"));
+      leftPieces[index] = piece;
+
+      // The right edge, back from `index + 1` to `index`, counted in steps
+      // along the way it is travelled: 0 is `index + 1`, 1 is `index`. A run
+      // ends on the edge's way out of its last point.
+      const rightRunEndsHere = index === 0 || breaks(index, false);
+      const rightRunEndedBefore = !rightRunEndsHere && (index - 1 === 0 || breaks(index - 1, false));
+      const rightRunStartsAbove = index + 1 === last || breaks(index + 1, false);
+      const rightPoint = (at: number) =>
+        (at === index && rightRunEndsHere) || (at === index - 1 && rightRunEndedBefore) ? rightOut(at) : rightIn(at);
+      const rightLowest = rightRunEndsHere ? index : index - 1;
+      const rightHighest = rightRunStartsAbove ? index + 1 : index + 2;
+      const back = [
+        edgeCubic(
+          (step) => rightPoint(Math.min(Math.max(index + 1 - step, rightLowest), rightHighest)),
+          0,
+          !rightRunStartsAbove,
+          !rightRunEndsHere
+        ),
+      ];
+      if (index > 0 && breaks(index, false)) back.push(...joinOn(index, "right"));
+      rightPieces[index] = back;
+    }
+
+    const path: InkPathCommand[] = [move(leftOut(0))];
     for (let index = 0; index < last; index += 1) {
-      const step = shape[index + 1].minus(shape[index]);
-      const from = halfWidths[index];
-      const to = halfWidths[index + 1];
-      const leftFolds =
-        step.plus(left.into[index + 1].times(to)).minus(left.outOf[index].times(from)).dot(step) < 0;
-      const rightFolds =
-        step.minus(right.into[index + 1].times(to)).plus(right.outOf[index].times(from)).dot(step) < 0;
-      const twisted =
-        left.outOf[index].dot(left.into[index + 1]) < 0 ||
-        right.outOf[index].dot(right.into[index + 1]) < 0;
-      if (!twisted && !leftFolds && !rightFolds) continue;
-      if (joinedNow.has(index) || joinedNow.has(index + 1)) continue;
-      const candidates = [index, index + 1].filter((at) => at > 0 && at < last && joins[at] !== "round");
-      if (candidates.length === 0) continue;
-      const sharper = candidates.reduce((best, at) => (turns[at] > turns[best] ? at : best));
-      const inside = !twisted && leftFolds !== rightFolds && turnsLeft[sharper] === leftFolds;
-      joins[sharper] = joins[sharper] === "none" && inside ? "inside" : "round";
-      joinedNow.add(sharper);
+      for (const command of leftPieces[index]) path.push(command);
     }
-    if (joinedNow.size === 0) break;
-    normals = normalsAlong();
+    path.push(...semicircle(shape[last], leftIn(last), end, halfWidths[last]));
+    for (let index = last - 1; index >= 0; index -= 1) {
+      for (const command of rightPieces[index]) path.push(command);
+    }
+    path.push(...semicircle(shape[0], rightOut(0), start.times(-1), halfWidths[0]));
+    return path;
   }
 
-  const { left, right, start, end } = normals;
-  const leftIn = (index: number) => shape[index].plus(left.into[index].times(halfWidths[index]));
-  const leftOut = (index: number) => shape[index].plus(left.outOf[index].times(halfWidths[index]));
-  const rightIn = (index: number) => shape[index].minus(right.into[index].times(halfWidths[index]));
-  const rightOut = (index: number) => shape[index].minus(right.outOf[index].times(halfWidths[index]));
-
-  /**
-   * Where an edge leaves its run: through the point on the inside of the turn,
-   * round about it on the outside. A turn straight back on itself goes round on
-   * the right.
-   */
-  const joinOn = (index: number, side: "left" | "right"): InkPathCommand[] => {
-    const from = side === "left" ? leftIn(index) : rightOut(index);
-    const to = side === "left" ? leftOut(index) : rightIn(index);
-    if (turnsLeft[index] === (side === "left")) return [line(shape[index]), line(to)];
-    const arriving = directionInto(index) ?? start;
-    const leaving = directionOutOf(index) ?? end;
-    return roundAbout(shape[index], from, to, arriving.minus(leaving), halfWidths[index]);
+  return {
+    outline(input, stable) {
+      let from = Math.min(stable, stableBefore, outlined) - OUTLINE_MARGIN;
+      // Started on a step whose edges never folded, before or since, so no join
+      // made behind it can carry on into what is worked out again.
+      while (from > 0 && (touched[from - 1] || touched[from - 2] || touched[from - 3])) from -= 1;
+      if (from <= startReach + 3) from = 0;
+      const path = work(input, from) ?? work(input, 0)!;
+      outlined = input.shape.length;
+      stableBefore = stable;
+      return path;
+    },
   };
-
-  const path: InkPathCommand[] = [move(leftOut(0))];
-  let runStart = 0;
-  for (let index = 1; index <= last; index += 1) {
-    if (index < last && !breaks(index, true)) continue;
-    const run = [leftOut(runStart)];
-    for (let inner = runStart + 1; inner < index; inner += 1) run.push(leftIn(inner));
-    run.push(leftIn(index));
-    path.push(...cubicsThrough(run));
-    if (index < last) path.push(...joinOn(index, "left"));
-    runStart = index;
-  }
-  path.push(...semicircle(shape[last], leftIn(last), end, halfWidths[last]));
-  let runEnd = last;
-  for (let index = last - 1; index >= 0; index -= 1) {
-    if (index > 0 && !breaks(index, false)) continue;
-    const run = [rightIn(runEnd)];
-    for (let inner = runEnd - 1; inner > index; inner -= 1) run.push(rightIn(inner));
-    run.push(rightOut(index));
-    path.push(...cubicsThrough(run));
-    if (index > 0) path.push(...joinOn(index, "right"));
-    runEnd = index;
-  }
-  path.push(...semicircle(shape[0], rightOut(0), start.times(-1), halfWidths[0]));
-  return path;
 }
 
 const FULL_TURN = 2 * Math.PI;
@@ -290,7 +394,10 @@ function roundAbout(centre: Vec, from: Vec, to: Vec, outward: Vec, radius: numbe
 }
 
 /**
- * Cubic Beziers through every point, C1 by construction.
+ * One cubic of a run of edge points, C1 with the ones either side by
+ * construction: from point `index` to `index + 1`, with `at` reading the
+ * run's points (held at its ends). `hasBefore` and `hasAfter` say whether
+ * the run goes on before `index` and after `index + 1`.
  *
  * The same Catmull-Rom the centreline is drawn with, in a form the two edges
  * of a tapered stroke can also use. Their tangents come from their own
@@ -298,43 +405,27 @@ function roundAbout(centre: Vec, from: Vec, to: Vec, outward: Vec, radius: numbe
  * through a different angle than the line it was offset from -- sharper on
  * the inside of a bend, gentler on the outside.
  */
-function cubicsThrough(pts: Vec[]): InkPathCommand[] {
-  const at = (index: number) => pts[Math.min(Math.max(index, 0), pts.length - 1)];
-  const direction = (index: number) => {
-    const arriving = at(index).minus(at(index - 1));
-    const leaving = at(index + 1).minus(at(index));
+function edgeCubic(at: (index: number) => Vec, index: number, hasBefore: boolean, hasAfter: boolean): InkPathCommand {
+  const direction = (point: number) => {
+    const arriving = at(point).minus(at(point - 1));
+    const leaving = at(point + 1).minus(at(point));
     if (arriving.magnitude() === 0) return leaving;
     if (leaving.magnitude() === 0) return arriving;
     const bisector = arriving.normalized().plus(leaving.normalized());
     return bisector.magnitude() < REVERSAL_BISECTOR_FLOOR ? leaving : bisector;
   };
-
-  const commands: InkPathCommand[] = [];
-  for (let index = 0; index < pts.length - 1; index += 1) {
-    const from = at(index);
-    const to = at(index + 1);
-    const length = to.distanceTo(from);
-    const reachOut = armReach(
-      length,
-      index > 0 ? from.distanceTo(at(index - 1)) : null
-    );
-    const reachIn = armReach(
-      length,
-      index + 2 < pts.length ? at(index + 2).distanceTo(to) : null
-    );
-    const armOut = direction(index);
-    const armIn = direction(index + 1);
-    commands.push(
-      cubic(
-        armOut.magnitude() > 0
-          ? from.plus(armOut.normalized().times(reachOut))
-          : from,
-        armIn.magnitude() > 0 ? to.minus(armIn.normalized().times(reachIn)) : to,
-        to
-      )
-    );
-  }
-  return commands;
+  const from = at(index);
+  const to = at(index + 1);
+  const length = to.distanceTo(from);
+  const reachOut = armReach(length, hasBefore ? from.distanceTo(at(index - 1)) : null);
+  const reachIn = armReach(length, hasAfter ? at(index + 2).distanceTo(to) : null);
+  const armOut = direction(index);
+  const armIn = direction(index + 1);
+  return cubic(
+    armOut.magnitude() > 0 ? from.plus(armOut.normalized().times(reachOut)) : from,
+    armIn.magnitude() > 0 ? to.minus(armIn.normalized().times(reachIn)) : to,
+    to
+  );
 }
 
 /**

@@ -362,10 +362,13 @@ Still to come:
     curve still settling behind the pen is short;
   - widths are shaped against the average so far, not the whole stroke's;
   - a corner verdict is kept once everything it reads has been drawn.
-  Paths have about twice the curves. The builders still recompute the curve
-  on every packet, which measures well inside the per-packet gate; returning
-  only the newly settled segments is left for the performance stage, if the
-  gates ever need it.
+  Paths have about twice the curves. The pen works out only the end of a
+  stroke on each packet (13 October): every stage reads a few points either
+  side, so its answer at a point is kept once those are settled, and the
+  outline's folds are worked out again only from a step that never folded.
+  On a 2,000-sample stroke the last packets went from 1.8 ms to 0.13 ms,
+  with exactly the same path (`ink-pen-outliner.test.ts`; 375,000 packets of
+  random strokes matched the old code exactly).
 - **`tools/`.** All pure:
   - the stroke and precision erasers (outline items clipped with
     `polygon-clipping`);

@@ -30,9 +30,18 @@ export function shapePenPressure(raw: number[], pressureResponse: number) {
   let total = 0;
   return raw.map((value, index) => {
     total += value;
-    const mean = total / (index + 1);
-    return Math.max(0.1, mean + (value - mean) * pressureResponse);
+    return shapedPenPressureAt(value, total, index + 1, pressureResponse);
   });
+}
+
+/**
+ * One sample's width as `shapePenPressure` shapes it: `total` is the sum of
+ * the widths up to and including it, `count` how many there are. For a
+ * caller keeping the running sum itself.
+ */
+export function shapedPenPressureAt(value: number, total: number, count: number, pressureResponse: number) {
+  const mean = total / count;
+  return Math.max(0.1, mean + (value - mean) * pressureResponse);
 }
 
 /** Whether a stroke was drawn with enough varying weight to be worth tapering. */
@@ -67,17 +76,33 @@ export function penHalfWidthsAlong(raw: number[], count: number, minimumWidthFra
       seen += 1;
       seenTotal += raw[index];
     }
-    const mean = seen ? seenTotal / seen : 0;
-    const floor = mean * minimumWidthFraction;
-    let total = 0;
-    let samples = 0;
-    for (let offset = -WIDTH_SMOOTHING_RADIUS; offset <= WIDTH_SMOOTHING_RADIUS; offset += 1) {
-      const source = index + offset;
-      if (source < 0 || source >= raw.length) continue;
-      total += raw[source];
-      samples += 1;
-    }
-    result.push(Math.max(samples ? total / samples : mean, floor) / 2);
+    result.push(penHalfWidthAt(raw, index, seen, seenTotal, minimumWidthFraction));
   }
   return result;
+}
+
+/**
+ * Half the width at one point, as `penHalfWidthsAlong` works it out: `seen`
+ * widths up to and including it, summing to `seenTotal`. It reads
+ * `WIDTH_SMOOTHING_RADIUS` widths either side, so it is settled once those
+ * are in.
+ */
+export function penHalfWidthAt(
+  raw: readonly number[],
+  index: number,
+  seen: number,
+  seenTotal: number,
+  minimumWidthFraction: number
+) {
+  const mean = seen ? seenTotal / seen : 0;
+  const floor = mean * minimumWidthFraction;
+  let total = 0;
+  let samples = 0;
+  for (let offset = -WIDTH_SMOOTHING_RADIUS; offset <= WIDTH_SMOOTHING_RADIUS; offset += 1) {
+    const source = index + offset;
+    if (source < 0 || source >= raw.length) continue;
+    total += raw[source];
+    samples += 1;
+  }
+  return Math.max(samples ? total / samples : mean, floor) / 2;
 }
