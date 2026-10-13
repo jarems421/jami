@@ -54,6 +54,10 @@ returns. It is live at [jami.study](https://jami.study).
   tests, a signed-in Playwright suite on the Firebase emulators, a CI pipeline,
   enforced file-size limits and written architecture rules.
 
+<p align="center">
+  <img src="docs/images/jami-hero.png" alt="A past-paper answer marked by Jami, showing the mark, the student's answer and the marking report" width="900" />
+</p>
+
 ## Product areas
 
 The sidebar has ten destinations in two groups.
