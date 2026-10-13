@@ -2,7 +2,8 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
-import { parseJamiAssistantRequest, type JamiAssistantRequest } from "@/lib/ai/jami-assistant";
+import type { JamiAssistantRequest } from "@/lib/ai/jami-assistant";
+import { parseJamiAssistantRequest } from "@/lib/ai/jami-assistant-request";
 import { describeUnmetAiProviderRequirements } from "@/lib/ai/provider-policy";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
 import { createLogger, type Logger } from "@/lib/observability/logger";

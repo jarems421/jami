@@ -1,7 +1,5 @@
-import {
-  parseJamiAssistantRequest,
-  type JamiAssistantContext,
-} from "@/lib/ai/jami-assistant";
+import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
+import { parseJamiAssistantRequest } from "@/lib/ai/jami-assistant-request";
 import { diagramType, renderTutorDiagram, TUTOR_DIAGRAM_FORMAT } from "@/lib/ai/tutor-diagram";
 
 export type AssistantIllustrationRequest = {

@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import {
   JamiAssistantContextError,
-  assertSnapshotMime,
   countOverlap,
   describeMemoryProfile,
   normalizeIds,
@@ -14,10 +13,6 @@ import {
   type SourceRelations,
 } from "@/lib/ai/assistant-context.server";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
-import {
-  getNotebookContextPageTextLimit,
-  selectNotebookContextWindow,
-} from "@/lib/ai/notebook-context-window";
 import { normalizeReasoningEffort } from "@/lib/profile/reasoning-effort";
 import {
   buildTutorPersonalisationInstruction,
@@ -33,40 +28,23 @@ import {
 import {
   normalizeStudySubjects,
 } from "@/lib/profile/study-subjects";
-import {
-  mapNotebookData,
-  mapNotebookPageData,
-} from "@/lib/workspace/notebooks";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { examQuestionVisualParts, loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
 import { EXAM_WORKING_IMAGE_DESCRIPTION } from "@/lib/practice/single-question-paper";
-import { serializeLearnerProfileForTutor } from "@/lib/learning/serialize/tutor-context";
-import { buildStudyActions } from "@/lib/learning/actions/study-actions";
-import {
-  materialTopicKeys,
-  practiceActionForMaterial,
-  nextStudyAction,
-} from "@/lib/learning/actions/practice-for-material";
-import { buildTutorPracticeOffer, type TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
-import { describeStudyAction } from "@/lib/dashboard/today-plan";
-import {
-  loadStudyFolderForActions,
-  studyActionContextFor,
-} from "@/services/learning/study-actions.server";
-import { loadStudyActionHistory } from "@/services/learning/study-action-history.server";
-import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
-import type { TutorCheckScope } from "@/lib/learning/events/tutor-check";
+import { materialTopicKeys } from "@/lib/learning/actions/practice-for-material";
 import { createLogger } from "@/lib/observability/logger";
-import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
-import { loadRecentResultText } from "@/services/learning/recent-result-text.server";
 import {
   buildTutorMemoryInstruction,
   selectRecentTutorActivity,
   selectTutorMemoriesForPrompt,
 } from "@/lib/ai/tutor-memory";
 import { loadRecentTutorActivity, loadTutorMemory } from "@/services/ai/tutor-memory.server";
-import { loadNotebookNeighbourPageParts } from "@/services/ai/notebook-neighbour-pages.server";
+import { resolveNotebookContext } from "@/services/ai/assistant-notebook-context.server";
+import {
+  loadTutorLearningContext,
+  tutorLearningScope,
+} from "@/services/ai/tutor-learning-context.server";
 import {
   buildTutorCourseContextFor,
   findCourseDocumentSources,
@@ -78,14 +56,6 @@ const MAX_SOURCE_CANDIDATES_PER_RELATION =
   MAX_SOURCE_METADATA_CANDIDATES / 2;
 const LEARN_RELATED_CARD_SCAN_LIMIT = 20;
 const LEARN_MAX_RELATED_CARDS = 6;
-const NOTEBOOK_CONTEXT_PAGE_LIMIT = 60;
-const NOTEBOOK_CONTEXT_PAGE_TEXT_LIMIT = 700;
-const NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT = 12_000;
-/**
- * How long Tutor waits for the learner profile before answering without it.
- * The profile improves an answer; it must never be the reason one is slow.
- */
-const LEARNER_PROFILE_BUDGET_MS = 2_500;
 /** Memory is two small reads; past this the answer goes ahead without it. */
 const TUTOR_MEMORY_BUDGET_MS = 1_500;
 
@@ -200,25 +170,6 @@ async function loadTutorPreferences(input: {
   };
 }
 
-/** A lookup that gives up after `ms` with `fallback`, and never throws. */
-async function withinBudget<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
-  work.catch(() => undefined);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(fallback), ms);
-      }),
-    ]);
-  } catch (error) {
-    log.warn("recent_results.text_unavailable", { error });
-    return fallback;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 /**
  * What Tutor remembers about the student, and their other recent chats, as the
  * block Tutor reads.
@@ -299,234 +250,6 @@ async function loadTutorMemoryContext(input: {
   }
 }
 
-/**
- * The one folder, or failing that the deck, that Tutor's learning context is
- * scoped to -- and so where a quick check asked about this material counts.
- */
-function tutorLearningScope(
-  folderIds: readonly string[],
-  deckId: string | undefined
-): TutorCheckScope | null {
-  const unique = Array.from(new Set(folderIds.filter(Boolean)));
-  if (unique.length === 1 && unique[0]) return { folderId: unique[0] };
-  return deckId ? { deckId } : null;
-}
-
-/**
- * What the Learning Engine currently believes about the student, for the
- * material in front of them, written for Tutor.
- *
- * Scoped like folder instructions: one folder when the material sits in
- * exactly one, otherwise the card's own deck, otherwise nothing -- a profile
- * spanning two folders would set one subject's results against another's. All
- * of the learning logic lives in `lib/learning`; this only picks the scope and
- * keeps Tutor's promise that an enrichment never costs an answer. A failure or
- * a slow load drops the profile, and the request carries on exactly as it did
- * before the profile existed.
- */
-async function loadTutorLearningContext(input: {
-  uid: string;
-  folderIds: readonly string[];
-  deckId?: string;
-  /** Where the material in front of the student sits in the engine's concept space. */
-  materialKeys: readonly string[];
-}): Promise<
-  | { learningContext: string; practiceOffer?: TutorPracticeOffer; nextStepOffer?: TutorPracticeOffer }
-  | undefined
-> {
-  if (!featureFlags.enableLearnerProfile) return undefined;
-  const scope = tutorLearningScope(input.folderIds, input.deckId);
-  if (!scope) return undefined;
-
-  const scopeKind = "folderId" in scope ? "folder" : "deck";
-  const startedAt = Date.now();
-  const loading = loadLearnerProfile({ uid: input.uid, ...scope });
-  // Still settles after a timeout; without this its failure would go unhandled.
-  loading.catch(() => undefined);
-  /*
-   * What turning the profile into actions needs, read beside it rather than
-   * after it: the folder, for whether its course can be practised, and the
-   * student's history with this advice, so resting advice stays at rest. Both
-   * are small, and either failing costs the offers and nothing else. Read even
-   * with no material open, for the folder's next step.
-   */
-  const actionFolderId = "folderId" in scope ? scope.folderId : undefined;
-  const actionInputs =
-    actionFolderId && featureFlags.enableStudyActions
-      ? Promise.all([
-          loadStudyFolderForActions(input.uid, actionFolderId),
-          loadStudyActionHistory({ uid: input.uid }),
-        ]).catch((error: unknown) => {
-          log.warn("practice_offer.unavailable", { error });
-          return null;
-        })
-      : Promise.resolve(null);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const settled = await Promise.race([
-      Promise.all([loading, actionInputs]),
-      new Promise<"timeout">((resolve) => {
-        timer = setTimeout(() => resolve("timeout"), LEARNER_PROFILE_BUDGET_MS);
-      }),
-    ]);
-    const latencyMs = Date.now() - startedAt;
-    if (settled === "timeout") {
-      log.warn("learner_profile.timed_out", {
-        consumer: "tutor",
-        scope: scopeKind,
-        budgetMs: LEARNER_PROFILE_BUDGET_MS,
-      });
-      return undefined;
-    }
-    const [profile, inputs] = settled;
-    if (!profile) {
-      log.info("learner_profile.completed", {
-        consumer: "tutor",
-        scope: scopeKind,
-        outcome: "no_profile",
-        latencyMs,
-      });
-      return undefined;
-    }
-    const [folder, history] = inputs ?? [null, null];
-    const actions = folder
-      ? buildStudyActions(profile, studyActionContextFor(folder), history?.history)
-      : [];
-    const practiceAction = practiceActionForMaterial(actions, input.materialKeys);
-    const practiceOffer = practiceAction
-      ? buildTutorPracticeOffer(practiceAction, describeStudyAction(practiceAction))
-      : undefined;
-    /*
-     * The folder's next step, for "what should I do next?". Left out when it is
-     * the practice already offered: one action is never offered twice.
-     */
-    const nextAction = nextStudyAction(actions);
-    const nextStepOffer =
-      nextAction && nextAction.id !== practiceOffer?.actionId
-        ? buildTutorPracticeOffer(nextAction, describeStudyAction(nextAction))
-        : undefined;
-    /*
-     * The words of the cards and questions in the recent results, so Tutor can
-     * name the one the student got wrong. Within what is left of the budget;
-     * out of time, the results are still listed, by kind and topic.
-     */
-    const recentItemText = await withinBudget(
-      loadRecentResultText(input.uid, profile.recentResults ?? []),
-      Math.max(0, LEARNER_PROFILE_BUDGET_MS - (Date.now() - startedAt)),
-      new Map<string, string>()
-    );
-    const learningContext = serializeLearnerProfileForTutor(profile, {
-      boundaryToken: randomUUID(),
-      recentItemText,
-      ...(practiceAction && practiceOffer
-        ? {
-            practiceFocus: {
-              label: practiceAction.target.label,
-              reason: practiceAction.reason,
-              ...(practiceAction.intervention ? { because: practiceAction.intervention.because } : {}),
-            },
-          }
-        : {}),
-      ...(nextStepOffer
-        ? { nextStep: { title: nextStepOffer.title, description: nextStepOffer.description } }
-        : {}),
-    });
-    log.info("learner_profile.completed", {
-      consumer: "tutor",
-      outcome: learningContext ? "included" : "insufficient_evidence",
-      latencyMs,
-      practiceOffered: Boolean(learningContext && practiceOffer),
-      nextStepAvailable: Boolean(learningContext && nextStepOffer),
-      // Counts only: how many items were listed, and how many could be named.
-      recentResults: profile.recentResults?.length ?? 0,
-      recentResultsNamed: recentItemText.size,
-      ...learnerProfileTelemetry(profile),
-    });
-    if (!learningContext) return undefined;
-    // Offered only alongside the profile that tells the model it is there.
-    return {
-      learningContext,
-      ...(practiceOffer ? { practiceOffer } : {}),
-      ...(nextStepOffer ? { nextStepOffer } : {}),
-    };
-  } catch (error) {
-    log.warn("learner_profile.failed", {
-      consumer: "tutor",
-      scope: scopeKind,
-      latencyMs: Date.now() - startedAt,
-      error,
-    });
-    return undefined;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-function getNotebookPageText(
-  page: ReturnType<typeof mapNotebookPageData>,
-  limit: number = NOTEBOOK_CONTEXT_PAGE_TEXT_LIMIT
-) {
-  return [page.typedContent, ...page.textBlocks.map((block) => block.text)]
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, limit);
-}
-
-function buildNotebookPageMap(
-  pages: ReturnType<typeof mapNotebookPageData>[],
-  currentPageId: string
-) {
-  if (pages.length <= 1) return "";
-
-  const { nearby, distant } = selectNotebookContextWindow(pages, currentPageId);
-  const nearbyIds = new Set(nearby.map((page) => page.id));
-
-  const describe = (page: ReturnType<typeof mapNotebookPageData>) => {
-    const isNearby = nearbyIds.has(page.id);
-    const pageText = getNotebookPageText(
-      page,
-      getNotebookContextPageTextLimit(isNearby)
-    );
-    const details = [
-      page.title && !/^Page \d+$/i.test(page.title) ? `title: ${page.title}` : "",
-      page.questionPrompt ? `question: ${page.questionPrompt.slice(0, 500)}` : "",
-      pageText ? `typed content: ${pageText}` : "no typed summary available",
-    ].filter(Boolean);
-    return `- Page ${page.pageNumber}${
-      page.id === currentPageId ? " (current)" : ""
-    }: ${details.join("; ")}`;
-  };
-
-  /*
-   * Two bands, because a question that runs over a page break is the ordinary
-   * case and the page it continues onto used to be described no better than one
-   * at the other end of the notebook.
-   */
-  const sections: string[] = [];
-  if (nearby.length > 0) {
-    sections.push(
-      `Pages around the one the student is on. A question may well be split across these, so read them as part of the same piece of work:
-${nearby
-        .map(describe)
-        .join("\n")}`
-    );
-  }
-  if (distant.length > 0) {
-    sections.push(
-      `The rest of the notebook, listed so you can find something the student refers to:
-${distant
-        .map(describe)
-        .join("\n")}`
-    );
-  }
-
-  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available for the current page and for any page pictured below (the page either side, and any page the student names); treat any other page's typed text as an outline rather than its full contents. If the work they ask about is on a page that is not pictured, ask them which page number it is on rather than saying you cannot read it):
-${sections
-    .join("\n\n")
-    .slice(0, NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT)}`;
-}
 
 /**
  * Nearby cards from the same deck, so the tutor can spot the mix-ups and
@@ -793,104 +516,6 @@ async function resolveSourcesContext(input: {
       directSourceIds: [],
       folderIds: Array.from(new Set(sources.flatMap((source) => source.folderIds))),
       topicIds: Array.from(new Set(sources.flatMap((source) => source.topicIds))),
-    } satisfies SourceRelations,
-  };
-}
-
-async function resolveNotebookContext(input: {
-  db: AdminDb;
-  uid: string;
-  context: Extract<JamiAssistantContext, { surface: "notebook" }>;
-  /** What the student asked, which says which other pages to read. */
-  message: string;
-}) {
-  const userRef = input.db.collection("users").doc(input.uid);
-  const [notebookSnapshot, pageSnapshot, notebookPagesSnapshot] = await Promise.all([
-    userRef.collection("notebooks").doc(input.context.notebookId).get(),
-    userRef.collection("notebookPages").doc(input.context.pageId).get(),
-    userRef
-      .collection("notebookPages")
-      .where("notebookId", "==", input.context.notebookId)
-      .orderBy("pageNumber", "asc")
-      .limit(NOTEBOOK_CONTEXT_PAGE_LIMIT)
-      .get(),
-  ]);
-  if (!notebookSnapshot.exists || !pageSnapshot.exists) {
-    throw new JamiAssistantContextError("This notebook page could not be found.");
-  }
-
-  const notebook = mapNotebookData(
-    notebookSnapshot.id,
-    notebookSnapshot.data() ?? {}
-  );
-  const page = mapNotebookPageData(pageSnapshot.id, pageSnapshot.data() ?? {});
-  if (page.notebookId !== notebook.id) {
-    throw new JamiAssistantContextError("This notebook page could not be found.");
-  }
-
-  const typedText =
-    input.context.typedText ||
-    [page.typedContent, ...page.textBlocks.map((block) => block.text)]
-      .filter(Boolean)
-      .join("\n\n")
-      .slice(0, 12_000);
-  const questionPrompt = input.context.questionPrompt || page.questionPrompt || "";
-  const notebookPages = notebookPagesSnapshot.docs
-    .map((snapshot) =>
-      mapNotebookPageData(snapshot.id, snapshot.data() as Record<string, unknown>)
-    )
-    .filter((candidate) => candidate.notebookId === notebook.id);
-  const notebookPageMap = buildNotebookPageMap(notebookPages, page.id);
-  /*
-   * A practice question's answer, which the page keeps folded away. Tutor
-   * marks against it, and holds it back as a flashcard's withheld side is held
-   * back: the student opens it themselves, or asks for it.
-   */
-  const answerKey = questionPrompt && page.questionAnswer ? page.questionAnswer.slice(0, 6_000) : "";
-  const currentParts: AiContentPart[] = [
-    {
-      text: `Notebook: ${notebook.title}\nPage: ${page.pageNumber}${
-        questionPrompt ? `\nQuestion prompt: ${questionPrompt}` : ""
-      }${
-        answerKey
-          ? `\nAnswer key for this question (hidden on the page until the student opens it). Use it to mark and check their working. Do not reveal it unless they ask for the answer or ask to be marked:\n${answerKey}`
-          : ""
-      }${typedText ? `\nTyped page content:\n${typedText}` : ""}${
-        notebookPageMap ? `\n\n${notebookPageMap}` : ""
-      }`,
-    },
-  ];
-  if (input.context.snapshot) {
-    assertSnapshotMime(input.context.snapshot);
-    currentParts.push({
-      inlineData: {
-        mimeType: input.context.snapshot.mimeType,
-        data: input.context.snapshot.dataBase64,
-      },
-    });
-  }
-  /*
-   * Started here, awaited alongside the sources: drawing two pages takes a
-   * moment, and nothing else waits on it.
-   */
-  const neighbourParts = loadNotebookNeighbourPageParts({
-    uid: input.uid,
-    notebookId: notebook.id,
-    pages: notebookPages,
-    currentPageId: page.id,
-    message: input.message,
-  });
-
-  return {
-    currentId: page.id,
-    currentLabel: "Current page",
-    currentParts,
-    neighbourParts,
-    relations: {
-      currentSourceIds: [],
-      directSourceIds: notebook.sourceIds,
-      folderIds: notebook.folderId ? [notebook.folderId] : [],
-      topicIds: notebook.topicIds,
     } satisfies SourceRelations,
   };
 }

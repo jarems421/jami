@@ -13,12 +13,12 @@ import {
   splitJamiAssistantHistoryWindow,
   stripJamiAssistantReferenceMarkers,
   parseJamiAssistantModelAnswer,
-  parseJamiAssistantRequest,
   sanitizeTutorResearchQuery,
   shouldOfferTutorIllustration,
   isExplicitTutorGraphRequest,
   isTutorGraphRequest,
 } from "@/lib/ai/jami-assistant";
+import { parseJamiAssistantRequest } from "@/lib/ai/jami-assistant-request";
 import {
   applyTutorRoutingPreflight,
   parseTutorRoutingPreflight,

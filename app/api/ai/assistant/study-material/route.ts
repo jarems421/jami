@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { parseJamiAssistantRequest } from "@/lib/ai/jami-assistant";
+import { parseJamiAssistantRequest } from "@/lib/ai/jami-assistant-request";
 import {
   getJamiAssistantContextKey,
   getJamiAssistantSavedContext,

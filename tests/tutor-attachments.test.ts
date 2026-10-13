@@ -14,8 +14,8 @@ import {
 import {
   getJamiAssistantResponseGuidance,
   parseJamiAssistantModelAnswer,
-  parseJamiAssistantRequest,
 } from "@/lib/ai/jami-assistant";
+import { parseJamiAssistantRequest } from "@/lib/ai/jami-assistant-request";
 import { TUTOR_VOICE_INSTRUCTION } from "@/lib/ai/tutor-voice";
 
 const uid = "student-1";
