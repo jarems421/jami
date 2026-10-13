@@ -817,6 +817,8 @@ describe("what a turn reads", () => {
     expect(sentText()).toContain("REFERENCE W1");
     expect(sentText()).toContain("- Page 0: https://example.org/0");
     expect(streamCall().request.systemInstruction).toContain("W1 is a concise grounded web-research brief.");
+    // Their course's convention wins over the web's, said in a sentence.
+    expect(streamCall().request.systemInstruction).toContain("teach their material's version for their course");
     const done = stream.at(-1) as { citations: unknown[]; used: Array<{ kind: string }> };
     expect(done.citations).toHaveLength(8);
     expect(done.used.map((entry) => entry.kind)).toContain("web");

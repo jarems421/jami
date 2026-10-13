@@ -6,6 +6,9 @@ import {
   normalizeTutorAgentSteps,
   parseTutorAgentStep,
   TUTOR_AGENT_LIMITS,
+  TUTOR_AGENT_NO_MATERIAL_INSTRUCTION,
+  TUTOR_AGENT_PLANNER_INSTRUCTION,
+  tutorAgentFoundNoMaterial,
   tutorAgentStepLabel,
 } from "@/lib/ai/tutor-agent";
 
@@ -106,5 +109,26 @@ describe("how a step reads to the student", () => {
       done: "Worked",
     });
     expect(normalizeTutorAgentLiveStep({ tool: "work_out", doing: "Working" })).toBeNull();
+  });
+});
+
+describe("when the planner is told to check", () => {
+  it("keeps the independent working for problems a careful tutor could slip on", () => {
+    expect(TUTOR_AGENT_PLANNER_INSTRUCTION).toContain("only where a careful tutor could plausibly slip");
+    expect(TUTOR_AGENT_PLANNER_INSTRUCTION).toContain("Never for a one- or two-step calculation");
+  });
+});
+
+describe("what the look-ups add up to", () => {
+  const ledger = { readUpFront: 0, sourceSearches: 1, passagesAdded: 0, webFound: false, checked: false };
+
+  it("says their material had nothing only when it was searched, found nothing, and none was in hand", () => {
+    expect(tutorAgentFoundNoMaterial(ledger)).toBe(true);
+    expect(tutorAgentFoundNoMaterial({ ...ledger, passagesAdded: 1 })).toBe(false);
+    // Searching for something extra and finding nothing new is not "nothing on it".
+    expect(tutorAgentFoundNoMaterial({ ...ledger, readUpFront: 2 })).toBe(false);
+    // Never searched: nothing to report.
+    expect(tutorAgentFoundNoMaterial({ ...ledger, sourceSearches: 0 })).toBe(false);
+    expect(TUTOR_AGENT_NO_MATERIAL_INSTRUCTION).toContain("could not find it in their material");
   });
 });

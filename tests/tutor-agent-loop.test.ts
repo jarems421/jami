@@ -43,7 +43,7 @@ const inHandLecture: TutorTurnSource = {
 const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger;
 const step = (tool: string, query = "") => JSON.stringify({ tool, query });
 
-function run(overrides: { signal?: AbortSignal; steps?: TutorAgentLiveStep[] } = {}) {
+function run(overrides: { signal?: AbortSignal; steps?: TutorAgentLiveStep[]; answerRole?: "worker" | "supervisor" } = {}) {
   const live = overrides.steps ?? [];
   return runTutorAgent({
     uid: "u1",
@@ -53,6 +53,7 @@ function run(overrides: { signal?: AbortSignal; steps?: TutorAgentLiveStep[] } =
     scope: { sources: [lecture, sheet], pinnedSourceIds: ["lecture"] },
     inHand: { readable: [inHandLecture], research: { ok: false, reason: "invalid_query" }, recall: null },
     recallFrom: { earlierInThread: [] },
+    answerRole: overrides.answerRole ?? "worker",
     deadlineAt: Date.now() + 28_000,
     signal: overrides.signal ?? new AbortController().signal,
     providerDiagnostics: [],
@@ -99,6 +100,17 @@ describe("the Tutor agent's look-ups", () => {
     ]);
     expect(gathered.steps).toEqual([{ tool: "search_sources", label: "Searched your material for “entropy of mixing”" }]);
     expect(mocks.generateText).toHaveBeenCalledTimes(2);
+    expect(gathered.ledger).toEqual({ readUpFront: 1, sourceSearches: 1, passagesAdded: 2, webFound: false, checked: false });
+  });
+
+  it("counts a search of their material that found nothing, and logs the count without the query", async () => {
+    mocks.generateText.mockResolvedValueOnce(step("search_sources", "Carnot efficiency")).mockResolvedValueOnce(step("done"));
+    mocks.retrieve.mockResolvedValueOnce({ passages: [], outlines: new Map(), targets: new Map() });
+    const gathered = await run();
+    expect(gathered.ledger).toMatchObject({ sourceSearches: 1, passagesAdded: 0 });
+    const finished = vi.mocked(log.info).mock.calls.findLast(([name]) => name === "agent.finished");
+    expect(finished?.[1]).toMatchObject({ sourceSearches: 1, passagesAdded: 0 });
+    expect(JSON.stringify(finished)).not.toContain("Carnot");
   });
 
   it("spends one of the student's searches on the web, and gives it back when the search fails", async () => {
@@ -140,14 +152,39 @@ describe("the Tutor agent's look-ups", () => {
     expect(mocks.retrieve).toHaveBeenCalledTimes(3);
   });
 
-  it("has a problem worked through independently, for the answer to check against", async () => {
-    mocks.generateText
-      .mockResolvedValueOnce(step("work_out", "Find ΔS when 1 mol of ideal gas doubles its volume isothermally."))
-      .mockResolvedValueOnce("ΔS = R ln 2 ≈ 5.76 J/K")
-      .mockResolvedValueOnce(step("done"));
+  it("has a problem worked through independently, by a family other than the answer's", async () => {
+    const workOut = () =>
+      mocks.generateText
+        .mockResolvedValueOnce(step("work_out", "Find ΔS when 1 mol of ideal gas doubles its volume isothermally."))
+        .mockResolvedValueOnce("ΔS = R ln 2 ≈ 5.76 J/K")
+        .mockResolvedValueOnce(step("done"));
+
+    // A Think answer is the worker's: Kimi K3 checks it.
+    workOut();
     const gathered = await run();
     expect(gathered.workings).toEqual(["ΔS = R ln 2 ≈ 5.76 J/K"]);
-    expect(mocks.generateText.mock.calls[1][0]).toMatchObject({ role: "worker", routeReason: "agent_check", reasoningEffort: "high" });
+    expect(gathered.ledger.checked).toBe(true);
+    // One deadline for the whole check, so a fallback behind a slow Kimi cannot run past it.
+    const checkCall = mocks.generateText.mock.calls[1][0] as { deadlineAt: number };
+    expect(checkCall.deadlineAt - Date.now()).toBeLessThanOrEqual(16_000);
+    expect(mocks.generateText.mock.calls[1][0]).toMatchObject({
+      role: "supervisor",
+      preferStandby: true,
+      routeReason: "agent_check",
+      reasoningEffort: "high",
+      stallTimeoutMs: 6_000,
+    });
+
+    // A Deep answer is the supervisor's: the worker checks it, and stays the worker.
+    mocks.generateText.mockReset();
+    workOut();
+    await run({ answerRole: "supervisor" });
+    expect(mocks.generateText.mock.calls[1][0]).toMatchObject({
+      role: "worker",
+      preferStandby: false,
+      allowRoleEscalation: false,
+      routeReason: "agent_check",
+    });
   });
 
   it("lets the answer go ahead with what it has when the planner fails", async () => {

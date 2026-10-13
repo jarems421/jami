@@ -45,7 +45,7 @@ rare, a little strict on what is expensive and frequent.
 |---|---|---|---|
 | Price | £0 | **£7.99 / month** | **£14.99 / month** |
 | *Cheap and frequent: generous* | | | |
-| Tutor questions (0.28p each; a Think or Deep answer the Tutor agent looks things up for is still one, at an estimated 2–4× the cost, to be re-measured) | 60 | 500 | 1,000 |
+| Tutor questions (0.28p each; a Think or Deep answer the Tutor agent looks things up for is still one, at about 2–3× the cost when it checks the working, measured on maths problems in `tutor-agent.md`) | 60 | 500 | 1,000 |
 | Tutor diagrams it draws (0.05p) | fair use | fair use | fair use |
 | Marked past-paper answers (0.11p; a guided retry counts as one) | 25 | 250 | 600 |
 | Revision Sessions (0.3p) | 8 | 60 | 120 |

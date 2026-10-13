@@ -13,7 +13,7 @@ import {
 } from "@/lib/ai/tutor-attachments";
 import { isTutorChatRecallRequest } from "@/lib/ai/tutor-chat-recall";
 import { getTutorSuggestionKinds } from "@/lib/ai/tutor-suggestion";
-import { TUTOR_AGENT_LIMITS, type TutorAgentLiveStep } from "@/lib/ai/tutor-agent";
+import { TUTOR_AGENT_LIMITS, tutorAgentFoundNoMaterial, type TutorAgentLiveStep } from "@/lib/ai/tutor-agent";
 import type { TutorAnswerPackageInput } from "@/lib/ai/tutor-turn-answer";
 import { planTutorTurn } from "@/lib/ai/tutor-turn-plan";
 import {
@@ -247,6 +247,7 @@ export async function POST(request: NextRequest) {
   const composeAnswer = (gathered: Pick<TutorAgentGathered, "readable" | "research" | "recall" | "workings"> & {
     researchNeeded: boolean;
     researchAllowanceUsed: boolean;
+    materialNotFound?: boolean;
   }) => {
     const allowedSourceRefs = gathered.readable.map((result) => result.sourceRef);
     const responseSchema = buildAssistantResponseSchema(
@@ -276,6 +277,7 @@ export async function POST(request: NextRequest) {
       attachmentInstruction,
       recall: gathered.recall,
       independentWorking: gathered.workings.length > 0,
+      materialNotFound: gathered.materialNotFound === true,
       markingInvited: plan.markingInvited,
       pendingCheck,
       checkInvited: plan.checkInvited,
@@ -407,6 +409,7 @@ export async function POST(request: NextRequest) {
             ...(existingThread ? { currentThreadId: existingThread.id, currentThreadTitle: existingThread.title } : {}),
             earlierInThread: thread.earlierInThread,
           },
+          answerRole: route.role,
           deadlineAt: Math.min(Date.now() + TUTOR_AGENT_LIMITS.budgetMs, deadlineAt),
           signal: cancellation.signal,
           providerDiagnostics,
@@ -418,6 +421,7 @@ export async function POST(request: NextRequest) {
           // A search the agent tried counts as needed, so a failed one is said to be unverified.
           researchNeeded: research.needed || gathered.steps.some((step) => step.tool === "search_web"),
           researchAllowanceUsed: research.allowanceUsed || gathered.searchAllowanceUsed,
+          materialNotFound: tutorAgentFoundNoMaterial(gathered.ledger),
         });
         return {
           call: {

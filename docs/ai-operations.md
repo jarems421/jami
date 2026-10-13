@@ -84,7 +84,9 @@ answer's cap, so its thinking cannot cut a reply off mid-sentence.
 
 A Think or Deep turn then looks things up and checks its work before it answers
 ([`tutor-agent.md`](tutor-agent.md)): planner steps on the worker
-(`agent_step`), and at most one independent working (`agent_check`), logged
+(`agent_step`), and at most one independent working (`agent_check`) on a model
+of another family from the answer's -- Kimi K3 for a Think answer, the worker
+for a Deep one -- logged
 as `agent.finished` with the step count, tools and why it stopped.
 
 Each turn logs `routing.decided` with its tier, role, reason and the student's

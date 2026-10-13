@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { generateGroundedResearch, isGroundedResearchConfigured, type GeminiResearchResult } from "@/lib/ai/gemini";
 import { sanitizeTutorResearchQuery, type JamiAssistantHistoryMessage } from "@/lib/ai/jami-assistant";
+import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 import { generateAiText, type AiResponseDiagnostics, type AiRouterOptions } from "@/lib/ai/provider-router";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
 import {
@@ -13,9 +14,11 @@ import {
   TUTOR_AGENT_LIMITS,
   TUTOR_AGENT_PLANNER_INSTRUCTION,
   TUTOR_AGENT_WORK_OUT_INSTRUCTION,
+  tutorAgentCheckRoute,
   tutorAgentStepLabel,
   type TutorAgentChoice,
   type TutorAgentHand,
+  type TutorAgentLedger,
   type TutorAgentLiveStep,
   type TutorAgentStep,
   type TutorAgentStepView,
@@ -60,6 +63,8 @@ export type TutorAgentInput = {
     currentThreadTitle?: string;
     earlierInThread: readonly TutorRecallMessage[];
   };
+  /** The role writing the answer, so the check is worked by another family. */
+  answerRole: AiGenerationRole;
   /** When the look-ups must stop, so the answer keeps its own time. */
   deadlineAt: number;
   signal: AbortSignal;
@@ -80,6 +85,7 @@ export type TutorAgentGathered = {
   workings: string[];
   /** The steps taken, as the student sees them once they are done. */
   steps: TutorAgentStepView[];
+  ledger: TutorAgentLedger;
 };
 
 type ResponseSchema = NonNullable<AiRouterOptions["generationConfig"]>["responseSchema"];
@@ -133,6 +139,8 @@ export async function runTutorAgent(input: TutorAgentInput): Promise<TutorAgentG
   const used: Partial<Record<TutorAgentTool, number>> = {};
   const seenChunks = new Set<string>();
   let gatheredChars = 0;
+  let sourceSearches = 0;
+  let passagesAdded = 0;
   const timeLeft = () => deadlineAt - Date.now();
 
   const sourceIds = new Set(input.scope.sources.map((source) => source.id));
@@ -155,6 +163,7 @@ export async function runTutorAgent(input: TutorAgentInput): Promise<TutorAgentG
   };
 
   const searchSources = async (query: string) => {
+    sourceSearches += 1;
     const evidence = await retrieveTutorEvidence({
       uid,
       pinnedSourceIds: pinned,
@@ -185,6 +194,7 @@ export async function runTutorAgent(input: TutorAgentInput): Promise<TutorAgentG
       seenChunks.add(chunk.id);
       const text = chunk.text.slice(0, Math.min(TUTOR_AGENT_LIMITS.passageChars, room));
       gatheredChars += text.length;
+      passagesAdded += 1;
       const location = passageLocation(chunk);
       const part = { text: `Found when Jami searched for "${query}"${location ? ` (${location})` : ""}:\n${text}` };
       let entry = readable.find((candidate) => candidate.source.id === source.id);
@@ -231,17 +241,22 @@ export async function runTutorAgent(input: TutorAgentInput): Promise<TutorAgentG
   };
 
   const workOut = async (problem: string) => {
-    const timeoutMs = Math.min(22_000, timeLeft() - 1_000);
+    const timeoutMs = Math.min(TUTOR_AGENT_LIMITS.checkTimeoutMs, timeLeft() - 1_000);
     if (timeoutMs < 6_000) return "There was no time left to work it through.";
+    const check = tutorAgentCheckRoute(input.answerRole);
     const working = cleanAiResponseText(
       await generateAiText({
-        role: "worker",
+        role: check.role,
+        preferStandby: check.preferStandby,
         routeReason: "agent_check",
         reasoningEffort: "high",
-        // A check from the same tier the answer may use: kept on the worker.
+        // A check on the worker stays there: escalating would put it back in a family an answer may come from.
         allowRoleEscalation: false,
         timeoutMs,
-        deadlineAt,
+        // Kimi K3 starts in about a second; an endpoint silent this long is hung.
+        stallTimeoutMs: TUTOR_AGENT_LIMITS.checkStallMs,
+        // The check as a whole, fallbacks included: each attempt gets `timeoutMs`, and Qwen behind a slow Kimi used to take the rest of the 28 s.
+        deadlineAt: Math.min(deadlineAt, Date.now() + timeoutMs),
         signal,
         generationConfig: { temperature: 0, maxOutputTokens: 1_500 },
         request: {
@@ -356,12 +371,20 @@ export async function runTutorAgent(input: TutorAgentInput): Promise<TutorAgentG
     steps.push({ tool: toolStep.tool, label: done });
   }
 
-  // Content-free: which tools ran and why it stopped, never what they were asked.
+  const ledger: TutorAgentLedger = {
+    readUpFront: input.inHand.readable.length,
+    sourceSearches,
+    passagesAdded,
+    webFound: research.ok && !input.inHand.research.ok,
+    checked: workings.length > 0,
+  };
+  // Content-free: which tools ran, what they added up to and why it stopped, never what they were asked.
   log.info("agent.finished", {
     steps: steps.length,
     tools: steps.map((step) => step.tool),
     stoppedBy,
     durationMs: Date.now() - startedAt,
+    ...ledger,
   });
-  return { readable, research, searchAllowanceUsed, recall, workings, steps };
+  return { readable, research, searchAllowanceUsed, recall, workings, steps, ledger };
 }
