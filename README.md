@@ -17,14 +17,42 @@
   <a href="https://github.com/jarems421/jami-flashcards"><strong>Source</strong></a>
 </p>
 
-Jami is a Next.js application backed by Firebase. Students keep each subject in a
-folder with its notebooks, papers, flashcard decks and sources. They practise on
-real past-paper questions or on papers Jami writes in the board's format, write
-their answers by hand or type them, and have them marked by two independent AI
-markers. What they get right and wrong feeds a learning model that picks the next
-step: review cards, practise a topic, or sit a Revision Session where Jami teaches
-the idea. Installed as a PWA, Jami caches the app shell and queues reviews taken
-offline, replaying them when the connection returns.
+<p align="center">
+  <sub>Next.js &middot; TypeScript &middot; Firebase &middot; AI orchestration &middot; FSRS &middot; PWA</sub>
+</p>
+
+## About
+
+I built Jami to go beyond flashcards: one place where a student keeps each
+subject's notes, papers and cards together, practises on exam-style questions,
+gets marked the way an examiner would, and is told what to do next based on
+evidence rather than guesswork.
+
+Students keep each subject in a folder with its notebooks, papers, flashcard decks
+and sources. They practise on real past-paper questions or on papers Jami writes
+in the board's format, write their answers by hand or type them, and have them
+marked by two independent AI markers. What they get right and wrong feeds a
+learning model that picks the next step: review cards, practise a topic, or sit a
+Revision Session where Jami teaches the idea. Installed as a PWA, Jami caches the
+app shell and queues reviews taken offline, replaying them when the connection
+returns. It is live at [jami.study](https://jami.study).
+
+### What I would point an employer to
+
+- **A deterministic learning model.** Mastery, confidence and exposure are
+  calculated by tested pure functions in `lib/learning/`. No model is asked to
+  estimate them, and thin evidence never makes a topic "weak".
+- **Marking I measured rather than assumed.** Dual-model blind marking with an
+  adjudicator, benchmarked against real examiners' marks, with the results,
+  small samples and failed experiments reported below.
+- **AI with privacy enforced in code.** Zero-data-retention provider routing that
+  fails closed, fenced untrusted content, per-user budgets in Firestore
+  transactions, and deadlines on every request.
+- **Durable, checkpointed jobs.** Paper generation and marking run as Vercel
+  Workflow jobs, so a retry pays only for the stage that failed.
+- **Engineering discipline.** Over 640 Vitest files, Firestore and Storage rules
+  tests, a signed-in Playwright suite on the Firebase emulators, a CI pipeline,
+  enforced file-size limits and written architecture rules.
 
 ## Product areas
 
@@ -75,16 +103,19 @@ These old routes redirect indefinitely, so existing links keep working:
 ### Notebooks and flashcards
 
 Notebooks are fixed-page and humble by design: typed notes, pen and highlighter
-ink (`js-draw`, tuned for Apple Pencil), PDF pages rendered client-side with ink
-overlays, and the original file never modified. Flashcards are scheduled with
+ink tuned for Apple Pencil, PDF pages rendered client-side with ink overlays, and
+the original file never modified. Ink runs on Jami's own engine (`lib/ink/`,
+behind `enableJamiInk`), which I am migrating to from `js-draw`; switching the
+flag off falls back to `js-draw`, and pages still save as SVG
+([`docs/notebook-ink.md`](docs/notebook-ink.md)). Flashcards are scheduled with
 FSRS (`ts-fsrs`) plus Jami's own prioritisation. Decks can be imported from Anki
 packages, and drafted from notebooks, sources or a video. Nothing the AI drafts
 joins a student's studying until they accept it.
 
 ### Past Paper Practice
 
-Real exam questions from a shared, owner-curated corpus, currently about 2,900
-questions from AQA and Pearson Edexcel GCSE papers. It is fail-closed: a question,
+Real exam questions from a shared corpus that I curate, drawn from AQA and
+Pearson Edexcel GCSE papers. It is fail-closed: a question,
 its mark scheme and its figures are served only while a versioned permission
 record covers storage, display to students and AI inference
 ([`docs/past-paper-practice-rights.md`](docs/past-paper-practice-rights.md)).
@@ -259,7 +290,7 @@ those fixes, a rerun of the six affected cases produced 3. See
 
 ### Tests
 
-About 580 Vitest files (over 6,000 tests), plus Firestore and Storage rules
+About 640 Vitest files (over 6,500 test cases), plus Firestore and Storage rules
 tests and a signed-in Playwright suite against the Firebase emulators.
 
 ## Technology
@@ -271,7 +302,7 @@ tests and a signed-in Playwright suite against the Firebase emulators.
 | Authentication and data | Firebase Auth, Firestore, Cloud Storage |
 | Durable jobs | Vercel Workflow (generation, marking, reviews, imports) |
 | Review scheduling | `ts-fsrs`, with Jami's own prioritisation on top |
-| Notebook ink | `js-draw` and `perfect-freehand`, rendered to canvas |
+| Notebook ink | Jami Ink (`lib/ink/`), with `js-draw` as a fallback, and `perfect-freehand`, rendered to canvas |
 | Documents | `pdfjs-dist` to read, `pdfkit` and `svg-to-pdfkit` to write paper PDFs, `mammoth`, `officeparser` and `cheerio` for imports, `sql.js` for Anki packages |
 | Images | `sharp`, `@napi-rs/canvas` |
 | Rich text and maths | `react-markdown`, `remark-math`, `rehype-katex`, KaTeX, MathJax |
@@ -417,7 +448,7 @@ model variables match its provider lists
 
 ## Security and data changes
 
-Do not delete legacy Firestore structures, rules, indexes, compatibility fields,
+My rule for this codebase: do not delete legacy Firestore structures, rules, indexes, compatibility fields,
 or externally callable API routes on the strength of static import analysis alone.
 Inventory production data and traffic first, then use an explicit migration or a
 deprecation window. Licensed exam content never enters learner data, and learner
