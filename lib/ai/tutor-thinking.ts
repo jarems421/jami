@@ -67,6 +67,8 @@ export function chooseTutorThinking(input: {
   message: string;
   /** A notebook page the student asked to have marked, read the routine way. */
   routineNotebookMarking: boolean;
+  /** "Check my working" on a notebook page (`requestsWorkingCheck`). */
+  workingCheck?: boolean;
   /** Whether the student sent a picture or file with the question. */
   hasAttachments?: boolean;
 }): TutorThinkingChoice {
@@ -80,6 +82,8 @@ export function chooseTutorThinking(input: {
   if (preference === "high") return { tier: "deep", reason: "student_preference", settled: true };
 
   if (DEEP_REASONS.includes(decision.reason)) return { tier: "deep", reason: decision.reason, settled: true };
+  // A working check is worth its independent working, which only Think and Deep turns look up.
+  if (input.workingCheck) return { tier: "think", reason: "complex_request", settled: true };
   if (input.routineNotebookMarking) return { tier: "think", reason: "routine", settled: true };
   if (decision.reason === "complex_request") return { tier: "think", reason: "complex_request", settled: true };
 

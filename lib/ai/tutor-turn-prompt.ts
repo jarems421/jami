@@ -61,6 +61,23 @@ export type TutorChatPlace = JamiAssistantThread["surface"];
  * again, while a guessed one becomes a permanent record of an assessment that
  * never happened.
  */
+/**
+ * "Check my working": the first step that goes wrong, and only that one.
+ *
+ * Help, not assessment -- the turn is never offered a marking -- and narrow
+ * on purpose: every later step follows from the first slip, so correcting
+ * them all buries the one thing the student needs to fix.
+ */
+export const WORKING_CHECK_INSTRUCTION = [
+  "The student asked you to check their working on this page.",
+  "Work the problem through yourself first, or use V1 where there is one, then go through their working step by step.",
+  "Name the first step that goes wrong: point to it by what it says, say what the mistake is, and show what that step should be.",
+  "Then stop. Do not correct the later steps, which follow from that one, and do not finish the problem for them.",
+  "If every step is right, say so plainly and confirm their result.",
+  "If the working begins on another page or its start is missing, say so and ask for it rather than guessing.",
+  "Give no mark or grade.",
+].join(" ");
+
 export const MARKING_INSTRUCTION = [
   "The student has asked to be marked. If, and only if, you can justify every mark",
   "against working you can actually see, also return a \"marking\" object: the marks",
@@ -152,6 +169,8 @@ export type TutorSystemInstructionInput = {
   independentWorking?: boolean;
   /** The agent searched the student's material and it had nothing on the question. */
   materialNotFound?: boolean;
+  /** "Check my working" on a notebook page. */
+  workingCheck?: boolean;
   markingInvited: boolean;
   pendingCheck: PendingTutorCheck | null;
   checkInvited: boolean;
@@ -187,7 +206,7 @@ The answer is final text the student watches arrive, not a draft. Never think al
 For ordinary notebook Mark my work requests, provide indicative feedback. Give a numerical mark or formal grade only when the supplied evidence contains a defensible mark allocation, rubric, or mark scheme; otherwise explicitly label the result as feedback rather than an official mark. Never invoke or imitate the formal full-paper double-marker workflow for short work.
 Work in a notebook often runs across a page break. If the working you have been given starts mid-step, continues from a line you cannot see, or depends on setup that is not in front of you, say so and ask for the page it started on. Do not mark or correct the part you can see as though it were the whole answer: reporting errors that only look like errors because the first half is missing is worse than saying you cannot see it yet.
 ${input.movedChat ? `${describeMovedChat(input.movedChat.from, input.movedChat.to)}\n` : ""}${input.attachmentInstruction ? `${input.attachmentInstruction}
-` : ""}${input.recall ? `${buildTutorRecallInstruction("R1", input.recall.found > 0)}\n` : ""}${input.independentWorking ? `${TUTOR_AGENT_WORKING_INSTRUCTION}\n` : ""}${input.materialNotFound ? `${TUTOR_AGENT_NO_MATERIAL_INSTRUCTION}\n` : ""}${context.learningContext ? `${context.learningContext}
+` : ""}${input.recall ? `${buildTutorRecallInstruction("R1", input.recall.found > 0)}\n` : ""}${input.independentWorking ? `${TUTOR_AGENT_WORKING_INSTRUCTION}\n` : ""}${input.materialNotFound ? `${TUTOR_AGENT_NO_MATERIAL_INSTRUCTION}\n` : ""}${input.workingCheck ? `${WORKING_CHECK_INSTRUCTION}\n` : ""}${context.learningContext ? `${context.learningContext}
 ` : ""}${context.memoryContext ? `${context.memoryContext}
 ` : ""}Return JSON only with exactly these fields:
 {${context.memoryWritable === true ? `"memory":[],` : ""}"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"diagrams":[],"studyMaterial":"none","studyMaterialFocus":"","suggestions":[]}

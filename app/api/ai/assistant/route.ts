@@ -278,6 +278,7 @@ export async function POST(request: NextRequest) {
       recall: gathered.recall,
       independentWorking: gathered.workings.length > 0,
       materialNotFound: gathered.materialNotFound === true,
+      workingCheck: plan.workingCheck,
       markingInvited: plan.markingInvited,
       pendingCheck,
       checkInvited: plan.checkInvited,
@@ -403,6 +404,7 @@ export async function POST(request: NextRequest) {
           message: parsedRequest.message,
           history: conversationHistory,
           currentText: resolved.currentParts.flatMap((part) => ("text" in part ? [part.text] : [])).join("\n"),
+          checkingWorking: plan.workingCheck,
           scope: { sources: resolved.sources, pinnedSourceIds: resolved.pinnedSourceIds ?? [] },
           inHand: { readable, research: webResearch, recall },
           recallFrom: {

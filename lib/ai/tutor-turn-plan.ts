@@ -26,6 +26,24 @@ import {
  * the engine's advice, never from the model: the model is only offered the
  * fields a turn allows, and its answer is read against the same plan.
  */
+
+const WORKING_CHECK_PATTERN = /\bcheck (?:my|this|the) working\b/i;
+
+/**
+ * "Check my working" on a notebook page.
+ *
+ * Help, never assessment: it finds the first step that goes wrong, against an
+ * independent working of the problem, and is never offered a marking -- so it
+ * never becomes evidence. Read before anything else about the request, since
+ * asking for a check often also says what to explain.
+ */
+export function requestsWorkingCheck(input: { message: string; context: JamiAssistantContext }) {
+  return (
+    input.context.surface === "notebook" &&
+    Boolean(input.context.pageId) &&
+    WORKING_CHECK_PATTERN.test(input.message)
+  );
+}
 export type TutorTurnPlan = {
   /** How long and how deep the answer should be. */
   guidance: JamiAssistantResponseGuidance;
@@ -39,6 +57,8 @@ export type TutorTurnPlan = {
   studyMaterialKinds: TutorStudyMaterialKind[];
   /** Whether this turn may carry a marking at all. */
   markingInvited: boolean;
+  /** "Check my working" on a notebook page: the first wrong step, found against an independent working. */
+  workingCheck: boolean;
   /** Whether Tutor may set a quick check this turn. */
   checkInvited: boolean;
   /** Whether the engine has a next step Tutor may attach. */
@@ -86,10 +106,13 @@ export function planTutorTurn(input: {
    * turn is never even offered the field. A student asking "can you check my
    * working" is asking for help, and help must not become assessed evidence.
    */
-  const markingInvited = invitesNotebookMarking({
-    message: input.message,
-    context: input.context,
-  });
+  const workingCheck = requestsWorkingCheck(input);
+  const markingInvited =
+    !workingCheck &&
+    invitesNotebookMarking({
+      message: input.message,
+      context: input.context,
+    });
   /*
    * Flashcards and practice questions asked for in a chat are made in one place:
    * the study-material panel under the answer, which drafts them from the
@@ -123,6 +146,7 @@ export function planTutorTurn(input: {
     askStudyMaterialFirst,
     studyMaterialKinds,
     markingInvited,
+    workingCheck,
     checkInvited,
     nextStepAvailable,
     app: {

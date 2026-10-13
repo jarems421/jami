@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { invitesNotebookMarking } from "@/lib/ai/jami-assistant";
+import { requestsWorkingCheck } from "@/lib/ai/tutor-turn-plan";
 import {
   getNotebookAssistantQuickActions,
   notebookPageHasWork,
@@ -30,16 +32,23 @@ function makeTextBlock(text: string): NotebookTextBlock {
 }
 
 describe("notebook Tutor actions", () => {
-  it("shows Mark my work only after the page contains work", () => {
-    expect(
-      getNotebookAssistantQuickActions({ hasWork: false }).map(
-        (action) => action.label
-      )
-    ).not.toContain("Mark my work");
+  it("shows the checks only after the page contains work", () => {
+    const empty = getNotebookAssistantQuickActions({ hasWork: false }).map((action) => action.label);
+    expect(empty).not.toContain("Mark my work");
+    expect(empty).not.toContain("Check my working");
     const actions = getNotebookAssistantQuickActions({ hasWork: true });
-    expect(actions[0]?.label).toBe("Mark my work");
-    expect(actions[0]?.prompt).toMatch(/indicative feedback/i);
-    expect(actions[0]?.prompt).toMatch(/formal mark.*mark allocation|mark scheme/i);
+    const mark = actions.find((action) => action.label === "Mark my work");
+    expect(mark?.prompt).toMatch(/indicative feedback/i);
+    expect(mark?.prompt).toMatch(/formal mark.*mark allocation|mark scheme/i);
+  });
+
+  it("asks a working check in words the plan reads as one, and never as a request to be marked", () => {
+    const check = getNotebookAssistantQuickActions({ hasWork: true }).find((action) => action.label === "Check my working");
+    const context = { surface: "notebook" as const, notebookId: "notebook-1", pageId: "page-1" };
+    expect(requestsWorkingCheck({ message: check?.prompt ?? "", context })).toBe(true);
+    expect(invitesNotebookMarking({ message: check?.prompt ?? "", context })).toBe(false);
+    // Only on a notebook page.
+    expect(requestsWorkingCheck({ message: check?.prompt ?? "", context: { surface: "learn" as const, cardId: "card-1", phase: "answer" as const } })).toBe(false);
   });
 
   it("offers exactly three ways into a fresh chat", () => {
@@ -48,7 +57,7 @@ describe("notebook Tutor actions", () => {
     ).toEqual(["Give me a hint", "Explain this page", "Quiz me"]);
     expect(
       getNotebookAssistantQuickActions({ hasWork: true }).map((action) => action.label)
-    ).toEqual(["Mark my work", "Give me a hint", "Explain this page"]);
+    ).toEqual(["Check my working", "Mark my work", "Give me a hint"]);
   });
 });
 

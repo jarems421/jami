@@ -109,6 +109,8 @@ export type TutorAgentHand = {
   unreadTitles: readonly string[];
   /** The page or card in front of the student, in brief, or empty. */
   current: string;
+  /** The student asked for their working to be checked, which wants an independent working first. */
+  checkingWorking?: boolean;
   /** The web research brief, in brief, when it has already run. */
   web: string | null;
   recalled: boolean;
@@ -150,6 +152,9 @@ export function buildTutorAgentStepPrompt(input: {
       ? `Also in this study context, not read: ${hand.unreadTitles.slice(0, 12).map((title) => `"${preview(title, 80)}"`).join(", ")}`
       : "",
     hand.current ? `In front of them now: ${preview(hand.current, 400)}` : "",
+    hand.checkingWorking
+      ? "They asked Jami to check their working: work_out their problem first, stated in full from the page, so the answer can find where their working leaves the correct one."
+      : "",
     hand.web ? `Web research already run: ${preview(hand.web)}` : "",
     hand.recalled ? "Their earlier chats have already been searched." : "",
   ].filter(Boolean);

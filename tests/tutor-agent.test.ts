@@ -112,6 +112,23 @@ describe("how a step reads to the student", () => {
   });
 });
 
+describe("a working check", () => {
+  it("tells the planner to work the problem through first, and only then", () => {
+    const hand = { sources: [], unreadTitles: [], current: "2x + 4 = 10, so x = 7", web: null, recalled: false };
+    const prompt = (checkingWorking: boolean) =>
+      buildTutorAgentStepPrompt({
+        message: "Check my working on this page.",
+        history: [],
+        hand: { ...hand, checkingWorking },
+        taken: [],
+        tools: ["work_out", "done"],
+        boundary: "b1",
+      });
+    expect(prompt(true)).toContain("They asked Jami to check their working: work_out their problem first");
+    expect(prompt(false)).not.toContain("check their working");
+  });
+});
+
 describe("when the planner is told to check", () => {
   it("keeps the independent working for problems a careful tutor could slip on", () => {
     expect(TUTOR_AGENT_PLANNER_INSTRUCTION).toContain("only where a careful tutor could plausibly slip");

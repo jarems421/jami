@@ -51,6 +51,17 @@ The tools a step can use:
 6. The finished answer carries `agentSteps`, which the chat saves with it and
    shows above it as one quiet line that opens to the list.
 
+### Check my working
+
+On a notebook page with work on it, "Check my working" leads the quick actions.
+`requestsWorkingCheck` (`lib/ai/tutor-turn-plan.ts`) reads the request.
+It is a Think turn even on Auto, so the agent runs, and the planner is told to
+`work_out` the student's problem first. The answer is told
+(`WORKING_CHECK_INSTRUCTION`) to find the first step that goes wrong, show what
+that step should be, and stop, without marks or the rest of the problem. It is
+help, not assessment: the turn is never offered a marking, so a check never
+becomes evidence. "Mark my work" is the way to be marked.
+
 The planner runs on JSON-schema structured output rather than provider tool
 calling: every Tutor call already goes through OpenRouter with
 `require_parameters`, and structured output is what the approved endpoints are

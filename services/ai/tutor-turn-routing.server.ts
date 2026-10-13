@@ -20,6 +20,7 @@ import {
   TUTOR_ROUTING_PREFLIGHT_INSTRUCTION,
 } from "@/lib/ai/tutor-routing-preflight";
 import { chooseTutorThinking, tutorThinkingRoute, type TutorThinkingTier } from "@/lib/ai/tutor-thinking";
+import { requestsWorkingCheck } from "@/lib/ai/tutor-turn-plan";
 import {
   decideTutorRoute,
   type AiReasoningEffort,
@@ -110,6 +111,7 @@ export async function routeTutorTurn(input: {
     decision,
     message: input.message,
     routineNotebookMarking,
+    workingCheck: requestsWorkingCheck({ message: input.message, context: input.context }),
     hasAttachments: input.hasAttachments,
   });
 

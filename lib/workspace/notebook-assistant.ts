@@ -32,6 +32,17 @@ const MARK_MY_WORK_ACTION = {
     "Mark the work on this page. Give clear indicative feedback on what is correct, what needs fixing, and the most useful next step. Only give a formal mark when this page includes a defensible mark allocation or mark scheme; otherwise label it as feedback, not an official grade.",
 } as const;
 
+/**
+ * The first step that goes wrong, against Jami's own working of the problem.
+ * Help, never a mark: see `requestsWorkingCheck`, which this prompt must keep
+ * matching ("check my working").
+ */
+const CHECK_WORKING_ACTION = {
+  label: "Check my working",
+  prompt:
+    "Check my working on this page. Find the first step that goes wrong, show me what that step should be, and stop there so I can fix the rest myself.",
+} as const;
+
 const HINT_ACTION = {
   label: "Give me a hint",
   prompt:
@@ -58,12 +69,14 @@ const QUIZ_ACTION = {
  * that work is the most useful thing Jami can do, so it takes the quiz's place.
  * Past Paper Practice and Revision Sessions used to sit here too; they open
  * somewhere else entirely rather than start a chat, and the folder page offers
- * both.
+ * both. With work on the page, checking it two ways -- marked, or the first
+ * slip found -- leads, and a hint stays for when they are stuck; "explain this
+ * page" is one question in the chat away.
  */
 export function getNotebookAssistantQuickActions(input: {
   hasWork: boolean;
 }): NotebookPromptAction[] {
   return input.hasWork
-    ? [MARK_MY_WORK_ACTION, HINT_ACTION, EXPLAIN_ACTION]
+    ? [CHECK_WORKING_ACTION, MARK_MY_WORK_ACTION, HINT_ACTION]
     : [HINT_ACTION, EXPLAIN_ACTION, QUIZ_ACTION];
 }

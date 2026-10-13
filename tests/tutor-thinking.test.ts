@@ -106,3 +106,13 @@ describe("how each tier is answered", () => {
     expect(tutorThinkingRoute("deep", "second_correction").preferStandby).toBe(false);
   });
 });
+
+describe("a working check", () => {
+  it("is thought about, so the agent works the problem through, unless the student chose Low", () => {
+    const decision = decideTutorRoute({ message: "Check my working", sourceCount: 0 });
+    const base = { decision, message: "Check my working", routineNotebookMarking: false, workingCheck: true };
+    expect(chooseTutorThinking({ ...base, preference: "auto" }).tier).toBe("think");
+    expect(chooseTutorThinking({ ...base, preference: "low" }).tier).toBe("quick");
+    expect(chooseTutorThinking({ ...base, preference: "high" }).tier).toBe("deep");
+  });
+});

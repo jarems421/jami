@@ -47,6 +47,8 @@ export type TutorAgentInput = {
   history: readonly JamiAssistantHistoryMessage[];
   /** The page or card in front of the student, as text. */
   currentText: string;
+  /** The student asked for their working to be checked. */
+  checkingWorking?: boolean;
   /** The study context's material, and which of it the student chose. */
   scope: { sources: readonly Source[]; pinnedSourceIds: readonly string[] };
   /** What the answer already has from the up-front reading. */
@@ -153,6 +155,7 @@ export async function runTutorAgent(input: TutorAgentInput): Promise<TutorAgentG
       })),
       unreadTitles: input.scope.sources.filter((source) => !read.has(source.id)).map((source) => source.title),
       current: input.currentText,
+      checkingWorking: input.checkingWorking === true,
       web: research.ok ? research.brief : null,
       recalled: recall !== null,
     };
