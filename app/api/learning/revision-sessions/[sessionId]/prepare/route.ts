@@ -63,7 +63,10 @@ export async function POST(
 
   const startedAt = Date.now();
   try {
-    const lesson = await prepareRevisionLesson(await loadRevisionConceptContext(uid, record.target));
+    // Taught in their course's terms where their folder's material covers the concept.
+    const lesson = await prepareRevisionLesson(
+      await loadRevisionConceptContext(uid, record.target, { materialQuery: record.target.conceptLabel })
+    );
     const saved = await saveRevisionSession(
       uid,
       { ...record, lesson, status: "active" },

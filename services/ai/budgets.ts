@@ -300,6 +300,8 @@ const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
   // Marking running out mid-session costs a self-grade tap, not the session.
   revisionMarking:
     "Jami has checked as many answers as it can today. You can still mark your own.",
+  revisionQuestion:
+    "Jami has answered as many questions as it can today. The session carries on as it was.",
 };
 
 /**

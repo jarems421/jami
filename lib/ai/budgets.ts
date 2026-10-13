@@ -22,6 +22,7 @@ export type AiBudgetAction =
   | "photoBackgroundRestore"
   | "revisionLesson"
   | "revisionMarking"
+  | "revisionQuestion"
   | "sourceIndexing";
 
 type AiBudgetConfig = {
@@ -365,6 +366,20 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstScope: "revisionSessions",
     tokenCap: 2_000,
     inputTokenCap: 6_000,
+  },
+  /*
+   * A question asked mid-session ("why did you divide by two?"). Answered from
+   * the step on screen and a few passages of the student's own material, so the
+   * input is bounded by construction but larger than a mark's. Sixty a day is
+   * several questions a session across more sessions than anyone does.
+   */
+  revisionQuestion: {
+    dailyRequestLimit: 60,
+    burstRequestLimit: 6,
+    burstWindowMs: 60_000,
+    burstScope: "revisionSessions",
+    tokenCap: 2_500,
+    inputTokenCap: 8_000,
   },
   /*
    * Indexing a source so the Tutor can search it: cut into passages and

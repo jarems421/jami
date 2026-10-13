@@ -19,6 +19,8 @@ const PREPARE_MS = 95_000;
 /** A second explanation or a mark, with room for the provider's own retry. */
 const STEP_MS = 50_000;
 const READ_MS = 15_000;
+/** A search of their material and a short answer. */
+const ASK_MS = 45_000;
 
 export class RevisionSessionError extends Error {
   readonly code: string;
@@ -185,4 +187,19 @@ export async function sendRevisionStep(
     ...(data.selfGrade ? { selfGrade: data.selfGrade } : {}),
     conflict: false,
   };
+}
+
+/** A question about the step on screen. The answer is shown once and kept nowhere. */
+export async function askRevisionQuestion(sessionId: string, question: string): Promise<string> {
+  const { status, ok, data } = await call(
+    `/api/learning/revision-sessions/${encodeURIComponent(sessionId)}/ask`,
+    { method: "POST", body: { question } },
+    ASK_MS,
+    "Ask about a revision step"
+  );
+  const answer = (data as RouteReply & { answer?: unknown }).answer;
+  if (!ok || typeof answer !== "string" || !answer.trim()) {
+    throw failure(status, data, "Jami couldn't answer that just now. Try again.");
+  }
+  return answer;
 }

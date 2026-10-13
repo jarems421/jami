@@ -129,11 +129,30 @@ quoted inside per-request boundary markers, as everywhere else.
 | Prepare (once) | Write the whole lesson for one concept: three goals, a short explanation with one worked example, a guided task with hint and expected answer, an independent task, an application task in an unfamiliar form, and a retrieval prompt. | One JSON object; every field length-capped; rejected and retried once if malformed. Kept shallow on purpose — the example sits beside the explanation, and worked solutions are lists of lines — because the worker miscounts closing brackets on deeper nesting. Measure with `npm run eval:revision-lesson`. |
 | CHECK | Mark one answer against that step's expected answer. | `verdict` (correct / partial / incorrect), `score` 0–1, one sentence of feedback, `errorCategory` from the fixed list or null. |
 | RETRY | Explain the same idea a different way, and give one new guided task. | Same shape as the guided task. |
+| ASK (any step) | Answer a question the student asks about the step on screen: "Ask Jami about this" under every step. | Plain text, at most 1,500 characters, shown once beside the step. Budget action `revisionQuestion`, which spends no allowance of its own. |
 
 The model never sees learner history, mastery or the student's other answers.
 Its context is: the concept's label, the course and level from the folder (if
 set), the verified specification heading (if the concept is a specification
 concept), and — for marking — the one step and the one answer.
+
+**Course material (13 Oct 2026).** Preparing a lesson, writing the second
+explanation and answering a question each search the folder's active sources
+once (`loadRevisionConceptContext` with a `materialQuery`). The search is for
+the concept, or for the concept and the question, and passes up to three
+passages of 1,200 characters, inside their own untrusted markers. The model is
+told to teach in the course's notation and conventions, never to copy the
+material's sentences or questions, and to ignore passages off the concept. A
+search that fails or takes more than six seconds leaves the lesson taught as
+before. Nothing found is stored, and the lesson written from it is deleted with
+the session like any other. Marking never gets material.
+
+**Questions mid-session.** `POST /api/learning/revision-sessions/[id]/ask`
+answers from `projectRevisionSession(record).step`, the same view the browser
+was sent. So a hint or an answer the student has not unlocked never reaches the
+prompt, and while a question is unanswered the model is told not to give its
+answer or the working to it. The session, its steps and its evidence are
+unchanged, and neither the question nor the answer is stored.
 
 Expected answers and hints stay on the server until the step is answered or
 the hint is asked for.
@@ -234,11 +253,12 @@ retrieval, completion; server-side marking; text-free evidence; the `revision`
 evidence kind; the rules; the flag `enableRevisionSessions`; budget action;
 resuming a session.
 
+**Added 13 Oct 2026:** course-material grounding and questions about any step
+("Why?", "Explain it differently"), as described in §4.
+
 **Not in Stage 1:** notebook "Work it out" (Stage 3), persistent mistake memory
-and "quick check from last time", course-material grounding, adaptive
-branching beyond the single retry, interruptions ("Why?", "Explain
-differently" on demand), off-topic guard, planner follow-ups, session lengths,
-diagnose/reinforce policies, manual start.
+and "quick check from last time", adaptive branching beyond the single retry,
+planner follow-ups, session lengths, diagnose/reinforce policies, manual start.
 
 ## 11. Acceptance criteria
 

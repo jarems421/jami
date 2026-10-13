@@ -84,6 +84,7 @@ describe("AI budget configuration", () => {
         "photoBackgroundRestore",
         "revisionLesson",
         "revisionMarking",
+        "revisionQuestion",
         "sourceIndexing",
       ].sort()
     );

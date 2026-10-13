@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, ButtonLink, StudyText } from "@/components/ui";
+import RevisionAsk from "@/components/revision/RevisionAsk";
 import RevisionNextSteps from "@/components/revision/RevisionNextSteps";
 import RevisionTaskStep from "@/components/revision/RevisionTaskStep";
 import { useUser } from "@/components/providers/UserProvider";
@@ -302,6 +303,7 @@ function Step({
           </Button>
           {stepError ? <p role="alert" className="text-sm text-text-secondary">{stepError}</p> : null}
         </div>
+        <RevisionAsk sessionId={session.id} />
       </div>
     );
   }
@@ -339,12 +341,13 @@ function Step({
           </Button>
           {stepError ? <p role="alert" className="text-sm text-text-secondary">{stepError}</p> : null}
         </div>
+        <RevisionAsk sessionId={session.id} />
       </div>
     );
   }
 
   return (
-    <div className={RISE_IN}>
+    <div className={`flex flex-col gap-8 ${RISE_IN}`}>
       <RevisionTaskStep
         step={step}
         feedback={state.feedback}
@@ -354,6 +357,7 @@ function Step({
         isLast={step.kind === "retrieve"}
         onAct={(input) => void act(input)}
       />
+      <RevisionAsk sessionId={session.id} />
     </div>
   );
 }

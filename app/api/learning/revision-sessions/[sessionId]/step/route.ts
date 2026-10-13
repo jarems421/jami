@@ -217,7 +217,8 @@ export async function POST(
     } else {
       enterAiSpendContext(aiSpendContextFor(uid, "revisionLesson"));
       const retry = await writeRevisionRetry({
-        context: await loadRevisionConceptContext(uid, record.target),
+        // Explained another way, in their course's terms where their material has it.
+        context: await loadRevisionConceptContext(uid, record.target, { materialQuery: record.target.conceptLabel }),
         lesson,
       });
       if (retry) {

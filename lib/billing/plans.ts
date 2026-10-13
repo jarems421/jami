@@ -176,6 +176,8 @@ export const ACTION_ALLOWANCE: Record<AiBudgetAction, AllowanceKey | null> = {
   practicePaperMarking: "paperMarkings",
   revisionLesson: "revisionSessions",
   revisionMarking: null,
+  // Part of a session already counted when it started, like its marking.
+  revisionQuestion: null,
   sourceIndexing: "pages",
   diagramLabelDetection: "diagramLabels",
   videoCardImport: "videos",
