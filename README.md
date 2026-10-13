@@ -17,6 +17,10 @@
   <a href="https://github.com/jarems421/jami-flashcards"><strong>Source</strong></a>
 </p>
 
+<p align="center">
+  <sub>Next.js &middot; TypeScript &middot; Firebase &middot; AI orchestration &middot; FSRS &middot; PWA</sub>
+</p>
+
 Jami is a Next.js application backed by Firebase. Students keep each subject in a
 folder with its notebooks, papers, flashcard decks and sources. They practise on
 real past-paper questions or on papers Jami writes in the board's format, write
