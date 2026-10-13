@@ -74,6 +74,9 @@ Use your own account, or a test account in the production project.
 - [ ] The script's `studyActions.actions[].href` values each open the right page:
       a study session, Past Paper Practice narrowed to a topic, a folder's practice
       papers, a Topic or deck page, or the student's own notebook page on it.
+- [ ] Open Tutor in a notebook. `notebook_view.completed` is logged once for the
+      notebook, not once per page turned, with `outcome: "included"` and a
+      `latencyMs` well under its 3000 ms budget.
 - [ ] Open a notebook link from Today and ask Tutor to mark the page. The logs show
       `marking.accepted` with its `attribution`, and the study action reads as
       completed on Today afterwards.

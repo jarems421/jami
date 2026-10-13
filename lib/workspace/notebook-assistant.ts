@@ -154,15 +154,18 @@ const ENGINE_ACTIONS: Record<MaterialActionKind, NotebookPromptAction> = {
  *
  * The third is the Learning Engine's, when it has a decision on what the page
  * is about: never Tutor's guess, always the engine's own action for that
- * concept (`materialActionFor`). Without one it is a hint once there is work,
- * and a quiz before.
+ * concept (`pickMaterialAction`). Without one it is a hint once there is work,
+ * and a quiz before. While the engine's answer is still on its way the third
+ * is held back, so it never changes under the student's finger.
  */
 export function getNotebookAssistantQuickActions(input: {
   hasWork: boolean;
   engineAction?: MaterialActionKind;
+  waitingForEngine?: boolean;
 }): NotebookPromptAction[] {
   const engine = input.engineAction ? ENGINE_ACTIONS[input.engineAction] : undefined;
-  return input.hasWork
+  const actions = input.hasWork
     ? [CHECK_WORKING_ACTION, MARK_MY_WORK_ACTION, engine ?? HINT_ACTION]
     : [HINT_ACTION, EXPLAIN_ACTION, engine ?? QUIZ_ACTION];
+  return input.waitingForEngine && !engine ? actions.slice(0, 2) : actions;
 }

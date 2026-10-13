@@ -70,31 +70,62 @@ function decidingState(
   return state?.deferredTo ? byKey.get(state.deferredTo) : undefined;
 }
 
+/** One concept as the notebook needs it: its name, and the engine's starting point for it. */
+export type MaterialConcept = {
+  label: string;
+  /** From this concept's own decision, or the broader concept's it defers to. */
+  action?: MaterialAction;
+  /** Where the engine ranks that decision among its recommendations, lowest first. */
+  rank?: number;
+};
+
 /**
- * The engine's starting point for this material, or nothing.
- *
- * Where the page sits on several concepts, the one the engine ranks highest
- * among its recommendations wins; failing that, the first with a decision.
+ * The profile's concepts, reduced to what material in front of the student
+ * needs: a name, and the engine's starting point with its rank. Computed once
+ * for a whole notebook, so each page is placed without asking again.
  */
-export function materialActionFor(
+export function materialConcepts(
   profile: Pick<LearnerProfile, "topics" | "recommendedFocus">,
+  /** Only these concepts; all of them when absent. */
+  include?: (topicKey: string) => boolean
+): Record<string, MaterialConcept> {
+  const byKey = new Map(profile.topics.map((topic) => [topic.topicKey, topic]));
+  const ranks = new Map<string, number>();
+  profile.recommendedFocus.forEach((recommendation, index) => {
+    const target = recommendation.target;
+    if (target.kind === "topic" && !ranks.has(target.topicKey)) ranks.set(target.topicKey, index);
+  });
+  const concepts: Record<string, MaterialConcept> = {};
+  for (const topic of profile.topics) {
+    if (include && !include(topic.topicKey)) continue;
+    const deciding = decidingState(byKey, topic.topicKey);
+    const kind = deciding?.decision ? kindFor(deciding.decision) : undefined;
+    const rank = deciding ? ranks.get(deciding.topicKey) : undefined;
+    concepts[topic.topicKey] = {
+      label: topic.label,
+      ...(deciding && kind ? { action: { kind, topicKey: deciding.topicKey, label: deciding.label } } : {}),
+      ...(kind && rank !== undefined ? { rank } : {}),
+    };
+  }
+  return concepts;
+}
+
+/**
+ * The engine's starting point for material on these concepts, or nothing.
+ *
+ * Where it sits on several, the one the engine ranks highest among its
+ * recommendations wins; failing that, the first with a decision.
+ */
+export function pickMaterialAction(
+  concepts: Readonly<Record<string, MaterialConcept>>,
   conceptKeys: readonly string[]
 ): MaterialAction | undefined {
-  if (conceptKeys.length === 0) return undefined;
-  const byKey = new Map(profile.topics.map((topic) => [topic.topicKey, topic]));
-  const states = conceptKeys.flatMap((key) => {
-    const state = decidingState(byKey, key);
-    return state ? [state] : [];
-  });
-  const ranked = profile.recommendedFocus.flatMap((recommendation) => {
-    const target = recommendation.target;
-    if (target.kind !== "topic") return [];
-    const state = states.find((candidate) => candidate.topicKey === target.topicKey);
-    return state ? [state] : [];
-  });
-  for (const state of [...ranked, ...states]) {
-    const kind = state.decision ? kindFor(state.decision) : undefined;
-    if (kind) return { kind, topicKey: state.topicKey, label: state.label };
+  let best: { action: MaterialAction; rank: number } | undefined;
+  for (const key of conceptKeys) {
+    const concept = concepts[key];
+    if (!concept?.action) continue;
+    const rank = concept.rank ?? Number.POSITIVE_INFINITY;
+    if (!best || rank < best.rank) best = { action: concept.action, rank };
   }
-  return undefined;
+  return best?.action;
 }

@@ -1,4 +1,8 @@
-import type { MaterialAction } from "@/lib/learning/actions/material-action";
+import {
+  pickMaterialAction,
+  type MaterialAction,
+  type MaterialConcept,
+} from "@/lib/learning/actions/material-action";
 
 /**
  * What a notebook page is evidence about, and which piece of work it is.
@@ -138,6 +142,44 @@ export type NotebookPageLearningView = {
   /** The engine's starting point for the page, when it has a decision on its concepts. */
   action?: MaterialAction;
 };
+
+/**
+ * Everything needed to place any page of one notebook, fetched once.
+ *
+ * The engine's view belongs to the folder, not the page, so the notebook asks
+ * once and places each page as the student turns to it, with the same
+ * resolver the server places markings with. Linked questions are checked on
+ * the server first: a page's link is the student's own field.
+ */
+export type NotebookLearningView = {
+  notebookTopicIds: string[];
+  /** Pages made for a question, by page id, with the question's checked concepts. */
+  linkedQuestions: Record<string, NotebookLinkedQuestion>;
+  /** Names and the engine's starting points, by concept key. A key not here is not in the profile. */
+  concepts: Record<string, MaterialConcept>;
+};
+
+/** One page of a notebook, placed from its notebook's view. */
+export function placeNotebookPage(
+  view: NotebookLearningView,
+  notebookId: string,
+  page: { id: string; topicIds?: readonly string[] }
+): NotebookPageLearningView {
+  const context = resolveNotebookPageLearningContext({
+    notebook: { id: notebookId, topicIds: view.notebookTopicIds },
+    page,
+    linkedQuestion: view.linkedQuestions[page.id] ?? null,
+  });
+  const action = pickMaterialAction(view.concepts, context.conceptKeys);
+  return {
+    attribution: context.attribution,
+    concepts: context.conceptKeys.map((key) => {
+      const label = view.concepts[key]?.label;
+      return label ? { key, label } : { key };
+    }),
+    ...(action ? { action } : {}),
+  };
+}
 
 /** The student's own Topic ids among a context's keys, for choosing sources and memory. */
 export function notebookContextTopicIds(context: Pick<NotebookPageLearningContext, "conceptKeys">) {

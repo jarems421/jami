@@ -22,9 +22,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/services/study/practice-papers", () => ({
   recordPracticePaperTutorUse: mocks.recordTutorUse,
 }));
-vi.mock("@/services/learning/notebook-page-view", () => ({
-  loadNotebookPageLearningView: mocks.loadPageView,
-  forgetNotebookPageLearningView: vi.fn(),
+vi.mock("@/services/learning/notebook-learning-view", () => ({
+  loadNotebookLearningView: mocks.loadPageView,
 }));
 vi.mock("@/lib/workspace/notebook-interaction-lock", () => ({
   installNotebookStylusTouchListeners: mocks.installStylusListeners,
@@ -120,29 +119,66 @@ describe("the notebook's Tutor bridge", () => {
     expect(blank.value.quickActions.map((action) => action.label)).not.toContain("Mark my work");
   });
 
-  it("asks the engine about the page only while Tutor is open, and takes its starting point", async () => {
-    const page = { id: "page-1", notebookId: "notebook-1" } as NotebookPage;
-    mocks.loadPageView.mockClear();
-    mocks.loadPageView.mockResolvedValue({
-      attribution: "page-topics",
-      concepts: [{ key: "topic:eigen", label: "Eigenvectors" }],
-      action: { kind: "exam-question", topicKey: "topic:eigen", label: "Eigenvectors" },
-    });
+  const notebookView = {
+    notebookTopicIds: ["algebra"],
+    linkedQuestions: {},
+    concepts: {
+      "topic:eigen": {
+        label: "Eigenvectors",
+        action: { kind: "exam-question", topicKey: "topic:eigen", label: "Eigenvectors" },
+      },
+    },
+  };
+  const eigenPage = { id: "page-1", notebookId: "notebook-1", topicIds: ["eigen"] } as NotebookPage;
 
-    renderWithStore((pageState) => useNotebookTutorBridge({ ...options({ selectedPage: page }), pageState }));
+  it("asks the engine about the notebook only while Tutor is open, and takes its starting point", async () => {
+    mocks.loadPageView.mockClear();
+    mocks.loadPageView.mockResolvedValue(notebookView);
+
+    renderWithStore((pageState) => useNotebookTutorBridge({ ...options({ selectedPage: eigenPage }), pageState }));
     expect(mocks.loadPageView).not.toHaveBeenCalled();
 
-    const open = options({ selectedPage: page, assistantOpen: true, pageHasWork: true });
+    const open = options({ selectedPage: eigenPage, assistantOpen: true, pageHasWork: true });
     const seen = renderWithStore((pageState) => useNotebookTutorBridge({ ...open, pageState }));
     // The view arrives after the first render; the harness keeps the latest value.
     await act(async () => undefined);
-    expect(mocks.loadPageView).toHaveBeenCalledWith("notebook-1", "page-1");
+    expect(mocks.loadPageView).toHaveBeenCalledWith("notebook-1");
     expect(seen.value.quickActions.map((action) => action.label)).toEqual([
       "Check my working",
       "Mark my work",
       "Try an exam question",
     ]);
     expect(seen.value.pageFocus?.view.concepts).toEqual([{ key: "topic:eigen", label: "Eigenvectors" }]);
+  });
+
+  it("holds the third starting point back while the engine answers, then keeps whatever it showed", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (value: unknown) => void = () => undefined;
+      mocks.loadPageView.mockReset();
+      mocks.loadPageView.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+      const open = options({ selectedPage: eigenPage, assistantOpen: true, pageHasWork: true });
+      const seen = renderWithStore((pageState) => useNotebookTutorBridge({ ...open, pageState }));
+
+      // Waiting: two, so nothing changes under the student's finger.
+      expect(seen.value.quickActions.map((action) => action.label)).toEqual(["Check my working", "Mark my work"]);
+
+      // Past the wait, the ordinary third is shown -- and stays when the engine answers late.
+      await act(async () => vi.advanceTimersByTime(400));
+      expect(seen.value.quickActions.map((action) => action.label)).toContain("Give me a hint");
+      await act(async () => answer(notebookView));
+      expect(seen.value.quickActions.map((action) => action.label)).toEqual([
+        "Check my working",
+        "Mark my work",
+        "Give me a hint",
+      ]);
+      // The page is still placed for the line above them.
+      expect(seen.value.pageFocus?.view.attribution).toBe("page-topics");
+    } finally {
+      vi.useRealTimers();
+      mocks.loadPageView.mockReset();
+      mocks.loadPageView.mockResolvedValue(null);
+    }
   });
 
   it("puts an answer on an editable page, and refuses one that is not", () => {

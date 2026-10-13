@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useNotebookPageLearning } from "@/hooks/useNotebookPageLearning";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNotebookLearning } from "@/hooks/useNotebookLearning";
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
+import { placeNotebookPage } from "@/lib/learning/notebook-page-context";
 import type { PracticePaperStatus } from "@/lib/practice/practice-papers";
 import { createNotebookAnswerBlock } from "@/lib/workspace/notebook-answer-block";
 import { getNotebookAssistantQuickActions } from "@/lib/workspace/notebook-assistant";
@@ -15,6 +16,12 @@ import type {
   NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
 import { recordPracticePaperTutorUse } from "@/services/study/practice-papers";
+
+/**
+ * How long the third starting point waits for the engine. Long enough for a
+ * warm answer, short enough that a student reaching for a button finds it.
+ */
+const ENGINE_ACTION_WAIT_MS = 400;
 
 /**
  * How the notebook and Tutor meet: opening and closing the floating Tutor,
@@ -61,43 +68,64 @@ export function useNotebookTutorBridge(input: {
   } = input;
 
   /*
-   * The engine's view of the open page, while Tutor is open on it: what the
-   * page counts towards, and the engine's starting point for it. The page's
-   * own Topics, once the student saves them here, stand until it reloads.
+   * The engine's view of the notebook, once Tutor is opened in it, and the
+   * open page placed from it: what the page counts towards, and the engine's
+   * starting point for it. Topics the student gives a page here stand until
+   * the notebook reloads.
    */
-  const { view: pageLearning, refresh: refreshPageLearning } = useNotebookPageLearning({
+  const { view: notebookLearning, settled: learningSettled } = useNotebookLearning({
     notebookId: notebook?.id,
-    pageId: selectedPage?.id,
     enabled: assistantOpen,
   });
-  const [savedPageTopics, setSavedPageTopics] = useState<{ pageId: string; topicIds: string[] } | null>(
-    null
+  const [savedPageTopics, setSavedPageTopics] = useState<Readonly<Record<string, string[]>>>({});
+  const pageId = selectedPage?.id;
+  const pageTopicIds = useMemo(
+    () => (pageId ? (savedPageTopics[pageId] ?? selectedPage?.topicIds ?? []) : []),
+    [pageId, savedPageTopics, selectedPage?.topicIds]
   );
-  const pageTopicIds =
-    selectedPage && savedPageTopics?.pageId === selectedPage.id
-      ? savedPageTopics.topicIds
-      : (selectedPage?.topicIds ?? []);
+  const pageLearning = useMemo(
+    () =>
+      notebookLearning && notebook && pageId
+        ? placeNotebookPage(notebookLearning, notebook.id, { id: pageId, topicIds: pageTopicIds })
+        : null,
+    [notebook, notebookLearning, pageId, pageTopicIds]
+  );
   const handlePageTopicsSaved = useCallback(
     (topicIds: string[]) => {
-      if (!selectedPage) return;
-      setSavedPageTopics({ pageId: selectedPage.id, topicIds });
-      refreshPageLearning();
+      if (pageId) setSavedPageTopics((current) => ({ ...current, [pageId]: topicIds }));
     },
-    [refreshPageLearning, selectedPage]
+    [pageId]
   );
   const pageFocus =
-    pageLearning && selectedPage
-      ? { pageId: selectedPage.id, pageTopicIds, view: pageLearning, onTopicsSaved: handlePageTopicsSaved }
+    pageLearning && pageId
+      ? { pageId, pageTopicIds, view: pageLearning, onTopicsSaved: handlePageTopicsSaved }
       : null;
 
-  const engineAction = pageLearning?.action?.kind;
+  /*
+   * The third starting point waits for the engine, briefly, rather than
+   * changing under the student's finger. Answered within the wait, it is the
+   * engine's; past it, the page's ordinary one is shown and kept for that page.
+   */
+  const [ordinaryThirdFor, setOrdinaryThirdFor] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (!assistantOpen || !pageId || learningSettled || ordinaryThirdFor.has(pageId)) return;
+    const timer = setTimeout(
+      () => setOrdinaryThirdFor((current) => new Set(current).add(pageId)),
+      ENGINE_ACTION_WAIT_MS
+    );
+    return () => clearTimeout(timer);
+  }, [assistantOpen, learningSettled, ordinaryThirdFor, pageId]);
+  const keptOrdinary = pageId ? ordinaryThirdFor.has(pageId) : false;
+  const engineAction = keptOrdinary ? undefined : pageLearning?.action?.kind;
+  const waitingForEngine = assistantOpen && !learningSettled && !keptOrdinary;
   const quickActions = useMemo(
     () =>
       getNotebookAssistantQuickActions({
         hasWork: pageHasWork,
         ...(engineAction ? { engineAction } : {}),
+        ...(waitingForEngine ? { waitingForEngine } : {}),
       }),
-    [engineAction, pageHasWork]
+    [engineAction, pageHasWork, waitingForEngine]
   );
 
   const handleAssistantOpenChange = useCallback((open: boolean) => {

@@ -37,9 +37,14 @@ export async function loadNotebookPageLearningContext(input: {
   >;
   actionId?: string;
 }): Promise<NotebookPageLearningContext> {
-  const linkedQuestion = await loadLinkedQuestion(input).catch((error: unknown) => {
+  const linkedQuestions = await loadLinkedQuestions({
+    db: input.db,
+    uid: input.uid,
+    notebook: input.notebook,
+    pages: [input.page],
+  }).catch((error: unknown) => {
     log.warn("linked_question.unavailable", { error });
-    return null;
+    return {} as Record<string, NotebookLinkedQuestion>;
   });
   const action = input.actionId ? parseStudyActionId(input.actionId) : null;
   const interventionId =
@@ -47,83 +52,124 @@ export async function loadNotebookPageLearningContext(input: {
   return resolveNotebookPageLearningContext({
     notebook: input.notebook,
     page: input.page,
-    linkedQuestion,
+    linkedQuestion: linkedQuestions[input.page.id] ?? null,
     ...(interventionId ? { interventionId } : {}),
   });
 }
 
-async function loadLinkedQuestion(input: {
+type LinkablePage = Pick<
+  NotebookPage,
+  "id" | "linkedQuestionId" | "linkedPastPaperId" | "linkedExamSessionId"
+>;
+
+/**
+ * More papers or sessions than one notebook credibly links to. A page linking
+ * past this is placed by its Topics instead, as an unverifiable link would be.
+ */
+const MAX_LINKED_SOURCES = 12;
+
+function strings(value: unknown) {
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+}
+
+/**
+ * The checked question behind each page that links to one, by page id.
+ *
+ * Each paper or session is read once however many of the pages link to it,
+ * so placing a whole notebook costs a read per paper, not per page. Pages
+ * whose link does not check out are left out.
+ */
+export async function loadLinkedQuestions(input: {
   db: Firestore;
   uid: string;
   notebook: Pick<Notebook, "folderId">;
-  page: Pick<NotebookPage, "linkedQuestionId" | "linkedPastPaperId" | "linkedExamSessionId">;
-}): Promise<NotebookLinkedQuestion | null> {
-  const questionId = input.page.linkedQuestionId;
-  if (!questionId) return null;
+  pages: readonly LinkablePage[];
+}): Promise<Record<string, NotebookLinkedQuestion>> {
+  const linked = input.pages.filter(
+    (page) => page.linkedQuestionId && (page.linkedPastPaperId || page.linkedExamSessionId)
+  );
+  if (linked.length === 0) return {};
   const userRef = input.db.collection("users").doc(input.uid);
+  const paperIds = Array.from(
+    new Set(linked.flatMap((page) => (page.linkedPastPaperId ? [page.linkedPastPaperId] : [])))
+  ).slice(0, MAX_LINKED_SOURCES);
+  const sessionIds = Array.from(
+    new Set(
+      linked.flatMap((page) =>
+        !page.linkedPastPaperId && page.linkedExamSessionId ? [page.linkedExamSessionId] : []
+      )
+    )
+  ).slice(0, MAX_LINKED_SOURCES);
 
-  if (input.page.linkedPastPaperId) {
-    const paperId = input.page.linkedPastPaperId;
-    const [paperSnapshot, folderSnapshot] = await Promise.all([
-      userRef.collection("pastPapers").doc(paperId).get(),
-      input.notebook.folderId
-        ? userRef.collection("studyFolders").doc(input.notebook.folderId).get()
-        : Promise.resolve(null),
-    ]);
-    if (!paperSnapshot.exists) return null;
-    // A paper's concept ids are checked against its folder's course; without one none are kept.
-    const specificationId = folderSnapshot?.exists
-      ? mapStudyFolderData(folderSnapshot.id, folderSnapshot.data() as Record<string, unknown>)
-          .examCourse?.specificationId
-      : undefined;
+  const [folderSnapshot, paperSnapshots, sessionSnapshots] = await Promise.all([
+    paperIds.length > 0 && input.notebook.folderId
+      ? userRef.collection("studyFolders").doc(input.notebook.folderId).get()
+      : Promise.resolve(null),
+    Promise.all(paperIds.map((id) => userRef.collection("pastPapers").doc(id).get())),
+    Promise.all(sessionIds.map((id) => userRef.collection("examSessions").doc(id).get())),
+  ]);
+
+  // A paper's concept ids are checked against its folder's course; without one none are kept.
+  const folderSpecificationId = folderSnapshot?.exists
+    ? mapStudyFolderData(folderSnapshot.id, folderSnapshot.data() as Record<string, unknown>)
+        .examCourse?.specificationId
+    : undefined;
+  const paperQuestions = new Map<string, Map<string, readonly string[]>>();
+  for (const snapshot of paperSnapshots) {
+    if (!snapshot.exists) continue;
     const paper = mapPracticePaperData(
-      paperSnapshot.id,
-      paperSnapshot.data() as Record<string, unknown>,
-      specificationId
+      snapshot.id,
+      snapshot.data() as Record<string, unknown>,
+      folderSpecificationId
     );
-    const question = paper.questions.find((candidate) => candidate.id === questionId);
-    if (!question) return null;
-    return {
-      kind: "practice-paper",
-      paperId,
-      questionId,
-      specificationIds: question.conceptIds ?? [],
-    };
+    paperQuestions.set(
+      snapshot.id,
+      new Map(paper.questions.map((question) => [question.id, question.conceptIds ?? []]))
+    );
   }
 
-  if (input.page.linkedExamSessionId) {
-    const sessionSnapshot = await userRef
-      .collection("examSessions")
-      .doc(input.page.linkedExamSessionId)
-      .get();
-    const session = sessionSnapshot.data();
-    if (!sessionSnapshot.exists || !session) return null;
-    const questions = Array.isArray(session.questions)
-      ? (session.questions as Array<Record<string, unknown>>)
-      : [];
-    const question = questions.find((candidate) => candidate.id === questionId);
-    if (!question) return null;
+  // The same ids the past-paper evidence itself is placed on, checked the same way.
+  const sessionQuestions = new Map<string, Map<string, readonly string[]>>();
+  for (const snapshot of sessionSnapshots) {
+    const session = snapshot.data();
+    if (!snapshot.exists || !session) continue;
     const course = session.course as Record<string, unknown> | undefined;
-    const specificationId =
-      typeof course?.specificationId === "string" ? course.specificationId : "";
-    const strings = (value: unknown) =>
-      Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-    // The same ids the past-paper evidence itself is placed on, checked the same way.
+    const specificationId = typeof course?.specificationId === "string" ? course.specificationId : "";
     const servableTopics = new Set(
       specificationId
         ? (servableExamSpecificationTopics(specificationId)?.topics ?? []).map((topic) => topic.id)
         : []
     );
-    const topicIds = strings(question.topicIds).filter((id) => servableTopics.has(id));
-    const conceptIds = specificationId
-      ? filterCanonicalConceptIds(specificationId, strings(question.conceptIds)).conceptIds
+    const questions = Array.isArray(session.questions)
+      ? (session.questions as Array<Record<string, unknown>>)
       : [];
-    return {
-      kind: "past-paper",
-      questionId,
-      specificationIds: [...topicIds, ...conceptIds],
-    };
+    sessionQuestions.set(
+      snapshot.id,
+      new Map(
+        questions.flatMap((question) => {
+          if (typeof question.id !== "string") return [];
+          const topicIds = strings(question.topicIds).filter((id) => servableTopics.has(id));
+          const conceptIds = specificationId
+            ? filterCanonicalConceptIds(specificationId, strings(question.conceptIds)).conceptIds
+            : [];
+          return [[question.id, [...topicIds, ...conceptIds]] as const];
+        })
+      )
+    );
   }
 
-  return null;
+  const placed: Record<string, NotebookLinkedQuestion> = {};
+  for (const page of linked) {
+    const questionId = page.linkedQuestionId as string;
+    if (page.linkedPastPaperId) {
+      const specificationIds = paperQuestions.get(page.linkedPastPaperId)?.get(questionId);
+      if (specificationIds) {
+        placed[page.id] = { kind: "practice-paper", paperId: page.linkedPastPaperId, questionId, specificationIds };
+      }
+    } else if (page.linkedExamSessionId) {
+      const specificationIds = sessionQuestions.get(page.linkedExamSessionId)?.get(questionId);
+      if (specificationIds) placed[page.id] = { kind: "past-paper", questionId, specificationIds };
+    }
+  }
+  return placed;
 }
