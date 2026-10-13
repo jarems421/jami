@@ -111,6 +111,13 @@ vi.mock("@/services/firebase/admin", () => ({
   getAdminDb: () => mocks.db,
 }));
 
+/** Cards the student already kept in the source's folders. */
+const savedCards = vi.hoisted(() => ({ fronts: [] as string[], folderDeckIds: vi.fn(async () => ["deck-1"]) }));
+vi.mock("@/services/study/own-cards.server", () => ({
+  readOwnFolderDeckIds: savedCards.folderDeckIds,
+  readOwnCardFronts: vi.fn(async () => savedCards.fronts),
+}));
+
 vi.mock("@/services/ai/budgets", () => ({
   checkAiBudget: mocks.checkBudget,
   createAiBudgetLimitResponse: (
@@ -503,6 +510,23 @@ describe("source draft generation", () => {
     expect(response.status).toBe(422);
     expect(mocks.added).toHaveLength(0);
     expect(body.error).toMatch(/already waiting/i);
+  });
+
+  it("does not draft again a card the student already kept, and names their cards to the model", async () => {
+    savedCards.fronts = ["What does photosynthesis convert?", "Where does photosynthesis happen?"];
+    mocks.sourceData.folderIds = ["folder-1"];
+    try {
+      const response = await postDrafts(request({ sourceId: "source-1", kind: "flashcard" }));
+      const body = (await response.json()) as { error: string };
+      expect(savedCards.folderDeckIds).toHaveBeenCalled();
+      expect(JSON.stringify(mocks.generateText.mock.calls[0]?.[0])).toContain("What does photosynthesis convert?");
+      expect(response.status).toBe(422);
+      expect(mocks.added).toHaveLength(0);
+      expect(body.error).toMatch(/your cards/i);
+    } finally {
+      savedCards.fronts = [];
+      mocks.sourceData.folderIds = [];
+    }
   });
 
   it("rejects a request without a source id", async () => {

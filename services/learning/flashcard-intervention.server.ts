@@ -11,7 +11,7 @@ import {
 } from "@/lib/learning/interventions/flashcard-request";
 import { createLogger } from "@/lib/observability/logger";
 import { generateAiText } from "@/lib/ai/provider-router";
-import { getAdminDb } from "@/services/firebase/admin";
+import { readOwnCardFronts } from "@/services/study/own-cards.server";
 
 const log = createLogger({ route: "learning.flashcard_intervention" });
 
@@ -63,15 +63,7 @@ async function loadExistingFronts(input: {
 }) {
   if (input.deckIds.length === 0) return [];
   try {
-    const snapshot = await getAdminDb()
-      .collection("cards")
-      .where("userId", "==", input.uid)
-      .where("topicIds", "array-contains", input.conceptId)
-      .limit(EXCLUSION_CARD_SCAN_LIMIT)
-      .get();
-    return snapshot.docs
-      .map((document) => (document.data() as { front?: unknown }).front)
-      .filter((front): front is string => typeof front === "string" && front.trim().length > 0);
+    return await readOwnCardFronts(input.uid, { topicId: input.conceptId }, EXCLUSION_CARD_SCAN_LIMIT);
   } catch (error) {
     log.warn("exclusions.unavailable", { error });
     return [];

@@ -48,3 +48,47 @@ export async function readOwnCardsPage(
     nextCursor: snapshot.docs.length > limit ? (docs.at(-1)?.id ?? null) : null,
   };
 }
+
+/** Fronts a draft is compared with: enough to catch repeats, bounded for a request. */
+export const OWN_CARD_FRONTS_LIMIT = 200;
+
+/**
+ * Fronts of the student's own cards in some decks, or on one concept, so new
+ * drafts can be checked against what they already have.
+ *
+ * One reader for every way Jami writes cards. A failed read costs the check,
+ * never the cards: callers treat it as "nothing to compare with", and the
+ * student still reviews every draft before it is kept.
+ */
+export async function readOwnCardFronts(
+  uid: string,
+  scope: { deckIds: readonly string[] } | { topicId: string },
+  limit = OWN_CARD_FRONTS_LIMIT
+): Promise<string[]> {
+  const cards = getAdminDb().collection("cards").where("userId", "==", uid);
+  let query;
+  if ("topicId" in scope) {
+    query = cards.where("topicIds", "array-contains", scope.topicId);
+  } else {
+    // Firestore's `in` takes thirty values.
+    const deckIds = Array.from(new Set(scope.deckIds.filter(Boolean))).slice(0, 30);
+    if (deckIds.length === 0) return [];
+    query = cards.where("deckId", "in", deckIds);
+  }
+  const snapshot = await query.limit(Math.max(1, limit)).get();
+  return snapshot.docs
+    .map((document) => (document.data() as { front?: unknown }).front)
+    .filter((front): front is string => typeof front === "string" && front.trim().length > 0);
+}
+
+/** The student's decks in one folder, newest first. */
+export async function readOwnFolderDeckIds(uid: string, folderId: string, limit = 30): Promise<string[]> {
+  const snapshot = await getAdminDb()
+    .collection("decks")
+    .where("userId", "==", uid)
+    .where("folderIds", "array-contains", folderId)
+    .orderBy("createdAt", "desc")
+    .limit(limit)
+    .get();
+  return snapshot.docs.map((document) => document.id);
+}
