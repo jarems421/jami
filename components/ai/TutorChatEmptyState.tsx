@@ -39,9 +39,9 @@ export default function TutorChatEmptyState({
           Ask about what you are studying, or choose a useful starting point.
         </p>
         {note ? (
-          <p className="mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-xs leading-5 text-text-muted">
+          <div className="mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-xs leading-5 text-text-muted">
             {note}
-          </p>
+          </div>
         ) : null}
       </div>
       {latestThread ? (

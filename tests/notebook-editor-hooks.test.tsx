@@ -16,10 +16,15 @@ const mocks = vi.hoisted(() => ({
   recordTutorUse: vi.fn(async () => undefined),
   installStylusListeners: vi.fn(() => () => undefined),
   clearSelection: vi.fn(),
+  loadPageView: vi.fn(async (): Promise<unknown> => null),
 }));
 
 vi.mock("@/services/study/practice-papers", () => ({
   recordPracticePaperTutorUse: mocks.recordTutorUse,
+}));
+vi.mock("@/services/learning/notebook-page-view", () => ({
+  loadNotebookPageLearningView: mocks.loadPageView,
+  forgetNotebookPageLearningView: vi.fn(),
 }));
 vi.mock("@/lib/workspace/notebook-interaction-lock", () => ({
   installNotebookStylusTouchListeners: mocks.installStylusListeners,
@@ -84,6 +89,7 @@ describe("the notebook's Tutor bridge", () => {
   const options = (overrides: Partial<Parameters<typeof useNotebookTutorBridge>[0]> = {}) => ({
     userId: "user-1",
     notebook: { id: "notebook-1" } as Parameters<typeof useNotebookTutorBridge>[0]["notebook"],
+    selectedPage: null,
     assistantOpen: false,
     setAssistantOpen: vi.fn(),
     setPagesDrawerOpen: vi.fn(),
@@ -112,6 +118,31 @@ describe("the notebook's Tutor bridge", () => {
   it("offers marking only once the page has work on it", () => {
     const blank = renderWithStore((pageState) => useNotebookTutorBridge({ ...options(), pageState }));
     expect(blank.value.quickActions.map((action) => action.label)).not.toContain("Mark my work");
+  });
+
+  it("asks the engine about the page only while Tutor is open, and takes its starting point", async () => {
+    const page = { id: "page-1", notebookId: "notebook-1" } as NotebookPage;
+    mocks.loadPageView.mockClear();
+    mocks.loadPageView.mockResolvedValue({
+      attribution: "page-topics",
+      concepts: [{ key: "topic:eigen", label: "Eigenvectors" }],
+      action: { kind: "exam-question", topicKey: "topic:eigen", label: "Eigenvectors" },
+    });
+
+    renderWithStore((pageState) => useNotebookTutorBridge({ ...options({ selectedPage: page }), pageState }));
+    expect(mocks.loadPageView).not.toHaveBeenCalled();
+
+    const open = options({ selectedPage: page, assistantOpen: true, pageHasWork: true });
+    const seen = renderWithStore((pageState) => useNotebookTutorBridge({ ...open, pageState }));
+    // The view arrives after the first render; the harness keeps the latest value.
+    await act(async () => undefined);
+    expect(mocks.loadPageView).toHaveBeenCalledWith("notebook-1", "page-1");
+    expect(seen.value.quickActions.map((action) => action.label)).toEqual([
+      "Check my working",
+      "Mark my work",
+      "Try an exam question",
+    ]);
+    expect(seen.value.pageFocus?.view.concepts).toEqual([{ key: "topic:eigen", label: "Eigenvectors" }]);
   });
 
   it("puts an answer on an editable page, and refuses one that is not", () => {

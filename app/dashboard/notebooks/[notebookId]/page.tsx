@@ -494,6 +494,7 @@ export default function NotebookEditorPage() {
     userId,
     notebook,
     pageState,
+    selectedPage,
     assistantOpen,
     setAssistantOpen,
     setPagesDrawerOpen,

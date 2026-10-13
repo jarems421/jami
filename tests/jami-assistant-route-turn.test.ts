@@ -767,6 +767,21 @@ describe("quick checks and markings in a turn", () => {
     expect(records.map((record) => record.event)).toContain("marking.declined");
   });
 
+  it("checks working without marking it, then offers to mark the corrected page", async () => {
+    mocks.streamText.mockResolvedValueOnce(answer({ answer: "Step 2 drops a sign.", sourceRefs: [] }));
+
+    const sent = await events(
+      await postAssistant(request(body({ message: "Check my working on this page.", context: notebookContext })))
+    );
+
+    expect(mocks.recordMarking).not.toHaveBeenCalled();
+    const done = sent.find((event) => event.type === "done") as
+      | { followUps?: Array<{ label: string; prompt: string }> }
+      | undefined;
+    const markAgain = done?.followUps?.find((followUp) => followUp.label === "Mark my updated work");
+    expect(markAgain?.prompt).toMatch(/^Mark my work on this page/);
+  });
+
   it("says which study action a recorded marking answered", async () => {
     const actionId = "folder:f1|knowledge_decay|topic:t1";
     const notebookLearning = {

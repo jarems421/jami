@@ -3,6 +3,7 @@ import { invitesNotebookMarking } from "@/lib/ai/jami-assistant";
 import { requestsWorkingCheck } from "@/lib/ai/tutor-turn-plan";
 import {
   getNotebookAssistantQuickActions,
+  MARK_UPDATED_WORK_FOLLOW_UP,
   notebookPageHasWork,
 } from "@/lib/workspace/notebook-assistant";
 import type { NotebookPage, NotebookTextBlock } from "@/lib/workspace/notebooks";
@@ -49,6 +50,29 @@ describe("notebook Tutor actions", () => {
     expect(invitesNotebookMarking({ message: check?.prompt ?? "", context })).toBe(false);
     // Only on a notebook page.
     expect(requestsWorkingCheck({ message: check?.prompt ?? "", context: { surface: "learn" as const, cardId: "card-1", phase: "answer" as const } })).toBe(false);
+  });
+
+  it("asks to be marked in words the marking gate accepts, and offers it again after a check", () => {
+    const context = { surface: "notebook" as const, notebookId: "notebook-1", pageId: "page-1" };
+    const mark = getNotebookAssistantQuickActions({ hasWork: true }).find((action) => action.label === "Mark my work");
+    expect(invitesNotebookMarking({ message: mark?.prompt ?? "", context })).toBe(true);
+    expect(invitesNotebookMarking({ message: MARK_UPDATED_WORK_FOLLOW_UP.prompt, context })).toBe(true);
+  });
+
+  it("takes its third starting point from the engine when it has one", () => {
+    expect(
+      getNotebookAssistantQuickActions({ hasWork: true, engineAction: "exam-question" }).map((action) => action.label)
+    ).toEqual(["Check my working", "Mark my work", "Try an exam question"]);
+    expect(
+      getNotebookAssistantQuickActions({ hasWork: false, engineAction: "quick-check" }).map((action) => action.label)
+    ).toEqual(["Give me a hint", "Explain this page", "Quick check"]);
+    const context = { surface: "notebook" as const, notebookId: "notebook-1", pageId: "page-1" };
+    // None of the engine's starting points is a request to be marked or a working check.
+    for (const engineAction of ["quick-check", "teach", "exam-question", "recall", "harder"] as const) {
+      const [, , third] = getNotebookAssistantQuickActions({ hasWork: true, engineAction });
+      expect(invitesNotebookMarking({ message: third?.prompt ?? "", context }), engineAction).toBe(false);
+      expect(requestsWorkingCheck({ message: third?.prompt ?? "", context }), engineAction).toBe(false);
+    }
   });
 
   it("offers exactly three ways into a fresh chat", () => {

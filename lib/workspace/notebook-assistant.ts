@@ -1,4 +1,5 @@
 import { pageHasSavedInk } from "@/lib/workspace/notebook-page-ink-split";
+import type { MaterialActionKind } from "@/lib/learning/actions/material-action";
 import type { NotebookPage, NotebookTextBlock } from "@/lib/workspace/notebooks";
 
 type NotebookPromptAction = { label: string; prompt: string };
@@ -26,10 +27,14 @@ export function notebookPageHasWork(input: {
   );
 }
 
+/**
+ * Asked for in words `invitesNotebookMarking` reads as a request to be marked
+ * ("mark my work"), so the marking it produces can be kept as evidence.
+ */
 const MARK_MY_WORK_ACTION = {
   label: "Mark my work",
   prompt:
-    "Mark the work on this page. Give clear indicative feedback on what is correct, what needs fixing, and the most useful next step. Only give a formal mark when this page includes a defensible mark allocation or mark scheme; otherwise label it as feedback, not an official grade.",
+    "Mark my work on this page. Give clear indicative feedback on what is correct, what needs fixing, and the most useful next step. Only give a formal mark when this page includes a defensible mark allocation or mark scheme; otherwise label it as feedback, not an official grade.",
 } as const;
 
 /**
@@ -61,6 +66,47 @@ const QUIZ_ACTION = {
     "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
 } as const;
 
+/** After "Check my working": the corrected page, marked, which is what counts. */
+export const MARK_UPDATED_WORK_FOLLOW_UP = {
+  label: "Mark my updated work",
+  prompt: MARK_MY_WORK_ACTION.prompt,
+} as const;
+
+/**
+ * The engine's starting point for the concept on the page, as something to ask.
+ *
+ * Each says what to do and stops there, so the student answers before Tutor
+ * says more. A quick check is asked as Tutor's own quick check, which is how
+ * an answer to it can count.
+ */
+const ENGINE_ACTIONS: Record<MaterialActionKind, NotebookPromptAction> = {
+  "quick-check": {
+    label: "Quick check",
+    prompt:
+      "Give me a quick check on what this page is about: one short question, and wait for my answer before telling me anything.",
+  },
+  teach: {
+    label: "Teach me this",
+    prompt:
+      "Teach me the idea this page is about from the start, step by step, then ask me one short question to check I followed.",
+  },
+  "exam-question": {
+    label: "Try an exam question",
+    prompt:
+      "Give me one exam-style question on what this page is about. Let me answer it before you say anything else.",
+  },
+  recall: {
+    label: "Test me from memory",
+    prompt:
+      "Test me from memory on what this page is about: ask me to recall the key idea without looking, one question at a time, and do not reveal the answer yet.",
+  },
+  harder: {
+    label: "Give me a harder one",
+    prompt:
+      "Give me a harder question on what this page is about, one step beyond what I have done here. Do not give the answer yet.",
+  },
+};
+
 /**
  * The three ways into a fresh notebook chat.
  *
@@ -70,13 +116,19 @@ const QUIZ_ACTION = {
  * Past Paper Practice and Revision Sessions used to sit here too; they open
  * somewhere else entirely rather than start a chat, and the folder page offers
  * both. With work on the page, checking it two ways -- marked, or the first
- * slip found -- leads, and a hint stays for when they are stuck; "explain this
- * page" is one question in the chat away.
+ * slip found -- leads; "explain this page" is one question in the chat away.
+ *
+ * The third is the Learning Engine's, when it has a decision on what the page
+ * is about: never Tutor's guess, always the engine's own action for that
+ * concept (`materialActionFor`). Without one it is a hint once there is work,
+ * and a quiz before.
  */
 export function getNotebookAssistantQuickActions(input: {
   hasWork: boolean;
+  engineAction?: MaterialActionKind;
 }): NotebookPromptAction[] {
+  const engine = input.engineAction ? ENGINE_ACTIONS[input.engineAction] : undefined;
   return input.hasWork
-    ? [CHECK_WORKING_ACTION, MARK_MY_WORK_ACTION, HINT_ACTION]
-    : [HINT_ACTION, EXPLAIN_ACTION, QUIZ_ACTION];
+    ? [CHECK_WORKING_ACTION, MARK_MY_WORK_ACTION, engine ?? HINT_ACTION]
+    : [HINT_ACTION, EXPLAIN_ACTION, engine ?? QUIZ_ACTION];
 }

@@ -299,3 +299,78 @@ describe("learner profile for Tutor", () => {
     expect(text.indexOf("never describe the student as bad at something")).toBeGreaterThan(end);
   });
 });
+
+describe("the material open in front of the student", () => {
+  const topicState = (
+    overrides: Partial<LearnerProfile["topics"][number]>
+  ): LearnerProfile["topics"][number] => ({
+    topicKey: "topic:matrix",
+    label: "Matrices",
+    source: "student-topic",
+    provenance: "student_defined",
+    declared: true,
+    exposure: { notebooks: 1, sources: 0, cards: 0 },
+    demonstration: "none",
+    memory: [],
+    ...overrides,
+  });
+  const eigen = topicState({
+    topicKey: "topic:eigen",
+    label: "Eigenvectors",
+    signal: signal({}),
+    demonstration: "weak",
+    decision: { action: "teach", reason: "low_mastery" },
+  });
+  const matrices = topicState({});
+
+  it("comes first, with the engine's own advice and results on it", () => {
+    const text =
+      serializeLearnerProfileForTutor(
+        profile({
+          topics: [eigen, matrices],
+          weaknesses: [signal({}), signal({ topicKey: "topic:other", topic: "Determinants" })],
+          recommendedFocus: [recommendation({})],
+          recentResults: [
+            {
+              kind: "notebook",
+              itemId: "notebook:nb:p1",
+              topicKey: "topic:eigen",
+              topicLabel: "Eigenvectors",
+              outcome: "missed",
+              score: 0,
+              at: 1,
+              attempts: 1,
+              misses: 1,
+              missedErrors: [],
+            },
+          ],
+        }),
+        { boundaryToken: TOKEN, focusKeys: ["topic:eigen"] }
+      ) ?? "";
+    const focus = text.indexOf("For the material open in front of the student");
+    expect(focus).toBeGreaterThan(text.indexOf(`--- BEGIN LEARNER DATA ${TOKEN} ---`));
+    expect(focus).toBeLessThan(text.indexOf("Needs attention:"));
+    const section = text.slice(focus, text.indexOf("Needs attention:"));
+    expect(section).toContain('- "Eigenvectors": mastery 43%');
+    expect(section).toContain("Jami's advice:");
+    expect(section).toContain("Wrong: marked notebook page");
+    expect(section).not.toContain("Determinants");
+  });
+
+  it("says a concept with no marked work is unknown, even when nothing else is", () => {
+    const text = serializeLearnerProfileForTutor(profile({ topics: [matrices] }), {
+      boundaryToken: TOKEN,
+      focusKeys: ["topic:matrix"],
+    });
+    expect(text).toContain('- "Matrices": no marked work on it yet (unknown, not weak)');
+  });
+
+  it("adds nothing for material on no concept the profile has", () => {
+    expect(
+      serializeLearnerProfileForTutor(profile({ topics: [matrices] }), {
+        boundaryToken: TOKEN,
+        focusKeys: ["topic:somewhere-else"],
+      })
+    ).toBeUndefined();
+  });
+});

@@ -164,9 +164,13 @@ Notebook pages feed it when a student asks Tutor to mark their work. Each page
 is placed by one resolver (`lib/learning/notebook-page-context.ts`): a page made
 for a question counts towards that question's specification concepts and shares
 its item, a page with its own Topics counts towards those, and any other page
-towards its notebook's Topics. Checking working never creates evidence. The
-engine can send a student back to their own page on a concept, and a marking
-done there is recorded as the advice being carried out.
+towards its notebook's Topics. Students can give a page its own Topics from
+Tutor, which also says what marking the page will count towards. Checking working
+never creates evidence; marking the corrected page does. Tutor's third starting
+point on a page is the engine's own decision for its concepts (a quick check,
+an exam question, recall from memory), and its profile leads with that page's
+concepts. The engine can send a student back to their own page on a concept,
+and a marking done there is recorded as the advice being carried out.
 
 When the model decides a student needs teaching, a Revision Session teaches it:
 a short explanation with a worked example, a guided question with one retry, then

@@ -1,3 +1,5 @@
+import type { MaterialAction } from "@/lib/learning/actions/material-action";
+
 /**
  * What a notebook page is evidence about, and which piece of work it is.
  *
@@ -127,6 +129,15 @@ export function resolveNotebookPageLearningContext(input: {
   }
   return { conceptKeys: [], attribution: "none", workItemId, ...withAction };
 }
+
+/** What the notebook shows about where its open page sits in the engine. */
+export type NotebookPageLearningView = {
+  attribution: NotebookPageAttribution;
+  /** The concepts the page counts towards, named as the profile names them where it can. */
+  concepts: { key: string; label?: string }[];
+  /** The engine's starting point for the page, when it has a decision on its concepts. */
+  action?: MaterialAction;
+};
 
 /** The student's own Topic ids among a context's keys, for choosing sources and memory. */
 export function notebookContextTopicIds(context: Pick<NotebookPageLearningContext, "conceptKeys">) {

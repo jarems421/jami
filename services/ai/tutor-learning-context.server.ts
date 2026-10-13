@@ -178,6 +178,7 @@ export async function loadTutorLearningContext(input: {
     const learningContext = serializeLearnerProfileForTutor(profile, {
       boundaryToken: randomUUID(),
       recentItemText,
+      focusKeys: input.materialKeys,
       ...(practiceAction && practiceOffer
         ? {
             practiceFocus: {

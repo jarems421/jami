@@ -18,6 +18,7 @@ import {
   isOpenTutorStudyMaterialRequest,
   type TutorStudyMaterialKind,
 } from "@/lib/ai/tutor-study-material";
+import { MARK_UPDATED_WORK_FOLLOW_UP } from "@/lib/workspace/notebook-assistant";
 
 /**
  * What one Tutor turn may do, decided before the model is asked anything.
@@ -139,8 +140,16 @@ export function planTutorTurn(input: {
     ...(resolved.deckId ? { deckId: resolved.deckId } : {}),
     ...(input.savedContext.surface === "notebook" ? { notebookId: input.savedContext.notebookId } : {}),
   };
+  /*
+   * Checking working is help and never a mark. Once the student has fixed the
+   * step it found, marking the corrected page is the assessment that counts,
+   * so it is offered as the next thing to ask for -- and only asked for.
+   */
+  const plannedGuidance = workingCheck
+    ? { ...guidance, followUps: [...guidance.followUps, MARK_UPDATED_WORK_FOLLOW_UP] }
+    : guidance;
   return {
-    guidance,
+    guidance: plannedGuidance,
     practiceSetsAvailable,
     requestedStudyMaterial,
     askStudyMaterialFirst,

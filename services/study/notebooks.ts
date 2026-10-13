@@ -37,6 +37,7 @@ import {
   normalizeNotebookPreviewSvg,
   storedNotebookInkSvg,
   MAX_NOTEBOOK_IMAGE_REFS,
+  MAX_NOTEBOOK_PAGE_TOPIC_IDS,
   type Notebook,
   type NotebookFile,
   type NotebookInkData,
@@ -629,6 +630,42 @@ export async function updateNotebookPageGraphs(
   );
   invalidateDashboardData(normalizedUserId);
   return result;
+}
+
+/**
+ * The student's own Topics for one page, or none to go back to the notebook's.
+ *
+ * Metadata like images and graphs: an ink or text save never writes it, so it
+ * neither checks nor bumps the content revision. Marking this page from now on
+ * counts towards these Topics; markings already made keep theirs.
+ */
+export async function updateNotebookPageTopics(
+  userId: string,
+  input: { notebookId: string; pageId: string; topicIds: readonly string[] }
+) {
+  const normalizedUserId = userId.trim();
+  const notebookId = input.notebookId.trim();
+  const pageId = input.pageId.trim();
+  if (!normalizedUserId || !notebookId || !pageId) throw new Error("Missing notebook page.");
+  const topicIds = Array.from(new Set(input.topicIds.map((id) => id.trim()).filter(Boolean)));
+  if (topicIds.length > MAX_NOTEBOOK_PAGE_TOPIC_IDS) {
+    throw new Error(`A page can be about up to ${MAX_NOTEBOOK_PAGE_TOPIC_IDS} topics.`);
+  }
+  const pageRef = doc(db, "users", normalizedUserId, "notebookPages", pageId);
+  await withTimeout(
+    runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(pageRef);
+      if (!snapshot.exists()) throw new Error("This notebook page no longer exists.");
+      if (snapshot.data().notebookId !== notebookId) {
+        throw new Error("This page does not belong to the open notebook.");
+      }
+      transaction.update(pageRef, { topicIds, updatedAt: Date.now() });
+    }),
+    WRITE_MS,
+    "Save page topics"
+  );
+  invalidateDashboardData(normalizedUserId);
+  return topicIds;
 }
 
 export async function saveNotebookPageSnapshot(
