@@ -2,7 +2,7 @@
  * Does the Tutor agent's independent check make Think answers more often
  * right, and what does it cost in time and money to find out?
  *
- *   npm run eval:tutor-agent [-- --set everyday|hard|all --check kimi|worker --runs 2 --only 3,27 --raw]
+ *   npm run eval:tutor-agent [-- --set everyday|hard|all --runs 2 --only 3,27 --raw]
  *
  * For each problem, with a known numeric answer, two arms run on the real
  * providers:
@@ -157,7 +157,7 @@ type ArmResult = {
   text: string;
 };
 
-async function runArm(problem: Problem, agent: boolean, check: "kimi" | "worker" = "kimi"): Promise<ArmResult> {
+async function runArm(problem: Problem, agent: boolean): Promise<ArmResult> {
   const diagnostics: AiResponseDiagnostics[] = [];
   let workings: string[] = [];
   let steps: string[] = [];
@@ -173,8 +173,6 @@ async function runArm(problem: Problem, agent: boolean, check: "kimi" | "worker"
       // Web already "run" and recall already done: neither is on offer, and nothing is charged.
       inHand: { readable: [], research: { ok: false, reason: "invalid_query" }, recall: { text: "", found: 0 } },
       recallFrom: { earlierInThread: [] },
-      // The answer here is always the worker's; naming the supervisor as its writer is how --check worker keeps the check on the worker.
-      answerRole: check === "worker" ? "supervisor" : "worker",
       deadlineAt: Date.now() + 28_000,
       signal: new AbortController().signal,
       providerDiagnostics: diagnostics,
@@ -192,8 +190,7 @@ async function runArm(problem: Problem, agent: boolean, check: "kimi" | "worker"
     answerSeconds: reply.seconds,
     costUsd: costOf(diagnostics),
     checked: workings.length > 0,
-    // A standby or failover attempt reports its own route reason, so the check is the one call off the worker.
-    checkModel: diagnostics.find((entry) => entry.routeReason === "agent_check" || entry.role !== "worker")?.modelName ?? null,
+    checkModel: diagnostics.find((entry) => entry.routeReason === "agent_check")?.modelName ?? null,
     steps,
     final: finalNumbers(reply.text),
     text: reply.text,
@@ -226,7 +223,6 @@ export default async function main(args: string[] = []) {
   const runs = Math.max(1, Number(readArg(args, "--runs") ?? 1));
   const only = readArg(args, "--only")?.split(",").map((each) => Number(each) - 1);
   const raw = args.includes("--raw");
-  const check = readArg(args, "--check") === "worker" ? "worker" : "kimi";
   // Numbered across both sets: everyday 1–21, hard 22 onwards.
   const set = readArg(args, "--set") ?? "all";
   const pool = [...PROBLEMS, ...HARD_PROBLEMS].map((problem, index) => ({ problem, index }));
@@ -239,7 +235,7 @@ export default async function main(args: string[] = []) {
     for (const { problem, index } of chosen) {
       // Interleaved, so a slow patch at the provider falls on both arms alike.
       const off = await runArm(problem, false).catch((error: unknown) => failed(error));
-      const on = await runArm(problem, true, check).catch((error: unknown) => failed(error));
+      const on = await runArm(problem, true).catch((error: unknown) => failed(error));
       rows.push({ problem: index + 1, run, off, on });
       const mark = (arm: ArmResult) => (arm.right ? "right" : `wrong ${JSON.stringify(arm.final)}`);
       process.stdout.write(

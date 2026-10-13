@@ -409,7 +409,6 @@ export async function POST(request: NextRequest) {
             ...(existingThread ? { currentThreadId: existingThread.id, currentThreadTitle: existingThread.title } : {}),
             earlierInThread: thread.earlierInThread,
           },
-          answerRole: route.role,
           deadlineAt: Math.min(Date.now() + TUTOR_AGENT_LIMITS.budgetMs, deadlineAt),
           signal: cancellation.signal,
           providerDiagnostics,

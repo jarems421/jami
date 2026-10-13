@@ -1,5 +1,4 @@
 import { unwrapModelJsonObject } from "@/lib/ai/model-json";
-import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 
 /**
  * Tutor as an agent (docs/tutor-agent.md).
@@ -32,9 +31,8 @@ export const TUTOR_AGENT_LIMITS = {
   /** One planner call. */
   stepTimeoutMs: 9_000,
   /**
-   * The independent working. Measured 13 Oct 2026, Kimi K3 checks came back in
-   * 4–18 s when they came back at all; one in three ran past 22 s on a slow
-   * night, and every one of those was a wait the student got nothing for.
+   * The independent working, every attempt included. A check that has not
+   * come back by then is a wait the student gets nothing for.
    */
   checkTimeoutMs: 16_000,
   /** How long the independent working may go without a token, reasoning included, before its endpoint counts as hung. */
@@ -262,20 +260,6 @@ export const TUTOR_AGENT_NO_MATERIAL_INSTRUCTION =
 /** Said to the answer when an independent working came back (reference V1). */
 export const TUTOR_AGENT_WORKING_INSTRUCTION =
   "V1 is an independent working of the student's problem by a separate solver. Before you write, check your own result against it. If they disagree, work out which is right and answer with that; never split the difference. Never mention V1, the solver or that anything was checked.";
-
-/**
- * Who works the problem through for the check: never the family that writes
- * the answer, or the check shares its mistakes. A Think answer is the worker's
- * (GLM), so the check goes to the supervisor's standby (Kimi K3, first words in
- * about a second; Qwen behind it). A Deep answer is Kimi or Qwen and a
- * disputed one the juror's Kimi, so their check stays on the worker.
- */
-export function tutorAgentCheckRoute(answerRole: AiGenerationRole): {
-  role: "worker" | "supervisor";
-  preferStandby: boolean;
-} {
-  return answerRole === "worker" ? { role: "supervisor", preferStandby: true } : { role: "worker", preferStandby: false };
-}
 
 /** Said to the separate solver that works a problem through for the check. */
 export const TUTOR_AGENT_WORK_OUT_INSTRUCTION =

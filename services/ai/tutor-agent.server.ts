@@ -3,7 +3,6 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { generateGroundedResearch, isGroundedResearchConfigured, type GeminiResearchResult } from "@/lib/ai/gemini";
 import { sanitizeTutorResearchQuery, type JamiAssistantHistoryMessage } from "@/lib/ai/jami-assistant";
-import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 import { generateAiText, type AiResponseDiagnostics, type AiRouterOptions } from "@/lib/ai/provider-router";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
 import {
@@ -14,7 +13,6 @@ import {
   TUTOR_AGENT_LIMITS,
   TUTOR_AGENT_PLANNER_INSTRUCTION,
   TUTOR_AGENT_WORK_OUT_INSTRUCTION,
-  tutorAgentCheckRoute,
   tutorAgentStepLabel,
   type TutorAgentChoice,
   type TutorAgentHand,
@@ -63,8 +61,6 @@ export type TutorAgentInput = {
     currentThreadTitle?: string;
     earlierInThread: readonly TutorRecallMessage[];
   };
-  /** The role writing the answer, so the check is worked by another family. */
-  answerRole: AiGenerationRole;
   /** When the look-ups must stop, so the answer keeps its own time. */
   deadlineAt: number;
   signal: AbortSignal;
@@ -243,19 +239,23 @@ export async function runTutorAgent(input: TutorAgentInput): Promise<TutorAgentG
   const workOut = async (problem: string) => {
     const timeoutMs = Math.min(TUTOR_AGENT_LIMITS.checkTimeoutMs, timeLeft() - 1_000);
     if (timeoutMs < 6_000) return "There was no time left to work it through.";
-    const check = tutorAgentCheckRoute(input.answerRole);
     const working = cleanAiResponseText(
       await generateAiText({
-        role: check.role,
-        preferStandby: check.preferStandby,
+        /*
+         * On the worker for every tier. Measured 13 Oct 2026 on hard maths
+         * (docs/tutor-agent.md): Kimi K3, a family apart from a Think answer,
+         * came back on only half its checks inside the deadline, at a p50 of
+         * 16 s and three times the cost; the worker came back on 85% at 4 s.
+         */
+        role: "worker",
         routeReason: "agent_check",
         reasoningEffort: "high",
-        // A check on the worker stays there: escalating would put it back in a family an answer may come from.
+        // Escalating would buy the slow supervisor for a check the student is waiting on.
         allowRoleEscalation: false,
         timeoutMs,
-        // Kimi K3 starts in about a second; an endpoint silent this long is hung.
+        // The worker starts in a second or two; an endpoint silent this long is hung.
         stallTimeoutMs: TUTOR_AGENT_LIMITS.checkStallMs,
-        // The check as a whole, fallbacks included: each attempt gets `timeoutMs`, and Qwen behind a slow Kimi used to take the rest of the 28 s.
+        // The check as a whole, failover included: each attempt would otherwise get `timeoutMs` of its own.
         deadlineAt: Math.min(deadlineAt, Date.now() + timeoutMs),
         signal,
         generationConfig: { temperature: 0, maxOutputTokens: 1_500 },

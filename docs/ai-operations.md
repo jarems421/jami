@@ -84,10 +84,9 @@ answer's cap, so its thinking cannot cut a reply off mid-sentence.
 
 A Think or Deep turn then looks things up and checks its work before it answers
 ([`tutor-agent.md`](tutor-agent.md)): planner steps on the worker
-(`agent_step`), and at most one independent working (`agent_check`) on a model
-of another family from the answer's -- Kimi K3 for a Think answer, the worker
-for a Deep one -- logged
-as `agent.finished` with the step count, tools and why it stopped.
+(`agent_step`), and at most one independent working (`agent_check`), also on
+the worker, inside one 16 s deadline -- logged as `agent.finished` with the
+step count, tools, why it stopped and what the look-ups found, as counts.
 
 Each turn logs `routing.decided` with its tier, role, reason and the student's
 setting. A slow quick or think answer almost always means the worker's
