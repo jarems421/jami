@@ -100,6 +100,10 @@ vi.mock("@/services/firebase/admin", () => ({
 
 vi.mock("@/services/learning/learner-profile.server", () => ({
   loadLearnerProfile: mocks.loadLearnerProfile,
+  loadLearnerProfileWithMaterial: async (input: unknown) => {
+    const profile = await mocks.loadLearnerProfile(input);
+    return profile ? { profile, notebookMaterial: { markedPages: [], notebooks: [] } } : null;
+  },
 }));
 
 vi.mock("@/services/practice/exam-evidence.server", () => ({

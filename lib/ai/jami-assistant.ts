@@ -84,6 +84,11 @@ export type JamiAssistantContext =
       questionPrompt?: string;
       hasInk?: boolean;
       imageCount?: number;
+      /**
+       * The recommendation that opened this notebook, when one did. Checked on
+       * the server against the notebook's folder before a marking carries it.
+       */
+      actionId?: string;
     };
 
 export type JamiAssistantRequest = {

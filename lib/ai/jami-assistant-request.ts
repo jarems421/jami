@@ -23,6 +23,9 @@ import {
  * any files attached.
  */
 
+/** A study action id: scope, reason and target key. */
+const MAX_ACTION_ID_LENGTH = 400;
+
 function normalizeSourceIds(value: unknown) {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map(normalizeId).filter(Boolean))).slice(
@@ -112,6 +115,8 @@ function normalizeContext(value: unknown): JamiAssistantContext | null {
         ? undefined
         : normalizeSnapshot(context.snapshot);
     if (context.snapshot !== undefined && !snapshot) return null;
+    // Only its shape here; whether it belongs to this notebook's folder is the server's check.
+    const actionId = normalizeOptionalText(context.actionId, MAX_ACTION_ID_LENGTH);
 
     return {
       surface: "notebook",
@@ -132,6 +137,7 @@ function normalizeContext(value: unknown): JamiAssistantContext | null {
         Number.isFinite(context.imageCount)
           ? Math.max(0, Math.min(20, Math.round(context.imageCount)))
           : 0,
+      ...(actionId ? { actionId } : {}),
     };
   }
 

@@ -227,7 +227,7 @@ export function createTutorTurnStream(input: TutorTurnStreamInput) {
         }
 
         const saved = await saveTutorTurn(record, payload, parsedAnswer, agentSteps);
-        await recordTutorTurnAssessments(record, parsedAnswer, saved.now);
+        const assessments = await recordTutorTurnAssessments(record, parsedAnswer, saved.now);
 
         // The retry path, and any cleanup applied to the streamed text, can
         // leave what was shown out of step with the final answer. Sending the
@@ -237,6 +237,7 @@ export function createTutorTurnStream(input: TutorTurnStreamInput) {
             type: "done",
             ...payload,
             ...(agentSteps.length > 0 ? { agentSteps } : {}),
+            ...(assessments.completedActionId ? { completedActionId: assessments.completedActionId } : {}),
             savedThread: savedTutorThread(record, payload, saved),
           })
         );

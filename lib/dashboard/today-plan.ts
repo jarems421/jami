@@ -1,4 +1,4 @@
-import { getCustomStudyHref } from "@/lib/app/routes";
+import { getCustomStudyHref, getNotebookHref, getTopicHref } from "@/lib/app/routes";
 import { DAILY_REVIEW_MISSION_ID } from "@/lib/learning/mission-handoff";
 import type { StudyAction, StudyActionDestinationKind } from "@/lib/learning/actions/study-actions";
 import type { LearningRecommendationReason } from "@/lib/learning/types";
@@ -228,14 +228,6 @@ function getPrimaryDeckId(cards: Card[]) {
   return Array.from(counts.entries()).sort((left, right) => right[1] - left[1])[0]?.[0];
 }
 
-function getTopicHref(topicId: string) {
-  return `/dashboard/topics/${encodeURIComponent(topicId)}`;
-}
-
-function getNotebookHref(notebookId: string) {
-  return `/dashboard/notebooks/${encodeURIComponent(notebookId)}`;
-}
-
 function buildDueSummary(input: BuildTodayPlanInput, now: number): TodayDueCardsSummary {
   const dueCards =
     input.dueCards ??
@@ -351,7 +343,12 @@ export function describeStudyAction(action: StudyAction): Pick<TodayStudyAction,
       return {
         title: `Work on ${name}`,
         description: `Consistently difficult across ${pluralize(action.evidence.count, "answer")}.`,
-        label: action.destination?.kind === "topic" || action.destination?.kind === "deck" ? "Open" : "Study",
+        label:
+          action.destination?.kind === "topic" ||
+          action.destination?.kind === "deck" ||
+          action.destination?.kind === "notebook"
+            ? "Open"
+            : "Study",
       };
     case "low_confidence":
       if (action.action === "practice") {
@@ -440,8 +437,10 @@ function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
           evidence: action.evidence,
           ...(action.intervention ? { intervention: action.intervention } : {}),
           ...(generating(action) ? { generate: generating(action)! } : {}),
-          // A session is not a number of items: finishing it is the whole of it.
-          ...(action.spec && action.destination.kind !== "revision-session"
+          // A session or a page is not a number of items: finishing it is the whole of it.
+          ...(action.spec &&
+          action.destination.kind !== "revision-session" &&
+          action.destination.kind !== "notebook"
             ? { targetItems: action.spec.targetItems }
             : {}),
         },

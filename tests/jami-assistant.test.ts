@@ -92,6 +92,19 @@ describe("Jami assistant request contract", () => {
       pageId: "page-1",
       typedText: "x = 4",
     });
+    // The recommendation that opened the notebook travels with the question.
+    const followed = (actionId: unknown) =>
+      parseJamiAssistantRequest({
+        message: "Mark my work",
+        history: [],
+        context: { surface: "notebook", notebookId: "notebook-1", pageId: "page-1", actionId },
+        useRelatedSources: true,
+      })?.context;
+    expect(followed(" folder:f1|low_mastery|topic:eigen ")).toMatchObject({
+      actionId: "folder:f1|low_mastery|topic:eigen",
+    });
+    expect(followed(42)).not.toHaveProperty("actionId");
+    expect(followed("")).not.toHaveProperty("actionId");
   });
 
   it("rejects invalid surfaces, excessive source selection, and malformed snapshots", () => {

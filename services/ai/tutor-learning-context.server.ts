@@ -13,7 +13,7 @@ import type { TutorCheckScope } from "@/lib/learning/events/tutor-check";
 import { serializeLearnerProfileForTutor } from "@/lib/learning/serialize/tutor-context";
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
 import { createLogger } from "@/lib/observability/logger";
-import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
+import { loadLearnerProfileWithMaterial } from "@/services/learning/learner-profile.server";
 import { loadRecentResultText } from "@/services/learning/recent-result-text.server";
 import { loadStudyActionHistory } from "@/services/learning/study-action-history.server";
 import {
@@ -95,7 +95,7 @@ export async function loadTutorLearningContext(input: {
 
   const scopeKind = "folderId" in scope ? "folder" : "deck";
   const startedAt = Date.now();
-  const loading = loadLearnerProfile({ uid: input.uid, ...scope });
+  const loading = loadLearnerProfileWithMaterial({ uid: input.uid, ...scope });
   // Still settles after a timeout; without this its failure would go unhandled.
   loading.catch(() => undefined);
   /*
@@ -133,8 +133,8 @@ export async function loadTutorLearningContext(input: {
       });
       return undefined;
     }
-    const [profile, inputs] = settled;
-    if (!profile) {
+    const [loaded, inputs] = settled;
+    if (!loaded) {
       log.info("learner_profile.completed", {
         consumer: "tutor",
         scope: scopeKind,
@@ -143,9 +143,14 @@ export async function loadTutorLearningContext(input: {
       });
       return undefined;
     }
+    const { profile, notebookMaterial } = loaded;
     const [folder, history] = inputs ?? [null, null];
     const actions = folder
-      ? buildStudyActions(profile, studyActionContextFor(folder), history?.history)
+      ? buildStudyActions(
+          profile,
+          { ...studyActionContextFor(folder), notebookMaterial },
+          history?.history
+        )
       : [];
     const practiceAction = practiceActionForMaterial(actions, input.materialKeys);
     const practiceOffer = practiceAction

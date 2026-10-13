@@ -767,6 +767,40 @@ describe("quick checks and markings in a turn", () => {
     expect(records.map((record) => record.event)).toContain("marking.declined");
   });
 
+  it("says which study action a recorded marking answered", async () => {
+    const actionId = "folder:f1|knowledge_decay|topic:t1";
+    const notebookLearning = {
+      conceptKeys: ["topic:t1"],
+      attribution: "page-topics",
+      workItemId: "notebook:nb1:p1",
+      interventionId: actionId,
+    };
+    mocks.resolveContext.mockResolvedValueOnce(resolved({ topicIds: ["t1"], notebookLearning }));
+    const marking = { awardedMarks: 1, maxMarks: 2, criterionResults: [] };
+    mocks.streamText.mockResolvedValueOnce(answer({ answer: "One of two marks.", sourceRefs: [], marking }));
+    mocks.recordMarking.mockResolvedValueOnce({ recorded: true });
+
+    const sent = await events(await postAssistant(request(body({ message: "Mark my work please", context: notebookContext }))));
+
+    expect(sent.find((event) => event.type === "done")?.completedActionId).toBe(actionId);
+  });
+
+  it("claims no completed action for a marking that was not recorded", async () => {
+    const notebookLearning = {
+      conceptKeys: ["topic:t1"],
+      attribution: "page-topics",
+      workItemId: "notebook:nb1:p1",
+      interventionId: "folder:f1|knowledge_decay|topic:t1",
+    };
+    mocks.resolveContext.mockResolvedValueOnce(resolved({ topicIds: ["t1"], notebookLearning }));
+    mocks.streamText.mockResolvedValueOnce(answer({ answer: "Nothing to mark.", sourceRefs: [], marking: { canMark: false } }));
+    mocks.recordMarking.mockResolvedValueOnce({ recorded: false, reason: "declined" });
+
+    const sent = await events(await postAssistant(request(body({ message: "Mark my work please", context: notebookContext }))));
+
+    expect(sent.find((event) => event.type === "done")).not.toHaveProperty("completedActionId");
+  });
+
   it("does not mark a page when the student asked for an explanation", async () => {
     await events(
       await postAssistant(request(body({ message: "Explain how to do question 2", context: notebookContext })))

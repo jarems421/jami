@@ -160,6 +160,14 @@ Jami calls them weak, and untested is never treated as weak. Today, the tutor an
 recommendations read that model; they do not own it. Learning evidence is
 minimal and append-only: ids, scores and timestamps, never answer text.
 
+Notebook pages feed it when a student asks Tutor to mark their work. Each page
+is placed by one resolver (`lib/learning/notebook-page-context.ts`): a page made
+for a question counts towards that question's specification concepts and shares
+its item, a page with its own Topics counts towards those, and any other page
+towards its notebook's Topics. Checking working never creates evidence. The
+engine can send a student back to their own page on a concept, and a marking
+done there is recorded as the advice being carried out.
+
 When the model decides a student needs teaching, a Revision Session teaches it:
 a short explanation with a worked example, a guided question with one retry, then
 questions on their own ([`docs/revision-sessions.md`](docs/revision-sessions.md)).

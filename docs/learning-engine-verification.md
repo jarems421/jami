@@ -73,7 +73,10 @@ Use your own account, or a test account in the production project.
 
 - [ ] The script's `studyActions.actions[].href` values each open the right page:
       a study session, Past Paper Practice narrowed to a topic, a folder's practice
-      papers, or a Topic or deck page.
+      papers, a Topic or deck page, or the student's own notebook page on it.
+- [ ] Open a notebook link from Today and ask Tutor to mark the page. The logs show
+      `marking.accepted` with its `attribution`, and the study action reads as
+      completed on Today afterwards.
 - [ ] On Today, the next step and the suggestions under it show the same actions, and each
       link opens its page at desktop, tablet and phone widths.
 

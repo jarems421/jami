@@ -49,6 +49,10 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/services/firebase/admin", () => ({ getAdminDb: () => mocks.db }));
 vi.mock("@/services/learning/learner-profile.server", () => ({
   loadLearnerProfile: mocks.loadLearnerProfile,
+  loadLearnerProfileWithMaterial: async (input: unknown) => {
+    const profile = await mocks.loadLearnerProfile(input);
+    return profile ? { profile, notebookMaterial: { markedPages: [], notebooks: [] } } : null;
+  },
 }));
 
 const { loadStudyActions, STUDY_ACTION_FOLDER_LIMIT } = await import(

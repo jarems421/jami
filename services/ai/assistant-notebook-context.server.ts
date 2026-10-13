@@ -183,6 +183,7 @@ export async function resolveNotebookContext(input: {
     uid: input.uid,
     notebook,
     page,
+    ...(input.context.actionId ? { actionId: input.context.actionId } : {}),
   });
   const pageTopicIds = notebookContextTopicIds(notebookLearning);
 

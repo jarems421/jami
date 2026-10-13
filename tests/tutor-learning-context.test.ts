@@ -83,6 +83,10 @@ vi.mock("@/services/firebase/admin", () => ({
 
 vi.mock("@/services/learning/learner-profile.server", () => ({
   loadLearnerProfile: mocks.loadLearnerProfile,
+  loadLearnerProfileWithMaterial: async (input: unknown) => {
+    const profile = await mocks.loadLearnerProfile(input);
+    return profile ? { profile, notebookMaterial: { markedPages: [], notebooks: [] } } : null;
+  },
 }));
 
 const { resolveJamiAssistantContext } = await import("@/services/ai/assistant-context");

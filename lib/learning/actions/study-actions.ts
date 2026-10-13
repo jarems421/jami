@@ -2,6 +2,7 @@ import {
   getCustomStudyHref,
   getDeckHref,
   getFolderHref,
+  getNotebookHref,
   getQuestionPracticeSetupHref,
   getRevisionSessionStartHref,
   getTopicHref,
@@ -12,6 +13,11 @@ import {
   type ActionHistory,
   type CooldownReason,
 } from "@/lib/learning/actions/action-cooldown";
+import {
+  locateNotebookMaterial,
+  type NotebookMaterialIndex,
+  type NotebookMaterialPlace,
+} from "@/lib/learning/actions/notebook-material";
 import {
   buildStudySessionSpec,
   type StudySessionSelection,
@@ -33,9 +39,9 @@ import type {
  *
  * Every destination is a surface Jami already has -- a flashcard session, Past
  * Paper Practice narrowed to a topic, a folder's practice papers, a Topic or
- * deck page. When no surface can carry an action out (a diagnosis on a topic
- * with no cards and no question bank), the action has no destination rather
- * than a link that pretends.
+ * deck page, or the student's own notebook page on it. When no surface can
+ * carry an action out (a diagnosis on a topic with no cards and no question
+ * bank), the action has no destination rather than a link that pretends.
  */
 
 export type StudyActionDestinationKind =
@@ -44,6 +50,7 @@ export type StudyActionDestinationKind =
   | "practice-papers"
   | "topic"
   | "deck"
+  | "notebook"
   | "revision-session";
 
 export type StudyActionDestination = {
@@ -56,6 +63,8 @@ export type StudyActionDestination = {
    * in a form the engine and its tests can read without parsing a URL.
    */
   selection: StudySessionSelection;
+  /** The notebook, and page where known, for a `notebook` destination. */
+  notebook?: NotebookMaterialPlace;
 };
 
 export type StudyAction = LearningRecommendation & {
@@ -93,6 +102,12 @@ export type StudyActionContext = {
   canGenerate?: { flashcards: boolean; practice: boolean };
   /** Whether this deployment can teach a concept in a Revision Session. */
   canRunRevisionSession?: boolean;
+  /**
+   * Where the student's own notebook material is, by concept. Going back over
+   * material opens the page they worked on it, when there is one, rather than
+   * the Topic page to look for it.
+   */
+  notebookMaterial?: NotebookMaterialIndex;
 };
 
 /**
@@ -283,10 +298,23 @@ export function resolveInterventionDestination(
         ? { kind: "deck", href: getDeckHref(id), selection }
         : { kind: "topic", href: getTopicHref(id), selection };
     case "review_material":
-    case "reinforce":
+    case "reinforce": {
+      // Their own page on it first; its link is finished below, once the action has an id to carry.
+      const place = context.notebookMaterial
+        ? locateNotebookMaterial(context.notebookMaterial, target.topicKey)
+        : undefined;
+      if (place) {
+        return {
+          kind: "notebook",
+          href: getNotebookHref(place.notebookId, place.pageId ? { pageId: place.pageId } : undefined),
+          selection,
+          notebook: place,
+        };
+      }
       return target.source === "deck"
         ? { kind: "deck", href: getDeckHref(id), selection }
         : { kind: "topic", href: getTopicHref(id), selection };
+    }
   }
 }
 
@@ -343,7 +371,16 @@ export function buildStudyActions(
       destination?.kind === "revision-session"
         ? // A session is made on the server from the action's id, so its link carries it.
           { ...destination, href: getRevisionSessionStartHref(id) }
-        : destination && spec && destination.kind === "flashcards"
+        : destination?.kind === "notebook" && destination.notebook
+          ? // So a marking of the work done there can say it answered this advice.
+            {
+              ...destination,
+              href: getNotebookHref(destination.notebook.notebookId, {
+                ...(destination.notebook.pageId ? { pageId: destination.notebook.pageId } : {}),
+                fromActionId: id,
+              }),
+            }
+          : destination && spec && destination.kind === "flashcards"
           ? {
               ...destination,
               href: getCustomStudyHref({

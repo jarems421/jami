@@ -11,7 +11,7 @@ import {
 } from "@/lib/learning/actions/study-actions";
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
 import { getAdminDb } from "@/services/firebase/admin";
-import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
+import { loadLearnerProfileWithMaterial } from "@/services/learning/learner-profile.server";
 import { loadStudyActionHistory } from "@/services/learning/study-action-history.server";
 
 /**
@@ -139,9 +139,9 @@ export async function loadStudyActions(input: {
     Promise.all(
       folders.map(async (folder) => {
         try {
-          const profile = await loadLearnerProfile({ uid, folderId: folder.id, folder, now });
-          return profile
-            ? { profile, folder }
+          const loaded = await loadLearnerProfileWithMaterial({ uid, folderId: folder.id, folder, now });
+          return loaded
+            ? { profile: loaded.profile, notebookMaterial: loaded.notebookMaterial, folder }
             : { profile: null, folder };
         } catch {
           return null;
@@ -155,7 +155,10 @@ export async function loadStudyActions(input: {
     if (!result.profile) return [];
     return buildStudyActions(
       result.profile,
-      studyActionContextFor(result.folder),
+      {
+        ...studyActionContextFor(result.folder),
+        ...("notebookMaterial" in result ? { notebookMaterial: result.notebookMaterial } : {}),
+      },
       historyResult.history,
       now
     );

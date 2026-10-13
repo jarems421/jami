@@ -10,6 +10,9 @@ import {
 } from "@/lib/ai/jami-assistant-normalize";
 import { auth } from "@/services/firebase/client";
 import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
+import { noteStudyActionOutcomeById } from "@/services/learning/study-action-events";
+import { noteMissionCompleted } from "@/lib/learning/mission-handoff";
+import { getStudyDayKey } from "@/lib/study/day";
 import { mapJamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import {
   jamiDestinations,
@@ -232,6 +235,16 @@ export async function sendJamiAssistantMessage(
   const data = await readAssistantStream(response, onChunk, onStep);
   // A question was spent; a "few left" line under the composer can catch up.
   notifyAllowanceSpent();
+  /*
+   * Marked work on a page the engine sent the student to: the work it asked
+   * for is done. Recorded like a finished session, and Today told, so the
+   * advice rests and the page they came from can say so.
+   */
+  const completedActionId = typeof data?.completedActionId === "string" ? data.completedActionId : "";
+  if (completedActionId) {
+    noteStudyActionOutcomeById(user.uid, completedActionId, "completed", getStudyDayKey());
+    noteMissionCompleted(completedActionId, 1);
+  }
 
   const reply = typeof data?.reply === "string" ? data.reply.trim() : "";
   const used = normalizeUsedContext(data?.used);

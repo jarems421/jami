@@ -182,12 +182,16 @@ export async function saveTutorTurn(
  * Marks the answer to last turn's quick check and records a notebook marking,
  * when the turn carried either. Both run after the turn is saved and outside
  * its batch: a check or a marking that fails to save costs the student nothing.
+ *
+ * Returns the study action a recorded marking answered, when the student came
+ * to the page from one: the work it asked for has now actually been done, and
+ * the browser records it as such.
  */
 export async function recordTutorTurnAssessments(
   record: TutorTurnRecord,
   parsedAnswer: ParsedJamiAssistantModelAnswer,
   now: number
-) {
+): Promise<{ completedActionId?: string }> {
   const { uid, pendingCheck, log } = record;
   /*
    * Mark the answer to last turn's check, if this message was one.
@@ -237,7 +241,10 @@ export async function recordTutorTurnAssessments(
        * done the right thing too. Neither is a rejected marking.
        */
       if (outcome.recorded) {
-        log.info("marking.accepted");
+        log.info("marking.accepted", { attribution: notebookLearning.attribution });
+        if (notebookLearning.interventionId) {
+          return { completedActionId: notebookLearning.interventionId };
+        }
       } else if (parsedAnswer.marking === undefined) {
         log.info("marking.not_offered");
       } else if (outcome.reason === "declined") {
@@ -249,6 +256,7 @@ export async function recordTutorTurnAssessments(
       log.warn("marking.write_failed", { error });
     }
   }
+  return {};
 }
 
 /** The saved chat as the drawer keeps it, sent with the finished answer. */

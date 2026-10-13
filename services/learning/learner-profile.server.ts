@@ -17,6 +17,10 @@ import type { TopicRelationInput } from "@/lib/learning/concepts/topic-relations
 import type { FlashcardEvidenceCard } from "@/lib/learning/profile/flashcard-signals";
 import type { StoredMarkedAnswer } from "@/lib/learning/profile/marked-answer";
 import type { PastPaperEvidenceAttempt } from "@/lib/learning/profile/past-paper-signals";
+import {
+  buildNotebookMaterialIndex,
+  type NotebookMaterialIndex,
+} from "@/lib/learning/actions/notebook-material";
 import type { NotebookMarkedWorking } from "@/lib/learning/profile/notebook-signals";
 import type { PracticePaperEvidenceAttempt } from "@/lib/learning/profile/practice-signals";
 import type {
@@ -867,15 +871,32 @@ async function loadStudentConcerns(uid: string) {
   }
 }
 
+/**
+ * The profile, and where the student's own notebook material on each concept
+ * is -- for turning the profile into actions, which may send a student back to
+ * a page. Both come from the same reads; the second costs nothing more.
+ */
+export async function loadLearnerProfileWithMaterial(
+  input: LearnerEvidenceRequest & { now?: number }
+): Promise<{ profile: LearnerProfile; notebookMaterial: NotebookMaterialIndex } | null> {
+  const loaded = await loadLearnerEvidence(input);
+  if (!loaded) return null;
+  return {
+    profile: buildLearnerProfile({
+      scope: loaded.scope,
+      evidence: loaded.evidence,
+      ...(input.now !== undefined ? { now: input.now } : {}),
+    }),
+    notebookMaterial: buildNotebookMaterialIndex({
+      markings: loaded.evidence.notebookMarkings ?? [],
+      exposureItems: loaded.evidence.exposureItems ?? [],
+    }),
+  };
+}
+
 /** What Jami currently believes about a student, for one folder or one deck. */
 export async function loadLearnerProfile(
   input: LearnerEvidenceRequest & { now?: number }
 ): Promise<LearnerProfile | null> {
-  const loaded = await loadLearnerEvidence(input);
-  if (!loaded) return null;
-  return buildLearnerProfile({
-    scope: loaded.scope,
-    evidence: loaded.evidence,
-    ...(input.now !== undefined ? { now: input.now } : {}),
-  });
+  return (await loadLearnerProfileWithMaterial(input))?.profile ?? null;
 }

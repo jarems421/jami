@@ -82,6 +82,25 @@ export function getTopicHref(topicId: string) {
 }
 
 /**
+ * A notebook, opened at a page when one is named.
+ *
+ * `from` carries the recommendation that sent the student here, as a study
+ * session's link does, so a marking of the work they do can say it answered
+ * that advice.
+ */
+export function getNotebookHref(
+  notebookId: string,
+  options?: { pageId?: string; fromActionId?: string }
+) {
+  const base = `/dashboard/notebooks/${encodeURIComponent(notebookId)}`;
+  const searchParams = new URLSearchParams();
+  if (options?.pageId) searchParams.set("page", options.pageId);
+  if (options?.fromActionId) searchParams.set("from", options.fromActionId);
+  const query = searchParams.toString();
+  return query ? `${base}?${query}` : base;
+}
+
+/**
  * Where a Revision Session sends the student when it is over: back to the page
  * they started it from, when that is one of this app's own pages other than a
  * session, and to Today otherwise. Anything else in a link is ignored rather

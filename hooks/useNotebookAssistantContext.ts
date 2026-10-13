@@ -32,6 +32,16 @@ function overlayImageMimeType(storagePath: string) {
   return "image/png";
 }
 
+/**
+ * The recommendation that opened this notebook, from the link Today or Tutor
+ * followed (`getNotebookHref`). Read at the moment of asking, so it is the
+ * address bar's word on it, which turning pages keeps.
+ */
+function followedActionId() {
+  if (typeof window === "undefined") return undefined;
+  return new URLSearchParams(window.location.search).get("from")?.trim() || undefined;
+}
+
 /** Defaults match the size an inserted illustration is placed at. */
 const DEFAULT_OVERLAY_WIDTH = 480;
 const DEFAULT_OVERLAY_HEIGHT = 360;
@@ -224,6 +234,7 @@ export function useNotebookAssistantContext({
       questionPrompt: page.questionPrompt?.trim() || undefined,
       hasInk: capturedHasInk,
       imageCount: capturedImages.length,
+      ...(followedActionId() ? { actionId: followedActionId() } : {}),
     };
   }, [
     activeNotebookFile,
