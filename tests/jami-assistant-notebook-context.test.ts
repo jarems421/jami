@@ -148,6 +148,12 @@ describe("notebook-wide Tutor awareness", () => {
     expect(mocks.notebookPages.limit).toHaveBeenCalledWith(60);
     // Page 1 has nothing drawn on it, so its typed text says everything and no picture is sent.
     expect(result.currentParts.some((part) => "inlineData" in part)).toBe(false);
+    // A page with no Topics or linked question of its own is placed on its notebook's.
+    expect(result.notebookLearning).toEqual({
+      conceptKeys: ["topic:forces"],
+      attribution: "notebook-topics",
+      workItemId: "notebook:notebook-1:page-2",
+    });
   });
 
   it("shows the handwritten page before the current one as a picture", async () => {

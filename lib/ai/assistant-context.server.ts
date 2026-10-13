@@ -4,6 +4,7 @@ import type { AiContentPart } from "@/lib/ai/content-parts";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
 import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import type { TutorCheckScope } from "@/lib/learning/events/tutor-check";
+import type { NotebookPageLearningContext } from "@/lib/learning/notebook-page-context";
 import type { Source } from "@/lib/material/sources";
 import type { ReasoningEffortPreference } from "@/lib/profile/reasoning-effort";
 
@@ -24,8 +25,14 @@ export type SourceRelations = {
 };
 
 export type ResolvedJamiAssistantContext = {
-  /** Topics this material is filed under, so a marking can be placed on a concept. */
+  /** The student's Topics for this material, which scope what Tutor remembers about it. */
   topicIds?: readonly string[];
+  /**
+   * Where the open notebook page sits in the Learning Engine: its concepts,
+   * how they were found, and the piece of work it is. A marking of the page is
+   * placed by this and nothing else. Notebook surface only.
+   */
+  notebookLearning?: NotebookPageLearningContext;
   currentId: string;
   currentLabel: string;
   currentParts: AiContentPart[];

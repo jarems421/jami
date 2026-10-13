@@ -128,6 +128,46 @@ const mocks = vi.hoisted(() => {
     notebooks: query([
       doc("nb-1", { folderId: "folder-1", archived: false, topicIds: ["topic-vectors"], updatedAt: NOW - DAY }),
       doc("nb-other-folder", { folderId: "folder-2", archived: false, topicIds: ["topic-other"], updatedAt: NOW }),
+      // No Topics, but a page in it was marked against its own.
+      doc("nb-untagged", { folderId: "folder-1", archived: false, topicIds: [], updatedAt: NOW - DAY }),
+      // Practice Jami once wrote, which filed its specification concept as a Topic.
+      doc("nb-legacy-practice", {
+        folderId: "folder-1",
+        archived: false,
+        topicIds: [straightLines],
+        updatedAt: NOW - DAY,
+      }),
+    ]),
+    notebookMarkings: query([
+      doc("nb-untagged_p1", {
+        schemaVersion: 2,
+        provenance: "tutor",
+        notebookId: "nb-untagged",
+        pageId: "p1",
+        topicKeys: ["topic:topic-matrices"],
+        attribution: "page-topics",
+        itemId: "notebook:nb-untagged:p1",
+        markedAt: NOW - DAY,
+        awardedMarks: 1,
+        maxMarks: 4,
+        criterionResults: [
+          { criterion: "Sets up the basis", awarded: true },
+          { criterion: "Shows independence", awarded: false },
+        ],
+      }),
+      doc("nb-other-folder_p1", {
+        schemaVersion: 2,
+        provenance: "tutor",
+        notebookId: "nb-other-folder",
+        pageId: "p1",
+        topicKeys: ["topic:topic-other"],
+        attribution: "notebook-topics",
+        itemId: "notebook:nb-other-folder:p1",
+        markedAt: NOW - DAY,
+        awardedMarks: 0,
+        maxMarks: 2,
+        criterionResults: [{ criterion: "Method", awarded: false }],
+      }),
     ]),
     sources: query([
       doc("src-1", { status: "active", folderIds: ["folder-1"], topicIds: ["topic-vectors"], updatedAt: NOW - DAY }),
@@ -139,6 +179,8 @@ const mocks = vi.hoisted(() => {
       doc("topic-old", { name: "Old eigen topic", status: "merged", mergedIntoTopicId: "topic-eigen" }),
       doc("topic-vectors", { name: "Vector spaces", status: "active" }),
       doc("topic-other", { name: "Another subject", status: "active" }),
+      // Named only by a marked page.
+      doc("topic-matrices", { name: "Matrices", status: "active" }),
     ]),
     examSessions: query([
       doc("session-1", {
@@ -302,6 +344,23 @@ describe("loading a learner profile", () => {
     expect(mocks.collections.notebooks.select).toHaveBeenCalledWith("folderId", "archived", "topicIds", "updatedAt");
     // Material from another folder, or archived, never reaches this folder's profile.
     expect(JSON.stringify(profile)).not.toContain("Another subject");
+  });
+
+  it("reads marked working from untagged notebooks, placed by each marking's own concepts", async () => {
+    const profile = await loadLearnerProfile({ uid: "user-1", folderId: "folder-1", now: mocks.NOW });
+    const matrices = profile?.topics.find((topic) => topic.topicKey === "topic:topic-matrices");
+    // A Topic named only by the page is still looked up, so it has its name.
+    expect(matrices).toMatchObject({ label: "Matrices", signal: { evidence: ["notebook"] } });
+    expect(profile?.evidenceSummary.notebookMarkings).toBe(1);
+    // Another folder's notebook is not this folder's evidence.
+    expect(JSON.stringify(profile)).not.toContain("topic:topic-other");
+  });
+
+  it("does not read a specification concept filed among a notebook's Topics as a Topic", async () => {
+    const profile = await loadLearnerProfile({ uid: "user-1", folderId: "folder-1", now: mocks.NOW });
+    expect(
+      profile?.topics.find((topic) => topic.topicKey === "topic:aqa-8300-algebra-straight-line-graphs")
+    ).toBeUndefined();
   });
 
   it("uses a folder document it is given instead of reading it again", async () => {

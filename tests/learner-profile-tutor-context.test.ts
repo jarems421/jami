@@ -91,6 +91,9 @@ function profile(overrides: Partial<LearnerProfile> = {}): LearnerProfile {
       flashcardReviewEvents: 0,
       practiceAttempts: 2,
       pastPaperAttempts: 6,
+      notebookMarkings: 3,
+      revisionAnswers: 0,
+      tutorChecks: 1,
     },
     diagnostics: {
       observations: 0,
@@ -153,7 +156,11 @@ describe("learner profile for Tutor", () => {
     );
 
     expect(text).toContain("Jami's Learning Engine calculated this");
-    expect(text).toContain("40 flashcard reviews, 6 marked past-paper answers and 2 marked practice-paper answers");
+    // Every source the engine read, so the model is not told it rests on less.
+    expect(text).toContain(
+      "40 flashcard reviews, 6 marked past-paper answers, 2 marked practice-paper answers, 3 notebook pages you marked when they asked and 1 answered quick check"
+    );
+    expect(text).not.toContain("Revision Session answer");
     expect(text).toContain("Strong (build on these rather than re-teaching them):");
     expect(text).toContain('- "Matrix multiplication": mastery 89%; medium confidence; 17 answers on 12 items from flashcards');
     expect(text).toContain(

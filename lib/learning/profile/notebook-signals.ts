@@ -34,9 +34,17 @@ export type NotebookMarkedWorking = {
   /** The marking record's own id, so one marking can never count twice. */
   id: string;
   notebookId: string;
-  /** The page marked, so re-marking the same page replaces rather than adds. */
+  /** The page marked. */
   pageId?: string;
-  topicIds?: readonly string[];
+  /** Namespaced concept keys, placed by `resolveNotebookPageLearningContext`. */
+  topicKeys: readonly string[];
+  /**
+   * The piece of work marked: the page, or the question the page was made for,
+   * which it then shares with that question's other evidence.
+   */
+  itemId: string;
+  /** The study action the student was following, when they followed one. */
+  interventionId?: string;
   markedAt: number;
   result: StoredMarkedAnswer;
 };
@@ -66,24 +74,24 @@ export function notebookObservations(
 
   for (const marking of ordered) {
     if (!isValidEvidenceTime(marking.markedAt)) continue;
-    const topicKeys = (marking.topicIds ?? [])
-      .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
-      .map((id) => `topic:${id.trim()}`);
-    if (topicKeys.length === 0) continue;
+    const topicKeys = Array.from(
+      new Set(marking.topicKeys.filter((key) => typeof key === "string" && key.trim().length > 0))
+    );
+    if (topicKeys.length === 0 || !marking.itemId) continue;
 
     const read = readMarkedAnswer(marking.result);
     if (!read) continue;
 
     /*
-     * One observation per page, not per marking.
+     * One observation per piece of work, not per marking.
      *
-     * Asking Tutor to check the same page twice is one piece of evidence about
-     * the student, looked at twice. Keyed on the page so the most recent
-     * marking of it wins, and on the marking id only when there is no page.
+     * Asking Tutor to check the same work twice is one piece of evidence about
+     * the student, looked at twice -- whether that is one page marked again or
+     * two pages of the same question. The most recent marking of it wins. A
+     * question also marked on its paper shares the paper's item, so the cap on
+     * any one item holds across both.
      */
-    const itemId = marking.pageId
-      ? `notebook:${marking.notebookId}:${marking.pageId}`
-      : `notebook:${marking.notebookId}:${marking.id}`;
+    const itemId = marking.itemId;
     if (seen.has(itemId)) continue;
     seen.add(itemId);
 
@@ -102,6 +110,7 @@ export function notebookObservations(
       at: marking.markedAt,
       // Each marking is dated, so a series of them is a real change over time.
       trendEligible: true,
+      ...(marking.interventionId ? { interventionId: marking.interventionId } : {}),
       errorChecks: read.errorChecks,
     });
   }

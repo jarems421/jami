@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { notebookObservations } from "@/lib/learning/profile/notebook-signals";
 import {
   MAX_NOTEBOOK_MARKS,
+  buildNotebookMarkingWrite,
   decodeNotebookMarking,
   notebookMarkingId,
   readNotebookMarking,
   toNotebookMarkedWorking,
 } from "@/lib/learning/events/notebook-marking";
+import type { NotebookPageLearningContext } from "@/lib/learning/notebook-page-context";
 
 const NOW = Date.parse("2026-09-21T10:00:00.000Z");
 
@@ -20,12 +22,22 @@ const VERDICT = {
   ],
 };
 
-function read(verdict: unknown, overrides: Record<string, unknown> = {}) {
+const LEARNING: NotebookPageLearningContext = {
+  conceptKeys: ["topic:quadratics"],
+  attribution: "notebook-topics",
+  workItemId: "notebook:nb-1:page-3",
+};
+
+function read(
+  verdict: unknown,
+  overrides: Record<string, unknown> = {},
+  learning: Partial<NotebookPageLearningContext> = {}
+) {
   return readNotebookMarking({
     verdict,
     notebookId: "nb-1",
     pageId: "page-3",
-    topicIds: ["quadratics"],
+    learning: { ...LEARNING, ...learning },
     markedAt: NOW,
     ...overrides,
   });
@@ -88,14 +100,34 @@ describe("failing closed", () => {
   });
 
   it("refuses working that cannot be placed on a concept", () => {
-    expect(read(VERDICT, { topicIds: [] })).toEqual({ ok: false, reason: "no_topics" });
-    expect(read(VERDICT, { topicIds: ["  "] })).toEqual({ ok: false, reason: "no_topics" });
+    expect(read(VERDICT, {}, { conceptKeys: [] })).toEqual({ ok: false, reason: "no_topics" });
+    expect(read(VERDICT, {}, { conceptKeys: ["  "] })).toEqual({ ok: false, reason: "no_topics" });
+    // Only student Topics and specification concepts place evidence.
+    expect(read(VERDICT, {}, { conceptKeys: ["deck:d1"] })).toEqual({ ok: false, reason: "no_topics" });
+    expect(read(VERDICT, {}, { conceptKeys: ["quadratics"] })).toEqual({ ok: false, reason: "no_topics" });
+    expect(read(VERDICT, {}, { attribution: "none" })).toEqual({ ok: false, reason: "no_topics" });
   });
 
   it("refuses a marking with nothing to attach it to", () => {
     expect(read(VERDICT, { pageId: "" }).ok).toBe(false);
     expect(read(VERDICT, { notebookId: "" }).ok).toBe(false);
     expect(read(VERDICT, { markedAt: 0 }).ok).toBe(false);
+    expect(read(VERDICT, {}, { workItemId: "" }).ok).toBe(false);
+    expect(read(VERDICT, {}, { workItemId: "card:c1" }).ok).toBe(false);
+  });
+
+  it("keeps where the page sits: its concepts, its piece of work and the action followed", () => {
+    const result = read(VERDICT, {}, {
+      conceptKeys: ["spec:aqa-quadratics"],
+      attribution: "linked-question",
+      workItemId: "paper:paper-1:q4",
+      interventionId: "folder:f1|practice|topic:spec:aqa-quadratics",
+    });
+    if (!result.ok) throw new Error("expected a marking");
+    expect(result.marking.topicKeys).toEqual(["spec:aqa-quadratics"]);
+    expect(result.marking.attribution).toBe("linked-question");
+    expect(result.marking.itemId).toBe("paper:paper-1:q4");
+    expect(result.marking.interventionId).toBe("folder:f1|practice|topic:spec:aqa-quadratics");
   });
 
   it("refuses a criterion list with a malformed entry", () => {
@@ -170,11 +202,23 @@ describe("what a marking keeps", () => {
   });
 
   it("skips a stored record of an unknown schema or foreign provenance", () => {
-    const stored = { ...VERDICT, notebookId: "nb-1", pageId: "p", topicIds: ["q"], markedAt: NOW };
-    expect(decodeNotebookMarking("id", { ...stored, schemaVersion: 1, provenance: "tutor" })).not.toBeNull();
-    expect(decodeNotebookMarking("id", { ...stored, schemaVersion: 2, provenance: "tutor" })).toBeNull();
+    const result = read(VERDICT);
+    if (!result.ok) throw new Error("expected a marking");
+    const stored = buildNotebookMarkingWrite(result.marking, NOW);
+    expect(decodeNotebookMarking("id", { ...stored })).not.toBeNull();
+    expect(decodeNotebookMarking("id", { ...stored, schemaVersion: 3 })).toBeNull();
+    expect(decodeNotebookMarking("id", { ...stored, attribution: "guessed" })).toBeNull();
     // A marking claiming to come from a real scheme is not one of ours.
-    expect(decodeNotebookMarking("id", { ...stored, schemaVersion: 1, provenance: "official" })).toBeNull();
+    expect(decodeNotebookMarking("id", { ...stored, provenance: "official" })).toBeNull();
+  });
+
+  it("reads a version-1 record as it was: the notebook's Topics, the page as its own item", () => {
+    const legacy = { ...VERDICT, notebookId: "nb-1", pageId: "p", topicIds: ["q"], markedAt: NOW };
+    const decoded = decodeNotebookMarking("nb-1_p", { ...legacy, schemaVersion: 1, provenance: "tutor" });
+    expect(decoded?.topicKeys).toEqual(["topic:q"]);
+    expect(decoded?.attribution).toBe("notebook-topics");
+    expect(decoded?.itemId).toBe("notebook:nb-1:p");
+    expect(decodeNotebookMarking("id", { ...legacy, schemaVersion: 1, provenance: "official" })).toBeNull();
   });
 
   it("hands the profile the shape it already reads", () => {
@@ -183,7 +227,8 @@ describe("what a marking keeps", () => {
     const working = toNotebookMarkedWorking({ id: "nb-1_page-3", ...result.marking });
     expect(working.result.awardedMarks).toBe(3);
     expect(working.result.maxMarks).toBe(5);
-    expect(working.topicIds).toEqual(["quadratics"]);
+    expect(working.topicKeys).toEqual(["topic:quadratics"]);
+    expect(working.itemId).toBe("notebook:nb-1:page-3");
   });
 });
 

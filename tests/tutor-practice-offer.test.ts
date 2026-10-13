@@ -145,7 +145,8 @@ describe("which advice Tutor offers", () => {
       id: `m${index}`,
       notebookId: "nb",
       pageId: `p${index}`,
-      topicIds: ["eigen"],
+      topicKeys: ["topic:eigen"],
+      itemId: `notebook:nb:p${index}`,
       markedAt: NOW - (index + 1) * DAY,
       result: { attempted: true, counted: true, awardedMarks: 1, maxMarks: 6 },
     }));

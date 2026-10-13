@@ -48,7 +48,7 @@ export type TutorTurnRecord = {
   pendingCheck: PendingTutorCheck | null;
   resolved: Pick<
     ResolvedJamiAssistantContext,
-    "checkTarget" | "topicIds" | "folderIds" | "memoryWritable" | "memoryRefs"
+    "checkTarget" | "topicIds" | "notebookLearning" | "folderIds" | "memoryWritable" | "memoryRefs"
   >;
   route: { role: AiGenerationRole; priorAnswerChallenged: boolean };
   log: Logger;
@@ -220,13 +220,14 @@ export async function recordTutorTurnAssessments(
    * Both outcomes are logged, because a marker that is always rejected
    * looks exactly like a marker nobody uses.
    */
-  if (record.plan.markingInvited && record.context.surface === "notebook") {
+  const notebookLearning = record.resolved.notebookLearning;
+  if (record.plan.markingInvited && record.context.surface === "notebook" && notebookLearning) {
     try {
       const outcome = await recordNotebookMarking({
         uid,
         notebookId: record.context.notebookId,
         pageId: record.context.pageId,
-        topicIds: record.resolved.topicIds ?? [],
+        learning: notebookLearning,
         verdict: parsedAnswer.marking,
       });
       /*

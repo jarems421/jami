@@ -16,7 +16,8 @@ function marking(overrides: Partial<NotebookMarkedWorking> = {}): NotebookMarked
     id: "m1",
     notebookId: "n1",
     pageId: "p1",
-    topicIds: ["osmosis"],
+    topicKeys: ["topic:osmosis"],
+    itemId: "notebook:n1:p1",
     markedAt: NOW,
     result: { attempted: true, counted: true, awardedMarks: 3, maxMarks: 4 },
     ...overrides,
@@ -60,8 +61,25 @@ describe("marked notebook working as evidence", () => {
     expect(observations).toHaveLength(1);
   });
 
+  it("counts two pages of the same question as one piece of work", () => {
+    const observations = notebookObservations([
+      marking({ id: "m1", pageId: "p6", itemId: "paper:paper-1:q4", markedAt: NOW - 1000 }),
+      marking({ id: "m2", pageId: "p7", itemId: "paper:paper-1:q4", markedAt: NOW }),
+    ]);
+    expect(observations).toHaveLength(1);
+    expect(observations[0]?.evidenceId).toBe("notebook-marking:m2");
+    expect(observations[0]?.itemId).toBe("paper:paper-1:q4");
+  });
+
+  it("carries the study action the student was following", () => {
+    const [followed] = notebookObservations([marking({ interventionId: "folder:f1|low_mastery|topic:osmosis" })]);
+    const [unprompted] = notebookObservations([marking()]);
+    expect(followed?.interventionId).toBe("folder:f1|low_mastery|topic:osmosis");
+    expect(unprompted).not.toHaveProperty("interventionId");
+  });
+
   it("splits working that spans two topics between them", () => {
-    const [observation] = notebookObservations([marking({ topicIds: ["osmosis", "diffusion"] })]);
+    const [observation] = notebookObservations([marking({ topicKeys: ["topic:osmosis", "topic:diffusion"] })]);
     expect(observation?.topicShares).toEqual({
       "topic:osmosis": 0.5,
       "topic:diffusion": 0.5,
@@ -69,8 +87,8 @@ describe("marked notebook working as evidence", () => {
   });
 
   it("drops working that cannot be placed on a topic", () => {
-    expect(notebookObservations([marking({ topicIds: [] })])).toEqual([]);
-    expect(notebookObservations([marking({ topicIds: ["  "] })])).toEqual([]);
+    expect(notebookObservations([marking({ topicKeys: [] })])).toEqual([]);
+    expect(notebookObservations([marking({ topicKeys: ["  "] })])).toEqual([]);
   });
 
   it("drops a marking with no usable time or result", () => {

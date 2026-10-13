@@ -13,7 +13,9 @@ import {
 } from "@/lib/ai/notebook-context-window";
 import { mapNotebookData, mapNotebookPageData } from "@/lib/workspace/notebooks";
 import type { getAdminDb } from "@/services/firebase/admin";
+import { notebookContextTopicIds } from "@/lib/learning/notebook-page-context";
 import { loadNotebookNeighbourPageParts } from "@/services/ai/notebook-neighbour-pages.server";
+import { loadNotebookPageLearningContext } from "@/services/learning/notebook-page-learning.server";
 
 /**
  * The notebook page a student has open, as Tutor reads it: the page itself,
@@ -175,6 +177,14 @@ export async function resolveNotebookContext(input: {
     currentPageId: page.id,
     message: input.message,
   });
+  // One read at most, and only for a page made for a question.
+  const notebookLearning = await loadNotebookPageLearningContext({
+    db: input.db,
+    uid: input.uid,
+    notebook,
+    page,
+  });
+  const pageTopicIds = notebookContextTopicIds(notebookLearning);
 
   return {
     currentId: page.id,
@@ -185,7 +195,9 @@ export async function resolveNotebookContext(input: {
       currentSourceIds: [],
       directSourceIds: notebook.sourceIds,
       folderIds: notebook.folderId ? [notebook.folderId] : [],
-      topicIds: notebook.topicIds,
+      // The page's own Topics when it has them: they choose sources and scope memory.
+      topicIds: pageTopicIds.length > 0 ? pageTopicIds : notebook.topicIds,
     } satisfies SourceRelations,
+    notebookLearning,
   };
 }

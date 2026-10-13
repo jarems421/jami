@@ -540,6 +540,9 @@ export function buildLearnerProfile(input: {
       flashcardReviewEvents: count("flashcards", true),
       practiceAttempts: count("practice"),
       pastPaperAttempts: count("past-paper"),
+      notebookMarkings: count("notebook"),
+      revisionAnswers: count("revision"),
+      tutorChecks: count("tutor-check"),
       ...(observations.length > 0
         ? { lastEvidenceAt: observations[observations.length - 1]?.at }
         : {}),

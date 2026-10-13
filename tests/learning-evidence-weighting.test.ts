@@ -77,7 +77,8 @@ function notebookPages(count: number, awarded: number) {
       id: `m${index}`,
       notebookId: "nb-1",
       pageId: `page-${index}`,
-      topicIds: ["cts"],
+      topicKeys: ["topic:cts"],
+      itemId: `notebook:nb-1:page-${index}`,
       markedAt: NOW - (index + 1) * DAY,
       result: { attempted: true, counted: true, awardedMarks: awarded, maxMarks: MARKS },
     }))

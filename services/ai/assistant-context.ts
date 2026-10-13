@@ -648,11 +648,15 @@ export async function resolveJamiAssistantContext(input: {
     "deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
       ? resolved.deckId
       : undefined;
-  const materialKeys = materialTopicKeys({
-    topicIds: resolved.relations.topicIds,
-    ...(deckId ? { deckId } : {}),
-    ...("specificationIds" in resolved ? { specificationIds: resolved.specificationIds } : {}),
-  });
+  const notebookLearning = "notebookLearning" in resolved ? resolved.notebookLearning : undefined;
+  // A notebook page is placed by its own resolver: its linked question, its Topics, then its notebook's.
+  const materialKeys = notebookLearning
+    ? notebookLearning.conceptKeys
+    : materialTopicKeys({
+        topicIds: resolved.relations.topicIds,
+        ...(deckId ? { deckId } : {}),
+        ...("specificationIds" in resolved ? { specificationIds: resolved.specificationIds } : {}),
+      });
   const [sources, preferences, learning, course, neighbourParts, memory] = await Promise.all([
     selectSources({
       db,
@@ -729,14 +733,9 @@ export async function resolveJamiAssistantContext(input: {
     ...(learning?.nextStepOffer ? { nextStepOffer: learning.nextStepOffer } : {}),
     ...(checkTarget ? { checkTarget } : {}),
     ...(courseContext ? { courseContext } : {}),
-    /**
-     * The Topics this material is filed under.
-     *
-     * Needed so a marking of a notebook page can be placed on a concept:
-     * evidence that cannot be attributed is discarded, so a page in an
-     * untagged notebook produces none. Already loaded for source selection.
-     */
+    // The Topics this material is filed under, which scope what Tutor remembers.
     topicIds: resolved.relations.topicIds,
+    ...(notebookLearning ? { notebookLearning } : {}),
     folderIds: resolved.relations.folderIds,
     ...(memory
       ? {

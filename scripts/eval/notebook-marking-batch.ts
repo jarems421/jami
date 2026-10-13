@@ -214,7 +214,11 @@ export default async function main() {
       verdict: parsed.marking,
       notebookId: "nb-1",
       pageId: "page-1",
-      topicIds: ["quadratics"],
+      learning: {
+        conceptKeys: ["topic:quadratics"],
+        attribution: "notebook-topics",
+        workItemId: "notebook:nb-1:page-1",
+      },
       markedAt: Date.now(),
     });
 

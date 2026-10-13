@@ -17,6 +17,7 @@ import type { TopicRelationInput } from "@/lib/learning/concepts/topic-relations
 import type { FlashcardEvidenceCard } from "@/lib/learning/profile/flashcard-signals";
 import type { StoredMarkedAnswer } from "@/lib/learning/profile/marked-answer";
 import type { PastPaperEvidenceAttempt } from "@/lib/learning/profile/past-paper-signals";
+import type { NotebookMarkedWorking } from "@/lib/learning/profile/notebook-signals";
 import type { PracticePaperEvidenceAttempt } from "@/lib/learning/profile/practice-signals";
 import type {
   LearnerEvidenceLimit,
@@ -314,13 +315,24 @@ async function loadFlashcardReviewEvents(
  * then checked again on the document, so material from another folder cannot
  * leak in. Like review history, a failure here degrades the profile to "no
  * exposure known" rather than failing it.
+ *
+ * Also returns every notebook in the folder, Topics or not. Marked working is
+ * placed by each marking's own concepts -- a page's linked question or its own
+ * Topics -- so an untagged notebook still has evidence to give; only exposure
+ * needs a notebook's Topics.
  */
 async function loadFolderExposure(
   db: AdminDb,
   uid: string,
   folderId: string,
-  notes: LoadNotes
-): Promise<LearnerExposureItem[]> {
+  notes: LoadNotes,
+  /**
+   * Specification ids that are not student Topics. Practice Jami wrote for a
+   * specification concept once filed the concept's id among its notebook's
+   * Topics, where it read as a Topic nobody had made; those are left out.
+   */
+  specificationIds: ReadonlySet<string>
+): Promise<{ items: LearnerExposureItem[]; notebookIds: string[] }> {
   try {
     const userRef = db.collection("users").doc(uid);
     const [notebooks, sources] = await Promise.all([
@@ -345,10 +357,14 @@ async function loadFolderExposure(
     if (sources.docs.length >= LEARNER_PROFILE_LOAD_LIMITS.sources) notes.limits.add("sources");
 
     const items: LearnerExposureItem[] = [];
+    const notebookIds: string[] = [];
     for (const notebookDoc of notebooks.docs) {
       const notebook = mapNotebookData(notebookDoc.id, notebookDoc.data() as Record<string, unknown>);
-      if (notebook.archived || notebook.folderId !== folderId || notebook.topicIds.length === 0) continue;
-      items.push({ kind: "notebook", id: notebook.id, topicIds: notebook.topicIds, at: notebook.updatedAt });
+      if (notebook.archived || notebook.folderId !== folderId) continue;
+      notebookIds.push(notebook.id);
+      const topicIds = notebook.topicIds.filter((topicId) => !specificationIds.has(topicId));
+      if (topicIds.length === 0) continue;
+      items.push({ kind: "notebook", id: notebook.id, topicIds, at: notebook.updatedAt });
     }
     for (const sourceDoc of sources.docs) {
       const source = mapSourceData(sourceDoc.id, sourceDoc.data() as Record<string, unknown>);
@@ -357,10 +373,10 @@ async function loadFolderExposure(
       }
       items.push({ kind: "source", id: source.id, topicIds: source.topicIds, at: source.updatedAt });
     }
-    return items;
+    return { items, notebookIds };
   } catch {
     notes.unavailable.add("exposure");
-    return [];
+    return { items: [], notebookIds: [] };
   }
 }
 
@@ -380,6 +396,8 @@ async function loadStudentTopicConcepts(
     declaredTopicIds: readonly string[];
     cards: readonly FlashcardEvidenceCard[];
     exposureItems: readonly LearnerExposureItem[];
+    /** Topics a marked notebook page was placed on, which may be the page's own. */
+    notebookMarkings: readonly NotebookMarkedWorking[];
   },
   notes: LoadNotes
 ): Promise<{
@@ -393,6 +411,11 @@ async function loadStudentTopicConcepts(
   };
   input.cards.forEach((card) => (card.topicIds ?? []).forEach(use));
   input.exposureItems.forEach((item) => item.topicIds.forEach(use));
+  input.notebookMarkings.forEach((marking) =>
+    marking.topicKeys.forEach((key) => {
+      if (key.startsWith("topic:")) use(key.slice("topic:".length));
+    })
+  );
   input.declaredTopicIds.forEach(use);
 
   const declared = new Set(input.declaredTopicIds);
@@ -721,8 +744,14 @@ export async function loadLearnerEvidence(
     if (decks.length === 0) return null;
   }
   const deckIds = decks.map((deck) => deck.id);
+  const specification = folder ? folderSpecification(folder) : undefined;
+  const specificationConcepts = folder ? folderSpecificationConcepts(folder) : [];
+  const specificationIds = new Set([
+    ...(specification?.topics ?? []).map((topic) => topic.id),
+    ...specificationConcepts.map((concept) => concept.key.slice("spec:".length)),
+  ]);
 
-  const [cardLists, flashcardReviewEvents, pastPaper, practicePaperAttempts, exposureItems] =
+  const [cardLists, flashcardReviewEvents, pastPaper, practicePaperAttempts, folderMaterial] =
     await Promise.all([
       Promise.all(deckIds.map((id) => loadDeckCards(db, uid, id, notes))),
       loadFlashcardReviewEvents(db, uid, deckIds, notes),
@@ -738,8 +767,11 @@ export async function loadLearnerEvidence(
             folder?.examCourse?.specificationId
           )
         : Promise.resolve([]),
-      folderId ? loadFolderExposure(db, uid, folderId, notes) : Promise.resolve([]),
+      folderId
+        ? loadFolderExposure(db, uid, folderId, notes, specificationIds)
+        : Promise.resolve({ items: [], notebookIds: [] }),
     ]);
+  const exposureItems = folderMaterial.items;
   const pagedCards = cardLists.flat();
   const declaredTopicIds = folder?.topicIds ?? [];
   /*
@@ -748,32 +780,30 @@ export async function loadLearnerEvidence(
    * and revision sessions need only what is already loaded, and waiting for the
    * card chain added a round trip per folder to Today for no reason.
    */
+  /*
+   * Marked notebook working in every notebook the folder holds, whether or not
+   * the notebook has Topics: each marking carries its own concepts, and one
+   * that has none is dropped by the reader, not here. The Topics a page was
+   * marked against are looked up with the rest, so a page Topic has its name.
+   */
+  const notebookMarkingsLoading = loadNotebookMarkings({ uid, notebookIds: folderMaterial.notebookIds });
   const [{ cards, studentTopics }, [notebookMarkings, revisionSessions, studentConcerns, tutorChecks]] = await Promise.all([
     (async () => {
-      const cards = [
-        ...pagedCards,
-        ...(await loadReviewedCards(db, uid, deckIds, pagedCards, flashcardReviewEvents, notes)),
-      ];
+      const [reviewedCards, notebookMarkings] = await Promise.all([
+        loadReviewedCards(db, uid, deckIds, pagedCards, flashcardReviewEvents, notes),
+        notebookMarkingsLoading,
+      ]);
+      const cards = [...pagedCards, ...reviewedCards];
       const studentTopics = await loadStudentTopicConcepts(
         db,
         uid,
-        { declaredTopicIds, cards, exposureItems },
+        { declaredTopicIds, cards, exposureItems, notebookMarkings },
         notes
       );
       return { cards, studentTopics };
     })(),
     Promise.all([
-      /*
-       * Marked notebook working, narrowed to the notebooks already in scope for
-       * exposure -- the same pages the folder contains, now read for what Tutor
-       * made of them rather than only that they exist.
-       */
-      loadNotebookMarkings({
-        uid,
-        notebookIds: exposureItems
-          .filter((item) => item.kind === "notebook")
-          .map((item) => item.id),
-      }),
+      notebookMarkingsLoading,
       // Finished Revision Sessions opened from this scope's own recommendations.
       featureFlags.enableRevisionSessions
         ? loadRevisionEvidence({
@@ -786,8 +816,6 @@ export async function loadLearnerEvidence(
       loadTutorChecks({ uid, ...(folderId ? { folderId } : deckId ? { deckId } : {}) }),
     ]),
   ]);
-  const specification = folder ? folderSpecification(folder) : undefined;
-  const specificationConcepts = folder ? folderSpecificationConcepts(folder) : [];
 
   const evidence: LearnerEvidence = {
     cards,

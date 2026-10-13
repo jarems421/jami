@@ -102,7 +102,7 @@ describe("recent results for Tutor", () => {
       recentTrend: "unknown",
       recommendedFocus: [],
       recentResults,
-      evidenceSummary: { flashcardReviews: 4, flashcardReviewEvents: 4, practiceAttempts: 1, pastPaperAttempts: 1 },
+      evidenceSummary: { flashcardReviews: 4, flashcardReviewEvents: 4, practiceAttempts: 1, pastPaperAttempts: 1, notebookMarkings: 0, revisionAnswers: 0, tutorChecks: 0 },
       diagnostics: { observations: 4, droppedObservations: 0, topicSignals: 0, limitsReached: [], unavailableSources: [] },
     };
   }

@@ -1,4 +1,8 @@
 import { isValidEvidenceTime } from "@/lib/learning/evidence-time";
+import type {
+  NotebookPageAttribution,
+  NotebookPageLearningContext,
+} from "@/lib/learning/notebook-page-context";
 import type { NotebookMarkedWorking } from "@/lib/learning/profile/notebook-signals";
 
 /**
@@ -26,7 +30,14 @@ import type { NotebookMarkedWorking } from "@/lib/learning/profile/notebook-sign
  * Nothing here holds what they wrote -- only whether each point was earned.
  */
 
-export const NOTEBOOK_MARKING_SCHEMA_VERSION = 1;
+/**
+ * Version 2 places a marking on the page's own concepts and piece of work
+ * (`lib/learning/notebook-page-context.ts`) rather than on the notebook's
+ * Topics. Version 1 records are still read, as what they were: the notebook's
+ * Topics, and the page as its own item.
+ */
+export const NOTEBOOK_MARKING_SCHEMA_VERSION = 2;
+const LEGACY_NOTEBOOK_MARKING_SCHEMA_VERSION = 1;
 export const NOTEBOOK_MARKINGS_COLLECTION = "notebookMarkings";
 
 /** More than any single page of working is credibly marked against. */
@@ -35,6 +46,15 @@ export const MAX_NOTEBOOK_CRITERIA = 30;
 export const MAX_NOTEBOOK_MARKS = 60;
 const MAX_CRITERION_LENGTH = 300;
 const MAX_ID_LENGTH = 160;
+/** A concept key or item id carries a namespace and an id or two. */
+const MAX_KEY_LENGTH = 400;
+const CONCEPT_KEY_PATTERN = /^(topic|spec):[^/\s]+$/;
+const ITEM_ID_PATTERN = /^(notebook|paper|exam):[^\s]+$/;
+const ATTRIBUTIONS: readonly NotebookMarkingAttribution[] = [
+  "linked-question",
+  "page-topics",
+  "notebook-topics",
+];
 
 /**
  * Which marker produced a verdict.
@@ -51,12 +71,20 @@ export type NotebookMarkingCriterion = {
   awardedMarks?: number;
 };
 
+/** How a marking was placed on its concepts; a marking that could not be placed is not kept. */
+export type NotebookMarkingAttribution = Exclude<NotebookPageAttribution, "none">;
+
 export type NotebookMarking = {
   id: string;
   notebookId: string;
   pageId: string;
-  /** The student's own Topics for this page; evidence with none is not kept. */
-  topicIds: string[];
+  /** Namespaced concept keys, `topic:<id>` or `spec:<id>`; evidence with none is not kept. */
+  topicKeys: string[];
+  attribution: NotebookMarkingAttribution;
+  /** The piece of work marked, shared with that question's other evidence. */
+  itemId: string;
+  /** The study action the student was following when they asked, if any. */
+  interventionId?: string;
   markedAt: number;
   criterionResults: NotebookMarkingCriterion[];
   awardedMarks: number;
@@ -75,6 +103,12 @@ function readId(value: unknown, maxLength = MAX_ID_LENGTH) {
   if (typeof value !== "string") return "";
   const id = value.trim();
   return id.length > 0 && id.length <= maxLength && !id.includes("/") ? id : "";
+}
+
+function readKey(value: unknown, pattern: RegExp) {
+  if (typeof value !== "string") return "";
+  const key = value.trim();
+  return key.length <= MAX_KEY_LENGTH && pattern.test(key) ? key : "";
 }
 
 function readMarks(value: unknown) {
@@ -125,20 +159,24 @@ export function readNotebookMarking(input: {
   verdict: unknown;
   notebookId: string;
   pageId: string;
-  topicIds: readonly string[];
+  /** Where the page sits, from `resolveNotebookPageLearningContext`. */
+  learning: NotebookPageLearningContext;
   markedAt: number;
 }): NotebookMarkingResult {
   const notebookId = readId(input.notebookId);
   const pageId = readId(input.pageId);
-  if (!notebookId || !pageId || !isValidEvidenceTime(input.markedAt)) {
+  const itemId = readKey(input.learning.workItemId, ITEM_ID_PATTERN);
+  if (!notebookId || !pageId || !itemId || !isValidEvidenceTime(input.markedAt)) {
     return { ok: false, reason: "malformed" };
   }
 
-  const topicIds = Array.from(
-    new Set(input.topicIds.map((topicId) => readId(topicId)).filter(Boolean))
+  const topicKeys = Array.from(
+    new Set(input.learning.conceptKeys.map((key) => readKey(key, CONCEPT_KEY_PATTERN)).filter(Boolean))
   );
+  const attribution = ATTRIBUTIONS.find((value) => value === input.learning.attribution);
   // Evidence that cannot be placed on a concept is not evidence the engine can use.
-  if (topicIds.length === 0) return { ok: false, reason: "no_topics" };
+  if (topicKeys.length === 0 || !attribution) return { ok: false, reason: "no_topics" };
+  const interventionId = readKey(input.learning.interventionId, /^.+$/);
 
   if (!input.verdict || typeof input.verdict !== "object" || Array.isArray(input.verdict)) {
     return { ok: false, reason: "malformed" };
@@ -194,7 +232,10 @@ export function readNotebookMarking(input: {
     marking: {
       notebookId,
       pageId,
-      topicIds,
+      topicKeys,
+      attribution,
+      itemId,
+      ...(interventionId ? { interventionId } : {}),
       markedAt: input.markedAt,
       criterionResults,
       awardedMarks,
@@ -225,18 +266,53 @@ export function buildNotebookMarkingWrite(
   return { ...marking, schemaVersion: NOTEBOOK_MARKING_SCHEMA_VERSION, createdAt };
 }
 
-/** A stored record, or null for anything not a well-formed version-1 marking. */
+function readStringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+/**
+ * Where a stored record sits.
+ *
+ * A version-1 record was placed on its notebook's Topics and counted as its
+ * own page, and is read as exactly that: re-attributing old evidence to a page
+ * Topic set later would change what a past marking said.
+ */
+function storedLearning(data: Record<string, unknown>): NotebookPageLearningContext | null {
+  const notebookId = typeof data.notebookId === "string" ? data.notebookId : "";
+  const pageId = typeof data.pageId === "string" ? data.pageId : "";
+  if (data.schemaVersion === LEGACY_NOTEBOOK_MARKING_SCHEMA_VERSION) {
+    return {
+      conceptKeys: readStringList(data.topicIds).map((topicId) => `topic:${topicId.trim()}`),
+      attribution: "notebook-topics",
+      workItemId: `notebook:${notebookId}:${pageId}`,
+    };
+  }
+  if (data.schemaVersion !== NOTEBOOK_MARKING_SCHEMA_VERSION) return null;
+  const attribution = ATTRIBUTIONS.find((value) => value === data.attribution);
+  if (!attribution) return null;
+  return {
+    conceptKeys: readStringList(data.topicKeys),
+    attribution,
+    workItemId: typeof data.itemId === "string" ? data.itemId : "",
+    ...(typeof data.interventionId === "string" ? { interventionId: data.interventionId } : {}),
+  };
+}
+
+/** A stored record, or null for anything not a well-formed marking of a known version. */
 export function decodeNotebookMarking(
   id: string,
   data: Record<string, unknown>
 ): NotebookMarking | null {
-  if (!readId(id, 400) || data.schemaVersion !== NOTEBOOK_MARKING_SCHEMA_VERSION) return null;
-  if (data.provenance !== "tutor") return null;
+  if (!readId(id, 400) || data.provenance !== "tutor") return null;
+  const learning = storedLearning(data);
+  if (!learning) return null;
   const result = readNotebookMarking({
     verdict: data,
     notebookId: typeof data.notebookId === "string" ? data.notebookId : "",
     pageId: typeof data.pageId === "string" ? data.pageId : "",
-    topicIds: Array.isArray(data.topicIds) ? (data.topicIds as string[]) : [],
+    learning,
     markedAt: typeof data.markedAt === "number" ? data.markedAt : 0,
   });
   if (!result.ok) return null;
@@ -263,7 +339,9 @@ export function toNotebookMarkedWorking(marking: NotebookMarking): NotebookMarke
     id: marking.id,
     notebookId: marking.notebookId,
     pageId: marking.pageId,
-    topicIds: marking.topicIds,
+    topicKeys: marking.topicKeys,
+    itemId: marking.itemId,
+    ...(marking.interventionId ? { interventionId: marking.interventionId } : {}),
     markedAt: marking.markedAt,
     result: {
       attempted: true,

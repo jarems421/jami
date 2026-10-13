@@ -745,7 +745,8 @@ describe("quick checks and markings in a turn", () => {
   });
 
   it("records a notebook marking when the student asked to be marked", async () => {
-    mocks.resolveContext.mockResolvedValueOnce(resolved({ topicIds: ["t1"] }));
+    const notebookLearning = { conceptKeys: ["topic:t1"], attribution: "page-topics", workItemId: "notebook:nb1:p1" };
+    mocks.resolveContext.mockResolvedValueOnce(resolved({ topicIds: ["t1"], notebookLearning }));
     const marking = { earned: 1, available: 2, points: [] };
     mocks.streamText.mockResolvedValueOnce(answer({ answer: "One of two marks.", sourceRefs: [], marking }));
     mocks.recordMarking.mockResolvedValueOnce({ recorded: false, reason: "declined" });
@@ -760,7 +761,7 @@ describe("quick checks and markings in a turn", () => {
       uid: "user-1",
       notebookId: "nb1",
       pageId: "p1",
-      topicIds: ["t1"],
+      learning: notebookLearning,
       verdict: marking,
     });
     expect(records.map((record) => record.event)).toContain("marking.declined");

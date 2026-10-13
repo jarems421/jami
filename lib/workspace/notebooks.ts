@@ -198,6 +198,12 @@ export type NotebookPage = {
   linkedPastPaperId?: string;
   linkedExamAttemptId?: string;
   linkedExamSessionId?: string;
+  /**
+   * The student's own Topics for this page, when it is about something
+   * narrower than its notebook. Set only by the student; marking this page
+   * counts towards these rather than the notebook's.
+   */
+  topicIds?: string[];
   /** Monotonic content version used to reject stale editor writes. */
   contentRevision: number;
   createdAt: number;
@@ -220,6 +226,8 @@ export type NotebookFile = {
 
 export const MAX_NOTEBOOK_TITLE_LENGTH = 140;
 export const MAX_NOTEBOOK_TOPIC_IDS = 30;
+/** A page is one piece of work; more than this and it is a notebook again. */
+export const MAX_NOTEBOOK_PAGE_TOPIC_IDS = 3;
 export const MAX_NOTEBOOK_SOURCE_IDS = 30;
 export const MAX_NOTEBOOK_PAGE_TYPED_CONTENT = 30_000;
 /** An expected answer and its solution notes, as a practice draft holds them. */
@@ -684,6 +692,7 @@ export function mapNotebookPageData(
       ? data.typedContent
       : undefined;
   const textBlocks = normalizeNotebookTextBlocks(data.textBlocks);
+  const pageTopicIds = normalizeStringArray(data.topicIds, MAX_NOTEBOOK_PAGE_TOPIC_IDS, 120);
 
   return {
     id,
@@ -717,6 +726,7 @@ export function mapNotebookPageData(
     linkedPastPaperId: normalizeOptionalString(data.linkedPastPaperId, 160),
     linkedExamAttemptId: normalizeOptionalString(data.linkedExamAttemptId, 160),
     linkedExamSessionId: normalizeOptionalString(data.linkedExamSessionId, 160),
+    ...(pageTopicIds.length > 0 ? { topicIds: pageTopicIds } : {}),
     contentRevision:
       typeof data.contentRevision === "number" &&
       Number.isFinite(data.contentRevision) &&

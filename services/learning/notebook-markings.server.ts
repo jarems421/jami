@@ -9,6 +9,7 @@ import {
   toNotebookMarkedWorking,
   type NotebookMarkingRejection,
 } from "@/lib/learning/events/notebook-marking";
+import type { NotebookPageLearningContext } from "@/lib/learning/notebook-page-context";
 import type { NotebookMarkedWorking } from "@/lib/learning/profile/notebook-signals";
 import { createLogger } from "@/lib/observability/logger";
 import { getAdminDb } from "@/services/firebase/admin";
@@ -36,7 +37,8 @@ export async function recordNotebookMarking(input: {
   uid: string;
   notebookId: string;
   pageId: string;
-  topicIds: readonly string[];
+  /** Where the page sits, from `loadNotebookPageLearningContext`. */
+  learning: NotebookPageLearningContext;
   verdict: unknown;
   markedAt?: number;
 }): Promise<RecordNotebookMarkingOutcome> {
@@ -45,7 +47,7 @@ export async function recordNotebookMarking(input: {
     verdict: input.verdict,
     notebookId: input.notebookId,
     pageId: input.pageId,
-    topicIds: input.topicIds,
+    learning: input.learning,
     markedAt: now,
   });
   if (!result.ok) {

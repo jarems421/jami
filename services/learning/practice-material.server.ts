@@ -61,7 +61,13 @@ export async function storeInterventionPractice(input: {
       folderId: input.folderId,
       title,
       type: "practice_paper",
-      topicIds: [input.conceptId],
+      /*
+       * No Topics. The concept is a specification concept, not one of the
+       * student's Topics, and filed here it read as a Topic nobody had made.
+       * Each page links to its question, which carries the concept, and that
+       * is how the page is placed (`resolveNotebookPageLearningContext`).
+       */
+      topicIds: [],
       sourceIds: [],
       pastPaperId: paperId,
       color: "violet",

@@ -97,7 +97,7 @@ describe("what the model sends back", () => {
       verdict: marking,
       notebookId: "nb-1",
       pageId: "page-3",
-      topicIds: ["quadratics"],
+      learning: { conceptKeys: ["topic:quadratics"], attribution: "notebook-topics", workItemId: "notebook:nb-1:page-3" },
       markedAt: NOW,
     });
 

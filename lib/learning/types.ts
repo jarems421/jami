@@ -475,6 +475,12 @@ export type LearnerEvidenceSummary = {
   flashcardReviewEvents: number;
   practiceAttempts: number;
   pastPaperAttempts: number;
+  /** Notebook pages Tutor marked when the student asked, one per piece of work. */
+  notebookMarkings: number;
+  /** Counted steps of finished Revision Sessions. */
+  revisionAnswers: number;
+  /** Answered Tutor quick checks. */
+  tutorChecks: number;
   lastEvidenceAt?: number;
 };
 
