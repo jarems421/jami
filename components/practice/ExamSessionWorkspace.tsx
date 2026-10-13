@@ -29,6 +29,7 @@ import {
 import { EXAM_OPERATION_LEASE_MS } from "@/lib/practice/exam-questions";
 import { countMarkedExamQuestions, examQuestionAttempts } from "@/lib/practice/exam-session-attempts";
 import { requireExamWorkingSnapshot } from "@/lib/practice/exam-working";
+import { PRACTICE_TUTOR_QUICK_ACTIONS } from "@/lib/practice/practice-tutor-actions";
 import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
 import {
   deletePastPaperPracticeAnswers,
@@ -37,11 +38,6 @@ import {
   saveExamAnswerDraft,
   submitExamAnswer,
 } from "@/services/study/exam-practice";
-
-const PRACTICE_QUICK_ACTIONS = [
-  { label: "Explain my feedback", prompt: "Explain this feedback simply and show me the best next step." },
-  { label: "Teach the missing idea", prompt: "Teach me the idea I was missing, then give me one small check question." },
-];
 
 function errorMessage(reason: unknown, fallback: string) {
   return reason instanceof Error ? reason.message : fallback;
@@ -621,7 +617,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
               sessionId: session.id,
               attemptId: markedAttempt.id,
             })}
-            quickActions={PRACTICE_QUICK_ACTIONS}
+            quickActions={PRACTICE_TUTOR_QUICK_ACTIONS}
             emptyStateNote="Jami can discuss this question only after it has been marked."
             settingsFolderIds={[session.folderId]}
           />
