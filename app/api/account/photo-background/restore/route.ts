@@ -17,7 +17,7 @@ import {
 } from "@/services/profile/photo-restore.server";
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+export const maxDuration = 120;
 
 /** Leaves the page time to hear back before the platform cuts the request off. */
 const RESTORE_DEADLINE_MS = 75_000;

@@ -33,8 +33,8 @@ import {
 import { planNextStepsForSession } from "@/services/learning/revision-options.server";
 
 export const runtime = "nodejs";
-/** Marking allows fifteen seconds and a second explanation thirty. */
-export const maxDuration = 45;
+/** Marking allows fifteen seconds and a second explanation thirty; 60 is the shared cap. */
+export const maxDuration = 60;
 
 const log = createLogger({ route: "learning.revision-sessions.step" });
 

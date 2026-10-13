@@ -17,8 +17,8 @@ import {
 import { loadRevisionSession } from "@/services/learning/revision-sessions.server";
 
 export const runtime = "nodejs";
-/** The answer allows twenty-five seconds, the material search six. */
-export const maxDuration = 40;
+/** The answer allows twenty-five seconds, the material search six; 60 is the shared cap. */
+export const maxDuration = 60;
 
 const log = createLogger({ route: "learning.revision-sessions.ask" });
 

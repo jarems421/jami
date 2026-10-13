@@ -23,8 +23,8 @@ import {
 } from "@/services/learning/revision-sessions.server";
 
 export const runtime = "nodejs";
-/** The lesson call allows eighty seconds; the platform must allow more. */
-export const maxDuration = 90;
+/** The lesson call allows eighty seconds; the platform must allow more, at the shared 120. */
+export const maxDuration = 120;
 
 const log = createLogger({ route: "learning.revision-sessions.prepare" });
 
