@@ -52,6 +52,15 @@ export type RevisionVerdict = "correct" | "partial" | "incorrect";
 export const REVISION_MISTAKES = ["concept", "method", "slip"] as const;
 export type RevisionMistake = (typeof REVISION_MISTAKES)[number];
 
+/**
+ * Whether a value, typically one a model returned, is one of the three kinds
+ * of mistake. Tutor's notebook marking uses the same three to choose what to
+ * offer next.
+ */
+export function isRevisionMistake(value: unknown): value is RevisionMistake {
+  return REVISION_MISTAKES.some((mistake) => mistake === value);
+}
+
 export type RevisionSessionStatus =
   | "preparing"
   | "active"

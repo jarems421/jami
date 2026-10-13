@@ -9,6 +9,8 @@ import {
   toNotebookMarkedWorking,
 } from "@/lib/learning/events/notebook-marking";
 import type { NotebookPageLearningContext } from "@/lib/learning/notebook-page-context";
+import { LEARNING_ERROR_CATEGORIES } from "@/lib/learning/types";
+import { buildAssistantResponseSchema } from "@/app/api/ai/assistant/response-schema";
 
 const NOW = Date.parse("2026-09-21T10:00:00.000Z");
 
@@ -194,6 +196,47 @@ describe("what a marking keeps", () => {
     const stored = JSON.stringify(result.marking);
     expect(stored).not.toContain("student's own line");
     expect(stored).not.toContain("candidateValue");
+  });
+
+  it("keeps a fixed error category on a point lost, and nothing else the marker says about it", () => {
+    const result = read({
+      ...VERDICT,
+      mistakeKind: "slip",
+      criterionResults: [
+        { criterion: "States the gradient", awarded: true, awardedMarks: 2, errorCategory: "missing_units" },
+        { criterion: "Substitutes the point correctly", awarded: true, awardedMarks: 1 },
+        { criterion: "Gives the equation with units", awarded: false, awardedMarks: 2, errorCategory: "missing_units" },
+        { criterion: "Rounds sensibly", awarded: false, errorCategory: "sloppy_handwriting" },
+      ],
+    });
+    if (!result.ok) throw new Error("expected a marking");
+    const [earned, , lost, invented] = result.marking.criterionResults;
+    // On a point earned it says nothing, and an invented one is dropped without losing the marking.
+    expect(earned).not.toHaveProperty("errorCategory");
+    expect(lost?.errorCategory).toBe("missing_units");
+    expect(invented).not.toHaveProperty("errorCategory");
+    // The kind of mistake chooses what Tutor offers next; it is never kept.
+    expect(JSON.stringify(result.marking)).not.toContain("mistakeKind");
+
+    const [observation] = notebookObservations([
+      toNotebookMarkedWorking({ id: "nb-1_page-3", ...result.marking }),
+    ]);
+    expect(observation?.errorChecks).toContainEqual({
+      category: "missing_units",
+      missed: true,
+      detection: expect.any(String),
+    });
+  });
+
+  it("asks the marker only for categories and kinds from the fixed lists", () => {
+    const schema = buildAssistantResponseSchema([], true);
+    const marking = schema.properties?.marking;
+    const criterion = marking?.properties?.criterionResults?.items;
+    expect(criterion?.properties?.errorCategory?.enum).toEqual([...LEARNING_ERROR_CATEGORIES]);
+    expect(marking?.properties?.mistakeKind?.enum).toEqual(["concept", "method", "slip"]);
+    // Both optional: a marking without them is still a marking.
+    expect(criterion?.required).not.toContain("errorCategory");
+    expect(marking?.required).not.toContain("mistakeKind");
   });
 
   it("files one record per page, so re-marking replaces rather than adds", () => {

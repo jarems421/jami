@@ -1,4 +1,5 @@
 import { isValidEvidenceTime } from "@/lib/learning/evidence-time";
+import { isLearningErrorCategory, type LearningErrorCategory } from "@/lib/learning/types";
 import type {
   NotebookPageAttribution,
   NotebookPageLearningContext,
@@ -23,7 +24,8 @@ import type { NotebookMarkedWorking } from "@/lib/learning/profile/notebook-sign
  * source be the most permissive one.
  *
  * **What is deliberately not stored.** Criterion wording is kept, because it
- * is the marker's own language and the error-category rules read it. The
+ * is the marker's own language and the error-category rules read it, and so
+ * is a category from the fixed list on each point lost. The
  * student's own answer text is not, anywhere: past-paper markings carry a
  * `candidateValue` per criterion and this does not, because that field is the
  * student's writing and a notebook page is where a student writes most freely.
@@ -63,12 +65,18 @@ const ATTRIBUTIONS: readonly NotebookMarkingAttribution[] = [
  * verdict from a marker that turned out to be wrong can be found and removed
  * rather than hunted for by date.
  */
-export const NOTEBOOK_MARKER_VERSION = "tutor-notebook-marking-v1-2026-09-21";
+export const NOTEBOOK_MARKER_VERSION = "tutor-notebook-marking-v2-2026-10-13";
 
 export type NotebookMarkingCriterion = {
   criterion: string;
   awarded: boolean;
   awardedMarks?: number;
+  /**
+   * On a point not earned, the kind of slip that lost it, from the fixed list
+   * and nothing else. The student's writing is never kept, so this is how the
+   * engine still learns that they keep dropping units.
+   */
+  errorCategory?: LearningErrorCategory;
 };
 
 /** How a marking was placed on its concepts; a marking that could not be placed is not kept. */
@@ -128,10 +136,18 @@ function readCriteria(value: unknown): NotebookMarkingCriterion[] | null {
     if (!criterion || typeof record.awarded !== "boolean") return null;
     const awardedMarks = record.awardedMarks === undefined ? undefined : readMarks(record.awardedMarks);
     if (awardedMarks === null) return null;
+    /*
+     * Kept only on a point the student lost and only from the fixed list. A
+     * category the marker made up, or put on a point it awarded, is dropped
+     * on its own: it is an extra, and the marking stands without it.
+     */
+    const errorCategory =
+      !record.awarded && isLearningErrorCategory(record.errorCategory) ? record.errorCategory : undefined;
     criteria.push({
       criterion,
       awarded: record.awarded,
       ...(awardedMarks !== undefined ? { awardedMarks } : {}),
+      ...(errorCategory ? { errorCategory } : {}),
     });
   }
   return criteria.length > 0 ? criteria : null;

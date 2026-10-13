@@ -4,6 +4,7 @@ import { requestsWorkingCheck } from "@/lib/ai/tutor-turn-plan";
 import {
   getNotebookAssistantQuickActions,
   MARK_UPDATED_WORK_FOLLOW_UP,
+  notebookMarkingFollowUp,
   notebookPageHasWork,
 } from "@/lib/workspace/notebook-assistant";
 import type { NotebookPage, NotebookTextBlock } from "@/lib/workspace/notebooks";
@@ -73,6 +74,18 @@ describe("notebook Tutor actions", () => {
       expect(invitesNotebookMarking({ message: third?.prompt ?? "", context }), engineAction).toBe(false);
       expect(requestsWorkingCheck({ message: third?.prompt ?? "", context }), engineAction).toBe(false);
     }
+  });
+
+  it("follows a marking that lost marks with the step that fits the mistake", () => {
+    const lost = { canMark: true, awardedMarks: 2, maxMarks: 5 };
+    expect(notebookMarkingFollowUp({ ...lost, mistakeKind: "concept" })?.label).toBe("Teach me this");
+    expect(notebookMarkingFollowUp({ ...lost, mistakeKind: "method" })?.label).toBe("Show me the method");
+    expect(notebookMarkingFollowUp({ ...lost, mistakeKind: "slip" })).toEqual(MARK_UPDATED_WORK_FOLLOW_UP);
+    // Full marks, a declined marking or an unknown kind offer nothing.
+    expect(notebookMarkingFollowUp({ ...lost, awardedMarks: 5, mistakeKind: "slip" })).toBeUndefined();
+    expect(notebookMarkingFollowUp({ ...lost, canMark: false, mistakeKind: "slip" })).toBeUndefined();
+    expect(notebookMarkingFollowUp({ ...lost, mistakeKind: "careless" })).toBeUndefined();
+    expect(notebookMarkingFollowUp(undefined)).toBeUndefined();
   });
 
   it("offers exactly three ways into a fresh chat", () => {

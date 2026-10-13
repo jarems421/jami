@@ -3,7 +3,7 @@ import {
   type MarkedCriterion,
 } from "@/lib/learning/profile/error-patterns";
 import { clampUnit } from "@/lib/learning/scoring/mastery-score";
-import type { LearningErrorCheck } from "@/lib/learning/types";
+import { isLearningErrorCategory, type LearningErrorCheck } from "@/lib/learning/types";
 
 /**
  * A marked answer as it is stored, read defensively.
@@ -55,6 +55,7 @@ function readCriteria(value: unknown): MarkedCriterion[] {
           : {}),
         ...(schemeValue !== undefined ? { schemeValue } : {}),
         ...(candidateValue !== undefined ? { candidateValue } : {}),
+        ...(isLearningErrorCategory(record.errorCategory) ? { errorCategory: record.errorCategory } : {}),
       },
     ];
   });

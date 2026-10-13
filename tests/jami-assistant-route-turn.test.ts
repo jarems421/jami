@@ -800,6 +800,25 @@ describe("quick checks and markings in a turn", () => {
     expect(sent.find((event) => event.type === "done")?.completedActionId).toBe(actionId);
   });
 
+  it("follows marks lost to the method by offering to show it", async () => {
+    const notebookLearning = { conceptKeys: ["topic:t1"], attribution: "page-topics", workItemId: "notebook:nb1:p1" };
+    mocks.resolveContext.mockResolvedValueOnce(resolved({ topicIds: ["t1"], notebookLearning }));
+    const marking = {
+      canMark: true,
+      awardedMarks: 1,
+      maxMarks: 3,
+      mistakeKind: "method",
+      criterionResults: [{ criterion: "Sets up the equation", awarded: false, awardedMarks: 2 }],
+    };
+    mocks.streamText.mockResolvedValueOnce(answer({ answer: "One of three.", sourceRefs: [], marking }));
+    mocks.recordMarking.mockResolvedValueOnce({ recorded: true });
+
+    const sent = await events(await postAssistant(request(body({ message: "Mark my work please", context: notebookContext }))));
+
+    const done = sent.find((event) => event.type === "done") as { followUps?: Array<{ label: string }> } | undefined;
+    expect(done?.followUps?.map((followUp) => followUp.label)).toContain("Show me the method");
+  });
+
   it("claims no completed action for a marking that was not recorded", async () => {
     const notebookLearning = {
       conceptKeys: ["topic:t1"],

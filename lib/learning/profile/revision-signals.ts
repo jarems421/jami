@@ -1,10 +1,6 @@
 import { markedAnswerWeight } from "@/lib/learning/profile/marked-answer";
 import { isValidEvidenceTime } from "@/lib/learning/evidence-time";
-import {
-  LEARNING_ERROR_CATEGORIES,
-  type LearningErrorCategory,
-  type LearningObservation,
-} from "@/lib/learning/types";
+import { isLearningErrorCategory, type LearningObservation } from "@/lib/learning/types";
 
 /**
  * A finished Revision Session, as the Learning Engine reads it.
@@ -45,10 +41,6 @@ const COUNTED_STEPS: ReadonlySet<string> = new Set(["independent", "apply", "ret
 const STEP_MARKS = 1;
 
 const TOPIC_KEY_PATTERN = /^(topic|deck|spec):.+/;
-
-function isErrorCategory(value: unknown): value is LearningErrorCategory {
-  return LEARNING_ERROR_CATEGORIES.some((category) => category === value);
-}
 
 /**
  * One observation per counted step.
@@ -96,7 +88,7 @@ export function revisionObservations(
         at,
         trendEligible: true,
         ...(session.actionId ? { interventionId: session.actionId } : {}),
-        errorChecks: isErrorCategory(step.errorCategory)
+        errorChecks: isLearningErrorCategory(step.errorCategory)
           ? [{ category: step.errorCategory, missed: true, detection: "marker-note" }]
           : [],
       });

@@ -19,6 +19,7 @@ import {
 import { resolveTutorSuggestions } from "@/lib/ai/tutor-suggestion";
 import type { TutorTurnPlan } from "@/lib/ai/tutor-turn-plan";
 import type { TutorTurnSource } from "@/lib/ai/tutor-turn-prompt";
+import { notebookMarkingFollowUp } from "@/lib/workspace/notebook-assistant";
 
 /** Everything a finished answer is read against, apart from the answer itself. */
 export type TutorAnswerPackageInput = {
@@ -135,7 +136,13 @@ export function buildTutorAnswerPackage(
   });
   // Asking first, the card is the offer: nothing else to make sits beside it.
   const materialOffers = studyMaterialSetup ? [] : suggested.studyMaterialOffers;
-  const followUps = [...plan.guidance.followUps, ...suggested.followUps];
+  // After marks lost on a page, the one next step that fits the kind of mistake.
+  const markingFollowUp = plan.markingInvited ? notebookMarkingFollowUp(parsedAnswer.marking) : undefined;
+  const followUps = [
+    ...plan.guidance.followUps,
+    ...(markingFollowUp ? [markingFollowUp] : []),
+    ...suggested.followUps,
+  ];
   const sourceSaveOffer =
     input.attachments.anyReadable
       ? readTutorSourceSaveOffer(

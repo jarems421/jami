@@ -73,6 +73,11 @@ export const LEARNING_ERROR_CATEGORIES = [
 
 export type LearningErrorCategory = (typeof LEARNING_ERROR_CATEGORIES)[number];
 
+/** Whether a value, typically one a model returned, is on the fixed list. */
+export function isLearningErrorCategory(value: unknown): value is LearningErrorCategory {
+  return LEARNING_ERROR_CATEGORIES.some((category) => category === value);
+}
+
 /**
  * How a recurring-error chance was recognised, strongest first: the marker's
  * structured scheme and candidate values, then the criterion's wording, then

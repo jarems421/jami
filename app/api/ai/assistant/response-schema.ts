@@ -1,4 +1,6 @@
 import { Type, type Schema } from "@google/genai";
+import { LEARNING_ERROR_CATEGORIES } from "@/lib/learning/types";
+import { REVISION_MISTAKES } from "@/lib/revision/types";
 
 /**
  * The shape the assistant must answer in.
@@ -59,9 +61,23 @@ function markingSchema(): Schema {
             },
             awarded: { type: Type.BOOLEAN, description: "Whether the student earned this point." },
             awardedMarks: { type: Type.INTEGER, description: "Marks this point is worth." },
+            errorCategory: {
+              type: Type.STRING,
+              format: "enum",
+              enum: [...LEARNING_ERROR_CATEGORIES],
+              description:
+                "Only on a point not earned, and only when the point was lost to one of these: missing units, wrong precision or rounding, an unjustified answer, missing working, a term misused, a graph error, or a comparison not made. Leave it out otherwise.",
+            },
           },
           required: ["criterion", "awarded", "awardedMarks"],
         },
+      },
+      mistakeKind: {
+        type: Type.STRING,
+        format: "enum",
+        enum: [...REVISION_MISTAKES],
+        description:
+          "Only when marks were lost: concept if the idea itself is misunderstood, method if the approach or set-up is wrong, slip if sound working went wrong by accident. Leave it out on full marks.",
       },
     },
     required: ["canMark", "awardedMarks", "maxMarks", "criterionResults"],

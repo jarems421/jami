@@ -1,7 +1,7 @@
 import { repairModelLatex } from "@/lib/ai/model-json";
-import { LEARNING_ERROR_CATEGORIES, type LearningErrorCategory } from "@/lib/learning/types";
+import { isLearningErrorCategory, type LearningErrorCategory } from "@/lib/learning/types";
 import {
-  REVISION_MISTAKES,
+  isRevisionMistake,
   type RevisionLesson,
   type RevisionMistake,
   type RevisionTask,
@@ -240,14 +240,6 @@ function isVerdict(value: unknown): value is RevisionVerdict {
   return value === "correct" || value === "partial" || value === "incorrect";
 }
 
-function isErrorCategory(value: unknown): value is LearningErrorCategory {
-  return LEARNING_ERROR_CATEGORIES.some((category) => category === value);
-}
-
-function isMistake(value: unknown): value is RevisionMistake {
-  return REVISION_MISTAKES.some((mistake) => mistake === value);
-}
-
 /**
  * A mark, or null when the marker did not give one.
  *
@@ -272,10 +264,10 @@ export function readRevisionMarking(value: unknown): RevisionMarking | null {
     verdict,
     score,
     feedback,
-    ...(verdict !== "correct" && isErrorCategory(record.errorCategory)
+    ...(verdict !== "correct" && isLearningErrorCategory(record.errorCategory)
       ? { errorCategory: record.errorCategory }
       : {}),
-    ...(verdict !== "correct" && isMistake(record.mistake) ? { mistake: record.mistake } : {}),
+    ...(verdict !== "correct" && isRevisionMistake(record.mistake) ? { mistake: record.mistake } : {}),
   };
 }
 

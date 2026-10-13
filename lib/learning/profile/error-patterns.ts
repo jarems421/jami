@@ -160,6 +160,12 @@ export type MarkedCriterion = {
   maxMarks?: number;
   schemeValue?: string;
   candidateValue?: string;
+  /**
+   * The marker's own reading of why a point was lost, from the fixed list.
+   * Notebook marking keeps this instead of the student's writing, which is
+   * what the structured values above would otherwise be read from.
+   */
+  errorCategory?: LearningErrorCategory;
 };
 
 /**
@@ -196,8 +202,13 @@ function criterionChecks(criterion: MarkedCriterion): LearningErrorCheck[] {
   const covered = new Set(checks.map((check) => check.category));
   for (const category of classifyMarkingText(criterion.criterion)) {
     if (!covered.has(category)) {
+      covered.add(category);
       checks.push({ category, missed: lostCredit, detection: "criterion-wording" });
     }
+  }
+  // Only ever on a point that lost credit; on one that earned it, it says nothing.
+  if (lostCredit && criterion.errorCategory && !covered.has(criterion.errorCategory)) {
+    checks.push({ category: criterion.errorCategory, missed: true, detection: "marker-note" });
   }
   return checks;
 }

@@ -86,7 +86,9 @@ export const MARKING_INSTRUCTION = [
   "add up to the total you give.",
   "If the page is unclear, incomplete, or you would be estimating, leave \"marking\"",
   "out entirely and say so in your answer. Describe each point in your own words;",
-  "never quote what the student wrote into it.",
+  "never quote what the student wrote into it. On a point they lost, add errorCategory",
+  "only when the loss was one of its listed kinds, and when marks were lost say in",
+  "mistakeKind whether the idea, the method or a slip was the main reason.",
 ].join(" ");
 
 /**

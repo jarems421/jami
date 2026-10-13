@@ -1,5 +1,6 @@
 import { pageHasSavedInk } from "@/lib/workspace/notebook-page-ink-split";
 import type { MaterialActionKind } from "@/lib/learning/actions/material-action";
+import { isRevisionMistake } from "@/lib/revision/types";
 import type { NotebookPage, NotebookTextBlock } from "@/lib/workspace/notebooks";
 
 type NotebookPromptAction = { label: string; prompt: string };
@@ -71,6 +72,39 @@ export const MARK_UPDATED_WORK_FOLLOW_UP = {
   label: "Mark my updated work",
   prompt: MARK_MY_WORK_ACTION.prompt,
 } as const;
+
+const SHOW_METHOD_FOLLOW_UP = {
+  label: "Show me the method",
+  prompt:
+    "Show me the method for this question step by step using different numbers, so I can redo mine myself.",
+} as const;
+
+/**
+ * What to offer after a marking that lost marks, by what kind of mistake the
+ * marker said it was: the idea taught, the method shown, or -- for a slip in
+ * sound working -- the corrected page marked again.
+ *
+ * Tutoring only. The kind is read from this answer and chooses one button; it
+ * is never stored and never reaches the Learning Engine.
+ */
+export function notebookMarkingFollowUp(marking: unknown): NotebookPromptAction | undefined {
+  if (!marking || typeof marking !== "object") return undefined;
+  const record = marking as Record<string, unknown>;
+  if (record.canMark === false) return undefined;
+  const lostMarks =
+    typeof record.awardedMarks === "number" &&
+    typeof record.maxMarks === "number" &&
+    record.awardedMarks < record.maxMarks;
+  if (!lostMarks || !isRevisionMistake(record.mistakeKind)) return undefined;
+  switch (record.mistakeKind) {
+    case "concept":
+      return ENGINE_ACTIONS.teach;
+    case "method":
+      return SHOW_METHOD_FOLLOW_UP;
+    case "slip":
+      return MARK_UPDATED_WORK_FOLLOW_UP;
+  }
+}
 
 /**
  * The engine's starting point for the concept on the page, as something to ask.
