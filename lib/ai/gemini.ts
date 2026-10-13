@@ -362,6 +362,11 @@ function uniqueCitations(response: GenerateContentResponse) {
  * course/search terms selected by the caller, never student work or private
  * source text. Failure is returned as data so Tutor can continue locally.
  */
+/** Whether grounded web research can run at all here: switched on, with Gemini configured. */
+export function isGroundedResearchConfigured(env: NodeJS.ProcessEnv = process.env) {
+  return env.AI_WEB_RESEARCH_ENABLED === "true" && resolveAiProviderPolicy(env).geminiReady;
+}
+
 export async function generateGroundedResearch(input: {
   sanitizedQuery: string;
   urls?: readonly string[];
@@ -370,10 +375,8 @@ export async function generateGroundedResearch(input: {
 }): Promise<GeminiResearchResult> {
   const query = input.sanitizedQuery.replace(/\s+/g, " ").trim();
   if (!query || query.length > 500) return { ok: false, reason: "invalid_query" };
+  if (!isGroundedResearchConfigured()) return { ok: false, reason: "not_configured" };
   const policy = resolveAiProviderPolicy(process.env);
-  if (!policy.geminiReady || process.env.AI_WEB_RESEARCH_ENABLED !== "true") {
-    return { ok: false, reason: "not_configured" };
-  }
   const urls = [...new Set(
     (input.urls ?? []).slice(0, 20).map(sanitizePublicHttpUrl).filter((url): url is string => Boolean(url))
   )];

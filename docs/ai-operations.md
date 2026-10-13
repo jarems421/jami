@@ -29,7 +29,8 @@ text, student work, image bytes, or cost metadata.
 | All OpenRouter text inference | Set `OPENROUTER_KILL_SWITCH=true` |
 | Independent juror only | Set `OPENROUTER_JUROR_KILL_SWITCH=true` |
 | All Gemini specialist inference | Set `GEMINI_KILL_SWITCH=true` |
-| Grounded web/URL research | Set `AI_WEB_RESEARCH_ENABLED=false` |
+| Grounded web/URL research (the Tutor agent's searches too) | Set `AI_WEB_RESEARCH_ENABLED=false` |
+| Tutor agent's look-ups before Think and Deep answers | Set `NEXT_PUBLIC_ENABLE_TUTOR_AGENT=false` |
 | Tutor illustrations | Set `AI_TUTOR_IMAGES_ENABLED=false` |
 | Paper raster illustrations | Set `AI_PAPER_IMAGES_ENABLED=false` |
 | Second-model check of drawn paper figures | Set `PRACTICE_PAPER_FIGURE_REVIEW_ENABLED=false` |
@@ -80,6 +81,11 @@ the juror (Kimi K2.6), and the answer that reconciles its review stays on Qwen,
 so the juror never checks its own family. No attempt is sent less effort than its
 role needs, and a model that thinks gets 4,000 tokens of headroom over the
 answer's cap, so its thinking cannot cut a reply off mid-sentence.
+
+A Think or Deep turn then looks things up and checks its work before it answers
+([`tutor-agent.md`](tutor-agent.md)): planner steps on the worker
+(`agent_step`), and at most one independent working (`agent_check`), logged
+as `agent.finished` with the step count, tools and why it stopped.
 
 Each turn logs `routing.decided` with its tier, role, reason and the student's
 setting. A slow quick or think answer almost always means the worker's

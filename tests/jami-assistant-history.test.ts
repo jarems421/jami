@@ -128,4 +128,21 @@ describe("Jami assistant history", () => {
       createdAt: 10,
     });
   });
+
+  it("keeps what Jami looked up with a saved answer, and only on an answer", () => {
+    const steps = [{ tool: "search_web", label: "Searched the web for “AQA specification”" }];
+    expect(
+      mapJamiAssistantStoredMessage("a1", {
+        threadId: "t1",
+        role: "assistant",
+        text: "An answer.",
+        agentSteps: [...steps, { tool: "hack", label: "x" }],
+        createdAt: 1,
+      })?.agentSteps
+    ).toEqual(steps);
+    expect(
+      mapJamiAssistantStoredMessage("u1", { threadId: "t1", role: "user", text: "A question.", agentSteps: steps, createdAt: 1 })
+        ?.agentSteps
+    ).toBeUndefined();
+  });
 });

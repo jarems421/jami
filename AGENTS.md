@@ -51,6 +51,12 @@ Follow `docs/ui-design-system.md` for all UI work, and `docs/architecture.md` fo
   - Tutor's learner profile may list recent individual results, wrong answers first: the front of the student's own flashcards (never the back), the questions of practice papers Jami wrote for them or they uploaded, marks and error categories. Licensed past-paper questions appear only as topic and marks, never their text.
   - Memory is on by default. Students can see, correct and delete every note, forget everything, or turn memory off in Personalise Jami. Rollback flag: `enableTutorMemory`.
   - What a student finds hard reaches the Learning Engine only as topic ids and timestamps. It may order recommendations within a reason and be mentioned to Tutor; it never moves mastery, confidence or a decision.
+- Exception: Tutor agent (agreed 12 Oct 2026, `docs/tutor-agent.md`). Before a Think or Deep answer, Tutor may look things up and check its work in a bounded loop of steps, each one tool:
+  - searching the student's own material in the study context, searching their earlier chats (as recall allows), working a problem through independently to check the answer against, and searching the web when it judges the student's material and general knowledge cannot settle something (a search from their monthly allowance, with the query cut to public subject terms);
+  - which tools a step may use is decided by code from the turn, never by the model; the loop is capped in steps, uses per tool and time, and runs only inside a request the student made;
+  - anything that changes the student's things (cards, decks, notebooks, pages, practice) stays a proposal they confirm with a press;
+  - each step is shown to the student as it starts and kept with the answer; logs record which tools ran, never what they were asked or found;
+  - an agent turn counts as one Tutor question. Quick answers stay one call. Revision Sessions and the paper pipelines are not part of it. Learning Engine rules are unchanged. Rollback flag: `enableTutorAgent`.
 - Preserve existing functionality, routes, Firebase logic, AI logic, data models, and tests.
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.
 - Keep the app responsive across mobile, tablet, and desktop.

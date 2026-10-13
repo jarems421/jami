@@ -204,12 +204,19 @@ it can be judged from a screenshot taken at the right moment.
 2. Ask Tutor (`/dashboard/tutor`, or the drawer in a notebook) about something
    in a folder with many sources. The answer draws on the right source by
    content, not by file name.
-3. Ask Tutor to make flashcards from the conversation. They arrive as drafts to
+3. Ask Tutor something that needs working out (a calculation, or "why" about a
+   specific lecture) with Thinking on Auto. Before the answer, its steps show
+   as they start ("Searching your material for …", "Worked it through
+   separately to check"); the answer then shows "Looked into N things first",
+   which opens to the list, and still does after a reload. A quick definition
+   shows no steps. Ask something only the exam board's site could settle: it
+   may search the web, and one search is used.
+4. Ask Tutor to make flashcards from the conversation. They arrive as drafts to
    accept or discard.
-4. In Personalise Jami (`/dashboard/tutor/personalise`), open the memory map.
+5. In Personalise Jami (`/dashboard/tutor/personalise`), open the memory map.
    Correct a note, delete one, then turn memory off and confirm Tutor stops
    using it.
-5. Make a revision plan from Tutor, and confirm Today then leads with the week
+6. Make a revision plan from Tutor, and confirm Today then leads with the week
    and the next task.
 
 ## 7. Today, the Learning Engine and Revision Sessions

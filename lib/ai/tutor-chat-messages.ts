@@ -12,6 +12,7 @@ import { splitAssistantAnswerAtDiagram } from "@/lib/ai/assistant-answer-layout"
 import type { JamiAppScope, TutorAppActionProposal } from "@/lib/ai/jami-app-guide";
 import type { TutorAttachment, TutorSourceSaveOffer } from "@/lib/ai/tutor-attachments";
 import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
+import type { TutorAgentStepView } from "@/lib/ai/tutor-agent";
 import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import {
   TUTOR_STUDY_MATERIAL_KINDS,
@@ -57,6 +58,8 @@ export type TutorChatMessage = {
   attachmentsUnsaved?: boolean;
   /** Tutor's suggestion to save an attached file as a source, shown only in this sitting. */
   sourceSaveOffer?: TutorSourceSaveOffer;
+  /** What Jami looked up or worked out before answering (`tutor-agent.ts`). */
+  agentSteps?: TutorAgentStepView[];
 };
 
 /**
@@ -138,7 +141,9 @@ export function tutorRequestHistory(
 }
 
 /** The validated reply as a turn of this sitting, with everything it offers. */
-export function tutorAnswerFromResponse(response: JamiAssistantResponse): TutorChatMessage {
+export function tutorAnswerFromResponse(
+  response: JamiAssistantResponse & { agentSteps?: TutorAgentStepView[] }
+): TutorChatMessage {
   return {
     role: "assistant",
     text: response.reply,
@@ -155,6 +160,7 @@ export function tutorAnswerFromResponse(response: JamiAssistantResponse): TutorC
     studyMaterialOffers: response.studyMaterialOffers,
     studyMaterialSetup: response.studyMaterialSetup,
     sourceSaveOffer: response.sourceSaveOffer,
+    ...(response.agentSteps?.length ? { agentSteps: response.agentSteps } : {}),
     fresh: true,
   };
 }

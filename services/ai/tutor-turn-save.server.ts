@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
 import type { ResolvedJamiAssistantContext } from "@/lib/ai/assistant-context.server";
+import type { TutorAgentStepView } from "@/lib/ai/tutor-agent";
 import type {
   JamiAssistantContext,
   ParsedJamiAssistantModelAnswer,
@@ -72,7 +73,9 @@ export type SavedTutorTurn = {
 export async function saveTutorTurn(
   record: TutorTurnRecord,
   payload: TutorAnswerPackage,
-  parsedAnswer: ParsedJamiAssistantModelAnswer
+  parsedAnswer: ParsedJamiAssistantModelAnswer,
+  /** What the agent looked up or worked out first, kept so a reopened chat still says. */
+  agentSteps: readonly TutorAgentStepView[] = []
 ): Promise<SavedTutorTurn> {
   const { userRef, existingThread, movedFromSurface, savedContext, canonicalContextKey, resolved, log } = record;
   const threadRef = existingThread
@@ -141,6 +144,7 @@ export async function saveTutorTurn(
     ...(payload.studyMaterialFocus ? { studyMaterialFocus: payload.studyMaterialFocus } : {}),
     // Kept so a reopened chat still shows them; they run again only on a press.
     ...(payload.appActions ? { appActions: payload.appActions, appScope: payload.appScope } : {}),
+    ...(agentSteps.length > 0 ? { agentSteps } : {}),
     createdAt: now + 1,
   });
   /*

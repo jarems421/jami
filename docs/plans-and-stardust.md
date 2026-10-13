@@ -45,7 +45,7 @@ rare, a little strict on what is expensive and frequent.
 |---|---|---|---|
 | Price | £0 | **£7.99 / month** | **£14.99 / month** |
 | *Cheap and frequent: generous* | | | |
-| Tutor questions (0.28p each) | 60 | 500 | 1,000 |
+| Tutor questions (0.28p each; a Think or Deep answer the Tutor agent looks things up for is still one, at an estimated 2–4× the cost, to be re-measured) | 60 | 500 | 1,000 |
 | Tutor diagrams it draws (0.05p) | fair use | fair use | fair use |
 | Marked past-paper answers (0.11p; a guided retry counts as one) | 25 | 250 | 600 |
 | Revision Sessions (0.3p) | 8 | 60 | 120 |
@@ -55,7 +55,7 @@ rare, a little strict on what is expensive and frequent.
 | Everyday AI: "Draft this answer" on a card (≈0.03p), flashcards or practice questions from a file, the Tutor or a chat (≈0.5p a batch), deck study prep, answer checks, planner chats | small monthly caps (50 drafts, 10 batches each) | unlimited | unlimited |
 | *Expensive and frequent: a little strict* | | | |
 | Jami papers, written and marked (25p) | 1 | 8 | 14 |
-| Tutor web searches (1.5p) | 5 | 30 | 60 |
+| Tutor web searches (1.5p; the Tutor agent's own searches count here too) | 5 | 30 | 60 |
 | *Expensive and rare: strict* | | | |
 | Generated photos in the Tutor (≈4.5p) | — | 10 | 24 |
 | Re-marking a paper (8p) | stardust | stardust | stardust |

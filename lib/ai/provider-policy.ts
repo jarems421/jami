@@ -35,7 +35,11 @@ export type AiRouteReason =
   | "provider_escalation"
   | "provider_failover"
   | "provider_standby"
-  | "visual_specialist";
+  | "visual_specialist"
+  /** A Tutor agent's planner choosing its next look-up (`tutor-agent.ts`). */
+  | "agent_step"
+  /** A Tutor agent's independent working of a problem, to check the answer against. */
+  | "agent_check";
 
 export type AiRouteDecision = {
   role: "worker" | "supervisor" | "juror";

@@ -13,6 +13,8 @@ import {
 } from "@/lib/ai/tutor-attachments";
 import { isTutorChatRecallRequest } from "@/lib/ai/tutor-chat-recall";
 import { getTutorSuggestionKinds } from "@/lib/ai/tutor-suggestion";
+import { TUTOR_AGENT_LIMITS, type TutorAgentLiveStep } from "@/lib/ai/tutor-agent";
+import type { TutorAnswerPackageInput } from "@/lib/ai/tutor-turn-answer";
 import { planTutorTurn } from "@/lib/ai/tutor-turn-plan";
 import {
   buildTutorSystemInstruction,
@@ -36,7 +38,13 @@ import {
   readTutorAttachmentFolders,
   readTutorTurnMaterial,
 } from "@/services/ai/tutor-turn-material.server";
-import { exceedsTutorInputCap, tutorTurnDeadlines } from "@/services/ai/tutor-turn-model.server";
+import { runTutorAgent, type TutorAgentGathered } from "@/services/ai/tutor-agent.server";
+import {
+  exceedsTutorInputCap,
+  TUTOR_AGENT_EXTRA_MS,
+  tutorTurnDeadlines,
+  type TutorAnswerCall,
+} from "@/services/ai/tutor-turn-model.server";
 import { openTutorTurn, tutorFailureResponse } from "@/services/ai/tutor-turn-request.server";
 import { researchTutorTurn } from "@/services/ai/tutor-turn-research.server";
 import { routeTutorTurn } from "@/services/ai/tutor-turn-routing.server";
@@ -44,6 +52,7 @@ import {
   createTutorTurnStream,
   tutorTurnResponse,
   watchTutorTurnCancellation,
+  type TutorTurnPrepared,
 } from "@/services/ai/tutor-turn-stream.server";
 import { loadTutorTurnThread } from "@/services/ai/tutor-turn-thread.server";
 import { getAdminDb } from "@/services/firebase/admin";
@@ -224,52 +233,88 @@ export async function POST(request: NextRequest) {
   });
   const webResearch = research.result;
 
-  const allowedSourceRefs = readable.map((result) => result.sourceRef);
   const attachmentFolders =
     readableAttachments.length > 0 ? await readTutorAttachmentFolders(userRef, log) : [];
-  const responseSchema = buildAssistantResponseSchema(
-    allowedSourceRefs,
-    plan.markingInvited,
-    false,
-    false,
-    resolved.memoryWritable === true,
-    plan.studyMaterialKinds,
-    readableAttachments.length > 0,
-    getTutorSuggestionKinds(plan.practiceSetsAvailable),
-    {
-      checkInvited: plan.checkInvited,
-      ...(pendingCheck ? { pendingCheckPoints: pendingCheck.points.length } : {}),
-      nextStepAvailable: plan.nextStepAvailable,
-      appActions: { types: plan.app.actions, destinationKeys: plan.app.destinations.map((destination) => destination.key) },
-    }
-  );
   const attachmentInstruction = buildTutorAttachmentInstruction({
     attachmentCount: readableAttachments.length > 0 ? attachments.length : 0,
     folderNames: attachmentFolders.map((folder) => folder.name),
   });
   const recall = await recallLoading;
-  const systemInstruction = buildTutorSystemInstruction({
-    context: resolved,
-    research: { ok: webResearch.ok, needed: research.needed, allowanceUsed: research.allowanceUsed },
-    movedChat: movedFromSurface ? { from: movedFromSurface, to: savedContext.surface } : null,
-    attachmentInstruction,
+  /**
+   * What the answer is asked with, from what is in hand: once from the
+   * up-front reading, and again after the agent's look-ups when it runs.
+   */
+  const composeAnswer = (gathered: Pick<TutorAgentGathered, "readable" | "research" | "recall" | "workings"> & {
+    researchNeeded: boolean;
+    researchAllowanceUsed: boolean;
+  }) => {
+    const allowedSourceRefs = gathered.readable.map((result) => result.sourceRef);
+    const responseSchema = buildAssistantResponseSchema(
+      allowedSourceRefs,
+      plan.markingInvited,
+      false,
+      false,
+      resolved.memoryWritable === true,
+      plan.studyMaterialKinds,
+      readableAttachments.length > 0,
+      getTutorSuggestionKinds(plan.practiceSetsAvailable),
+      {
+        checkInvited: plan.checkInvited,
+        ...(pendingCheck ? { pendingCheckPoints: pendingCheck.points.length } : {}),
+        nextStepAvailable: plan.nextStepAvailable,
+        appActions: { types: plan.app.actions, destinationKeys: plan.app.destinations.map((destination) => destination.key) },
+      }
+    );
+    const systemInstruction = buildTutorSystemInstruction({
+      context: resolved,
+      research: {
+        ok: gathered.research.ok,
+        needed: gathered.researchNeeded,
+        allowanceUsed: gathered.researchAllowanceUsed,
+      },
+      movedChat: movedFromSurface ? { from: movedFromSurface, to: savedContext.surface } : null,
+      attachmentInstruction,
+      recall: gathered.recall,
+      independentWorking: gathered.workings.length > 0,
+      markingInvited: plan.markingInvited,
+      pendingCheck,
+      checkInvited: plan.checkInvited,
+      studyMaterial: {
+        requested:
+          plan.requestedStudyMaterial === "practice" && !plan.practiceSetsAvailable
+            ? null
+            : plan.requestedStudyMaterial,
+        practiceAvailable: plan.practiceSetsAvailable,
+        askFirst: plan.askStudyMaterialFirst,
+      },
+      suggestions: { practiceAvailable: plan.practiceSetsAvailable, previous: thread.previousSuggestions },
+      app: { destinations: plan.app.destinations, available: plan.app.actions },
+      responseInstruction: plan.guidance.instruction,
+      newBoundaryToken: randomUUID,
+    });
+    const contents = buildTutorTurnContents({
+      history: conversationHistory,
+      research: gathered.research,
+      sources: gathered.readable,
+      attachments: readableAttachments,
+      recall: gathered.recall,
+      workings: gathered.workings,
+      currentLabel: resolved.currentLabel,
+      currentParts: resolved.currentParts,
+      message: parsedRequest.message,
+      newBoundaryToken: randomUUID,
+    });
+    return { allowedSourceRefs, responseSchema, systemInstruction, contents };
+  };
+  const upFront = composeAnswer({
+    readable,
+    research: webResearch,
     recall,
-    markingInvited: plan.markingInvited,
-    pendingCheck,
-    checkInvited: plan.checkInvited,
-    studyMaterial: {
-      requested:
-        plan.requestedStudyMaterial === "practice" && !plan.practiceSetsAvailable
-          ? null
-          : plan.requestedStudyMaterial,
-      practiceAvailable: plan.practiceSetsAvailable,
-      askFirst: plan.askStudyMaterialFirst,
-    },
-    suggestions: { practiceAvailable: plan.practiceSetsAvailable, previous: thread.previousSuggestions },
-    app: { destinations: plan.app.destinations, available: plan.app.actions },
-    responseInstruction: plan.guidance.instruction,
-    newBoundaryToken: randomUUID,
+    workings: [],
+    researchNeeded: research.needed,
+    researchAllowanceUsed: research.allowanceUsed,
   });
+  const { allowedSourceRefs, responseSchema, systemInstruction } = upFront;
   const providerDiagnostics: AiResponseDiagnostics[] = [];
   const route = await routeTutorTurn({
     message: parsedRequest.message,
@@ -280,17 +325,7 @@ export async function POST(request: NextRequest) {
     sources: readable,
     currentParts: resolved.currentParts,
     research: webResearch,
-    contents: buildTutorTurnContents({
-      history: conversationHistory,
-      research: webResearch,
-      sources: readable,
-      attachments: readableAttachments,
-      recall,
-      currentLabel: resolved.currentLabel,
-      currentParts: resolved.currentParts,
-      message: parsedRequest.message,
-      newBoundaryToken: randomUUID,
-    }),
+    contents: upFront.contents,
     reasoningEffort: resolved.reasoningEffort,
     hasAttachments: readableAttachments.length > 0,
     preAnswerDeadlineAt,
@@ -323,40 +358,91 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const call: TutorAnswerCall = {
+    reasoningEffort: route.reasoningEffort,
+    preferStandby: route.preferStandby,
+    role: route.role,
+    routeReason: route.routeReason,
+    deadlineAt,
+    signal: cancellation.signal,
+    responseSchema,
+    systemInstruction,
+    contents: route.contents,
+    providerDiagnostics,
+    log,
+  };
+  const answer: TutorAnswerPackageInput = {
+    message: parsedRequest.message,
+    context: parsedRequest.context,
+    plan,
+    current: { id: resolved.currentId, label: resolved.currentLabel },
+    sources: readable,
+    research: webResearch,
+    sourceFailures: material.sourceFailures,
+    ...(resolved.practiceOffer ? { practiceOffer: resolved.practiceOffer } : {}),
+    ...(resolved.nextStepOffer ? { nextStepOffer: resolved.nextStepOffer } : {}),
+    attachments: {
+      all: attachments,
+      anyReadable: readableAttachments.length > 0,
+      folderIds: attachmentFolders.map((folder) => folder.id),
+    },
+  };
+  /*
+   * Think and Deep answers look things up first (docs/tutor-agent.md). Quick
+   * ones stay one fast call, and a reply already reconciled with the juror's
+   * independent review has had its second opinion.
+   */
+  const agentRuns =
+    featureFlags.enableTutorAgent && route.tier !== "quick" && route.routeReason !== "second_correction";
+  const prepare = agentRuns
+    ? async (onStep: (step: TutorAgentLiveStep) => void): Promise<TutorTurnPrepared> => {
+        const gathered = await runTutorAgent({
+          uid,
+          message: parsedRequest.message,
+          history: conversationHistory,
+          currentText: resolved.currentParts.flatMap((part) => ("text" in part ? [part.text] : [])).join("\n"),
+          scope: { sources: resolved.sources, pinnedSourceIds: resolved.pinnedSourceIds ?? [] },
+          inHand: { readable, research: webResearch, recall },
+          recallFrom: {
+            ...(existingThread ? { currentThreadId: existingThread.id, currentThreadTitle: existingThread.title } : {}),
+            earlierInThread: thread.earlierInThread,
+          },
+          deadlineAt: Math.min(Date.now() + TUTOR_AGENT_LIMITS.budgetMs, deadlineAt),
+          signal: cancellation.signal,
+          providerDiagnostics,
+          onStep,
+          log,
+        });
+        const composed = composeAnswer({
+          ...gathered,
+          // A search the agent tried counts as needed, so a failed one is said to be unverified.
+          researchNeeded: research.needed || gathered.steps.some((step) => step.tool === "search_web"),
+          researchAllowanceUsed: research.allowanceUsed || gathered.searchAllowanceUsed,
+        });
+        return {
+          call: {
+            ...call,
+            responseSchema: composed.responseSchema,
+            systemInstruction: composed.systemInstruction,
+            contents: composed.contents,
+            // The look-ups' time is added, so the answer keeps its own.
+            deadlineAt: deadlineAt + TUTOR_AGENT_EXTRA_MS,
+          },
+          allowedSourceRefs: composed.allowedSourceRefs,
+          answer: { ...answer, sources: gathered.readable, research: gathered.research },
+          agentSteps: gathered.steps,
+        };
+      }
+    : undefined;
+
   return tutorTurnResponse(
     createTutorTurnStream({
-      call: {
-        reasoningEffort: route.reasoningEffort,
-        preferStandby: route.preferStandby,
-        role: route.role,
-        routeReason: route.routeReason,
-        deadlineAt,
-        signal: cancellation.signal,
-        responseSchema,
-        systemInstruction,
-        contents: route.contents,
-        providerDiagnostics,
-        log,
-      },
+      call,
       maxOutputTokens,
       allowedSourceRefs,
       depth: plan.guidance.depth,
-      answer: {
-        message: parsedRequest.message,
-        context: parsedRequest.context,
-        plan,
-        current: { id: resolved.currentId, label: resolved.currentLabel },
-        sources: readable,
-        research: webResearch,
-        sourceFailures: material.sourceFailures,
-        ...(resolved.practiceOffer ? { practiceOffer: resolved.practiceOffer } : {}),
-        ...(resolved.nextStepOffer ? { nextStepOffer: resolved.nextStepOffer } : {}),
-        attachments: {
-          all: attachments,
-          anyReadable: readableAttachments.length > 0,
-          folderIds: attachmentFolders.map((folder) => folder.id),
-        },
-      },
+      answer,
+      ...(prepare ? { prepare } : {}),
       record: {
         uid,
         adminDb,

@@ -356,7 +356,7 @@ export default function JamiAssistantDrawer({
   const { viewingForeignThread, openThread } = history;
 
   const clearInput = useCallback(() => setInput(""), []);
-  const { sendMessage, handleReasoningSaveStarted, answerHasStarted, waitingLabel } =
+  const { sendMessage, handleReasoningSaveStarted, answerHasStarted, waitingLabel, agentStepsDone } =
     useTutorChatSend({
       conversation,
       files,
@@ -557,6 +557,7 @@ export default function JamiAssistantDrawer({
               loading={loading}
               answerHasStarted={answerHasStarted}
               waitingLabel={waitingLabel}
+              agentStepsDone={agentStepsDone}
               files={files}
               onKeepAttachmentBeside={onKeepAttachmentBeside}
               defaultFolderId={settingsFolderIds?.[0]}

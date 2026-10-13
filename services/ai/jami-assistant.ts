@@ -28,6 +28,12 @@ import {
   normalizeTutorAttachments,
   type TutorSourceSaveOffer,
 } from "@/lib/ai/tutor-attachments";
+import {
+  normalizeTutorAgentLiveStep,
+  normalizeTutorAgentSteps,
+  type TutorAgentLiveStep,
+  type TutorAgentStepView,
+} from "@/lib/ai/tutor-agent";
 
 function getFriendlyAssistantError(
   status: number,
@@ -105,7 +111,8 @@ async function drainAssistantStream(reader: ReadableStreamDefaultReader<Uint8Arr
  */
 async function readAssistantStream(
   response: Response,
-  onChunk?: (textSoFar: string) => void
+  onChunk?: (textSoFar: string) => void,
+  onStep?: (step: TutorAgentLiveStep) => void
 ): Promise<Record<string, unknown> | null> {
   const reader = response.body?.getReader();
   if (!reader) return null;
@@ -131,6 +138,11 @@ async function readAssistantStream(
     if (event.type === "text" && typeof event.value === "string") {
       textSoFar += event.value;
       onChunk?.(textSoFar);
+      return;
+    }
+    if (event.type === "step") {
+      const step = normalizeTutorAgentLiveStep(event);
+      if (step) onStep?.(step);
       return;
     }
     if (event.type === "error") {
@@ -178,8 +190,10 @@ export async function sendJamiAssistantMessage(
    * generating, so without one a closed drawer left the provider running to the
    * end and the student paying for an answer they would never see.
    */
-  signal?: AbortSignal
-): Promise<JamiAssistantResponse> {
+  signal?: AbortSignal,
+  /** What Jami looks up or works out before answering, as each step starts. */
+  onStep?: (step: TutorAgentLiveStep) => void
+): Promise<JamiAssistantResponse & { agentSteps?: TutorAgentStepView[] }> {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
@@ -215,7 +229,7 @@ export async function sendJamiAssistantMessage(
     );
   }
 
-  const data = await readAssistantStream(response, onChunk);
+  const data = await readAssistantStream(response, onChunk, onStep);
   // A question was spent; a "few left" line under the composer can catch up.
   notifyAllowanceSpent();
 
@@ -246,6 +260,7 @@ export async function sendJamiAssistantMessage(
   const sourceSaveOffer = normalizeTutorSourceSaveOffer(data?.sourceSaveOffer);
   const appScope = normalizeJamiAppScope(data?.appScope);
   const appActions = normalizeTutorAppActions(data?.appActions, jamiDestinations(appScope));
+  const agentSteps = normalizeTutorAgentSteps(data?.agentSteps);
   return {
     reply,
     used,
@@ -262,6 +277,7 @@ export async function sendJamiAssistantMessage(
     ...(sourceSaveOffer ? { sourceSaveOffer } : {}),
     ...(appActions.length > 0 ? { appActions, appScope } : {}),
     ...(savedThread ? { savedThread } : {}),
+    ...(agentSteps.length > 0 ? { agentSteps } : {}),
   };
 }
 

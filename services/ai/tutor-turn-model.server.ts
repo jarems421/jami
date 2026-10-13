@@ -49,6 +49,14 @@ const ANSWER_RESERVE_MS = REQUEST_TIMEOUT_MS;
  */
 const TOKEN_COUNT_SOURCE_BYTES = 1024 * 1024;
 
+/**
+ * Extra time a turn gets when the agent looks things up before the answer
+ * (`TUTOR_AGENT_LIMITS.budgetMs` of look-ups, less what routing already
+ * spent), so the answer keeps its own reserve. Still inside the route's
+ * `maxDuration`, with room to save.
+ */
+export const TUTOR_AGENT_EXTRA_MS = 25_000;
+
 /** When the whole turn must finish, and when optional work before the answer must stop. */
 export function tutorTurnDeadlines(startedAt: number) {
   const deadlineAt = startedAt + REQUEST_DEADLINE_MS;

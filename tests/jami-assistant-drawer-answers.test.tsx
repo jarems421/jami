@@ -329,6 +329,39 @@ describe("JamiAssistantDrawer under an answer", () => {
     expect(bodyText()).toContain("Save as a source");
   });
 
+  it("shows what Jami is looking up while it works, then what it looked up above the answer", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    mocks.send.mockImplementationOnce(
+      (_input: unknown, _onChunk: unknown, _signal: unknown, onStep: (step: unknown) => void) => {
+        onStep({ tool: "search_sources", doing: "Searching your material for “enzymes”", done: "Searched your material for “enzymes”" });
+        onStep({ tool: "work_out", doing: "Working it through separately to check", done: "Worked it through separately to check" });
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      }
+    );
+    await render(drawer());
+    await ask("What do enzymes do?");
+
+    // The one under way is the waiting line; the one before it is ticked off above.
+    expect(document.querySelector("[role='status']")?.textContent).toContain("Searched your material for “enzymes”");
+    expect(document.querySelector("[role='status']")?.textContent).toContain("Working it through separately to check");
+
+    await act(async () => {
+      finish({
+        reply: "Enzymes lower activation energy.",
+        used: [{ kind: "general-knowledge", label: "general knowledge" }],
+        agentSteps: [
+          { tool: "search_sources", label: "Searched your material for “enzymes”" },
+          { tool: "work_out", label: "Worked it through separately to check" },
+        ],
+      });
+    });
+    await settle();
+    expect(document.querySelector("[role='status']")).toBeNull();
+    expect(bodyText()).toContain("Looked into 2 things first");
+  });
+
   it("offers the engine's practice once per chat, and the next step on the answer that asked", async () => {
     mocks.send.mockResolvedValueOnce({ reply: "First.", used: [], practiceOffer: OFFER });
     await render(drawer());

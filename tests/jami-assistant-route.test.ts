@@ -157,9 +157,7 @@ vi.mock("@/lib/ai/provider-router", () => ({
   },
 }));
 
-vi.mock("@/lib/ai/gemini", () => ({
-  generateGroundedResearch: mocks.generateResearch,
-}));
+vi.mock("@/lib/ai/gemini", () => ({ generateGroundedResearch: mocks.generateResearch, isGroundedResearchConfigured: () => true }));
 
 // No cleaner mock: the route uses the real cleanAiResponseText so these tests
 // exercise the seam that previously flattened every reply.
@@ -675,13 +673,8 @@ describe("universal Jami assistant route", () => {
   });
 
   it("uses the larger response budget only for an explicit depth request", async () => {
-    await postAssistant(
-      request(
-        validBody({
-          message: "Walk me through this in detail, step by step.",
-        })
-      )
-    );
+    // Read to the end: a Think answer looks things up first, inside the stream.
+    await readStream(await postAssistant(request(validBody({ message: "Walk me through this in detail, step by step." }))));
 
     // Worked through on the fast model thinking hard, with the detailed answer's budget.
     expect(mocks.streamText).toHaveBeenCalledWith(
@@ -1262,13 +1255,7 @@ describe("request budget", () => {
       reason: "not_configured",
     });
 
-    await postAssistant(
-      request(
-        validBody({
-          message: "Search the web for the latest exam specification.",
-        })
-      )
-    );
+    await readStream(await postAssistant(request(validBody({ message: "Search the web for the latest exam specification." }))));
 
     expect(mocks.generateResearch).toHaveBeenCalledTimes(1);
     const research = mocks.generateResearch.mock.calls[0][0];

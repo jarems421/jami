@@ -1,6 +1,7 @@
 "use client";
 
 import type { AssistantIllustration } from "@/lib/ai/jami-assistant";
+import type { TutorAgentStepView } from "@/lib/ai/tutor-agent";
 import type { TutorAttachment } from "@/lib/ai/tutor-attachments";
 import type { TutorChatMessage } from "@/lib/ai/tutor-chat-messages";
 import { StudyText } from "@/components/ui";
@@ -17,6 +18,7 @@ import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard
 import { PinIcon } from "@/components/ai/JamiFloatingTutor";
 import { TutorMessageAttachments, TutorSourceSaveCard } from "@/components/ai/TutorAttachments";
 import TutorAnswerActions, { type TutorAnswerActionTools } from "@/components/ai/TutorAnswerActions";
+import { TutorAgentStepsDone, TutorAgentStepsSummary } from "@/components/ai/TutorAgentSteps";
 
 /** Pictures Tutor made for an answer, and adding one to the open page. */
 type TutorIllustrationTools = {
@@ -32,6 +34,8 @@ type TutorChatMessageListProps = {
   /** The answer's first words are on screen, so the waiting line goes. */
   answerHasStarted: boolean;
   waitingLabel: string;
+  /** What Jami has looked up for the question so far, shown above the waiting line. */
+  agentStepsDone?: readonly TutorAgentStepView[];
   files: {
     sentPreviewUrl: (storagePath: string) => string | undefined;
     sentFile: (storagePath: string) => File | undefined;
@@ -50,6 +54,7 @@ export default function TutorChatMessageList({
   loading,
   answerHasStarted,
   waitingLabel,
+  agentStepsDone = [],
   ...itemProps
 }: TutorChatMessageListProps) {
   return (
@@ -81,7 +86,7 @@ export default function TutorChatMessageList({
         cannot fill, and once text is streaming the dots would be
         competing with it.
       */}
-      {loading && !answerHasStarted ? <TutorWaitingLine label={waitingLabel} /> : null}
+      {loading && !answerHasStarted ? <TutorWaitingLine label={waitingLabel} done={agentStepsDone} /> : null}
     </div>
   );
 }
@@ -98,7 +103,7 @@ function TutorChatMessageItem({
   graphActions,
   illustrations,
   tools,
-}: Omit<TutorChatMessageListProps, "messages" | "loading" | "answerHasStarted" | "waitingLabel"> & {
+}: Omit<TutorChatMessageListProps, "messages" | "loading" | "answerHasStarted" | "waitingLabel" | "agentStepsDone"> & {
   message: TutorChatMessage;
   answerKey: string;
   writing: boolean;
@@ -114,6 +119,9 @@ function TutorChatMessageItem({
             previewUrlFor={files.sentPreviewUrl}
             onKeepBeside={onKeepAttachmentBeside}
           />
+        ) : null}
+        {message.role === "assistant" && message.agentSteps?.length ? (
+          <TutorAgentStepsSummary steps={message.agentSteps} />
         ) : null}
         {message.role === "assistant" ? (
           <AssistantAnswerHold
@@ -188,10 +196,11 @@ function answerHoldActions(message: TutorChatMessage, key: string, tools: TutorA
   return actions;
 }
 
-function TutorWaitingLine({ label }: { label: string }) {
+function TutorWaitingLine({ label, done }: { label: string; done: readonly TutorAgentStepView[] }) {
   return (
     <div className="flex justify-start">
       <div className="app-chip rounded-xl rounded-bl-md px-4 py-3 text-sm text-text-muted" role="status">
+        <TutorAgentStepsDone steps={done} />
         <span className="inline-flex items-center gap-2">
           <span key={label} className="ai-waiting-label inline-block">
             {label}

@@ -124,7 +124,10 @@ vi.mock("@/services/ai/tutor-chat-recall.server", () => ({ loadTutorChatRecall: 
 vi.mock("@/services/learning/tutor-checks.server", () => ({ recordTutorCheck: mocks.recordCheck }));
 vi.mock("@/services/learning/notebook-markings.server", () => ({ recordNotebookMarking: mocks.recordMarking }));
 vi.mock("@/services/billing/allowances.server", () => ({ chargeAllowance: mocks.chargeAllowance }));
-vi.mock("@/lib/ai/gemini", () => ({ generateGroundedResearch: mocks.generateResearch }));
+vi.mock("@/lib/ai/gemini", () => ({
+  generateGroundedResearch: mocks.generateResearch,
+  isGroundedResearchConfigured: () => true,
+}));
 
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/server")>()),
@@ -878,6 +881,41 @@ describe("what a turn reads", () => {
     expect(streamCall()).toMatchObject({ role: "worker", reasoningEffort: "high", preferStandby: false });
   });
 
+  it("looks things up before a Think answer, shows each step as it starts, and keeps them with the answer", async () => {
+    let planned = 0;
+    mocks.generateText.mockImplementation(async (input: { routeReason?: string }) => {
+      if (input.routeReason === "agent_step") {
+        planned += 1;
+        return planned === 1 ? '{"tool":"work_out","query":"Why are there two tidal bulges?"}' : '{"tool":"done","query":""}';
+      }
+      return input.routeReason === "agent_check" ? "Two bulges: the Moon's pull differs across the Earth." : answer();
+    });
+
+    const sent = await events(
+      await postAssistant(request(body({ message: "Why do the tides happen on both sides of the earth at once?" })))
+    );
+
+    expect(sent[0]).toEqual({
+      type: "step",
+      tool: "work_out",
+      doing: "Working it through separately to check",
+      done: "Worked it through separately to check",
+    });
+    const steps = [{ tool: "work_out", label: "Worked it through separately to check" }];
+    expect(sent.find((event) => event.type === "done")?.agentSteps).toEqual(steps);
+    expect(sentText()).toContain("REFERENCE V1");
+    expect(streamCall().request.systemInstruction).toContain("V1 is an independent working");
+    const saved = mocks.writes.find((write) => (write.data as Record<string, unknown> | undefined)?.role === "assistant");
+    expect(saved?.data).toMatchObject({ agentSteps: steps });
+  });
+
+  it("answers a Quick question in one call, looking nothing up", async () => {
+    mocks.resolveContext.mockResolvedValueOnce(resolved({ reasoningEffort: "low" }));
+    const sent = await events(await postAssistant(request(body({ message: "Why do the tides happen on both sides of the earth at once?" }))));
+    expect(mocks.generateText).not.toHaveBeenCalledWith(expect.objectContaining({ routeReason: "agent_step" }));
+    expect(sent.some((event) => event.type === "step")).toBe(false);
+  });
+
   it("asks the routing check about an open question, and answers deeply when it says so", async () => {
     mocks.generateText.mockImplementation(async (input: { routeReason?: string }) =>
       input.routeReason === "routing_preflight" ? '{"tier":"deep","confidence":"high"}' : answer()
@@ -959,8 +997,9 @@ describe("what a turn reads", () => {
 
     const stream = await events(await postAssistant(request(body({ message: "Draw a graph of y = x^2 - 4" }))));
 
+    // Past the routing check and the agent's own look-ups, to the answer asked again.
     const retry = mocks.generateText.mock.calls.find(
-      (call) => (call[0] as { routeReason?: string }).routeReason !== "routing_preflight"
+      (call) => !["routing_preflight", "agent_step", "agent_check"].includes((call[0] as { routeReason?: string }).routeReason ?? "")
     )?.[0] as { generationConfig: { maxOutputTokens: number }; request: { systemInstruction: string } };
     expect(retry.generationConfig.maxOutputTokens).toBe(8_000);
     expect(

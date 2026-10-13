@@ -100,6 +100,30 @@ describe("Jami assistant client service", () => {
     closeStream();
   });
 
+  it("passes on each step Jami takes as it starts, and keeps the steps with the answer", async () => {
+    const steps = [
+      { type: "step", tool: "search_sources", doing: "Searching your material for “entropy”", done: "Searched your material for “entropy”" },
+      { type: "step", tool: "made_up", doing: "x", done: "y" },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        streamedResponse(...steps, {
+          type: "done",
+          reply: "Entropy rises.",
+          used: [{ kind: "general-knowledge", label: "general knowledge" }],
+          agentSteps: [{ tool: "search_sources", label: "Searched your material for “entropy”" }],
+        })
+      )
+    );
+    const seen: unknown[] = [];
+    const response = await sendJamiAssistantMessage(input, undefined, undefined, (step) => seen.push(step));
+    expect(seen).toEqual([
+      { tool: "search_sources", doing: "Searching your material for “entropy”", done: "Searched your material for “entropy”" },
+    ]);
+    expect(response.agentSteps).toEqual([{ tool: "search_sources", label: "Searched your material for “entropy”" }]);
+  });
+
   it("does not turn a provider failure into an assistant message", async () => {
     vi.stubGlobal(
       "fetch",

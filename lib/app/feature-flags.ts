@@ -13,6 +13,7 @@ export type FeatureFlagKey =
   | "enableConceptRelations"
   | "enableTutorMemory"
   | "enableTutorChatRecall"
+  | "enableTutorAgent"
   | "enableBilling"
   | "enableTutorChecks"
   | "enableJamiInk"
@@ -97,6 +98,14 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    */
   enableTutorChatRecall: true,
   /*
+   * Tutor as an agent (docs/tutor-agent.md): before a Think or Deep answer it
+   * chooses what to look up or work out first -- the student's material, the
+   * web, earlier chats, an independent working -- and shows each step. On by
+   * the owner's decision on 12 October 2026. Off, every answer is the single
+   * call it was before.
+   */
+  enableTutorAgent: true,
+  /*
    * Plans and monthly allowances (docs/plans-and-stardust.md). Off until
    * launch: off, every student keeps today's daily limits and nothing else,
    * exactly as before plans existed. On, new accounts get Free's monthly
@@ -149,6 +158,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableConceptRelations: process.env.NEXT_PUBLIC_ENABLE_CONCEPT_RELATIONS,
   enableTutorMemory: process.env.NEXT_PUBLIC_ENABLE_TUTOR_MEMORY,
   enableTutorChatRecall: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHAT_RECALL,
+  enableTutorAgent: process.env.NEXT_PUBLIC_ENABLE_TUTOR_AGENT,
   enableBilling: process.env.NEXT_PUBLIC_ENABLE_BILLING,
   enableTutorChecks: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHECKS,
   enableJamiInk: process.env.NEXT_PUBLIC_ENABLE_JAMI_INK,
@@ -182,6 +192,7 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableConceptRelations: isFeatureEnabled("enableConceptRelations"),
   enableTutorMemory: isFeatureEnabled("enableTutorMemory"),
   enableTutorChatRecall: isFeatureEnabled("enableTutorChatRecall"),
+  enableTutorAgent: isFeatureEnabled("enableTutorAgent"),
   enableBilling: isFeatureEnabled("enableBilling"),
   enableTutorChecks: isFeatureEnabled("enableTutorChecks"),
   enableJamiInk: isFeatureEnabled("enableJamiInk"),

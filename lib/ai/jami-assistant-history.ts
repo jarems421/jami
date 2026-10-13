@@ -13,6 +13,7 @@ import {
   normalizeUsedContext,
 } from "@/lib/ai/jami-assistant-normalize";
 import { normalizeAssistantIllustrations } from "@/lib/ai/jami-assistant";
+import { normalizeTutorAgentSteps, type TutorAgentStepView } from "@/lib/ai/tutor-agent";
 import {
   MAX_TUTOR_ATTACHMENTS_PER_MESSAGE,
   normalizeTutorAttachments,
@@ -98,6 +99,8 @@ export type JamiAssistantStoredMessage = {
   attachments?: TutorAttachment[];
   appActions?: TutorAppActionProposal[];
   appScope?: JamiAppScope;
+  /** What Jami looked up or worked out before answering. */
+  agentSteps?: TutorAgentStepView[];
   createdAt: number;
 };
 
@@ -281,6 +284,7 @@ export function mapJamiAssistantStoredMessage(
       : [];
   const appScope = normalizeJamiAppScope(data.appScope);
   const appActions = normalizeTutorAppActions(data.appActions, jamiDestinations(appScope));
+  const agentSteps = role === "assistant" ? normalizeTutorAgentSteps(data.agentSteps) : [];
   return {
     id,
     threadId,
@@ -298,6 +302,7 @@ export function mapJamiAssistantStoredMessage(
     ...(studyMaterialSetup ? { studyMaterialSetup } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(appActions.length > 0 ? { appActions, appScope } : {}),
+    ...(agentSteps.length > 0 ? { agentSteps } : {}),
     createdAt:
       typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
         ? data.createdAt

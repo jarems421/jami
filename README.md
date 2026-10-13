@@ -319,6 +319,7 @@ it). Everything else is in `docs/`:
 | [`manual-qa.md`](docs/manual-qa.md) | The release checklist for what automated tests cannot judge |
 | [`learning-engine-verification.md`](docs/learning-engine-verification.md) | Production checks for the Learning Engine, and specification catalogue sign-off |
 | [`revision-sessions.md`](docs/revision-sessions.md) | How Revision Sessions teach, and what they record |
+| [`tutor-agent.md`](docs/tutor-agent.md) | How Tutor looks things up and checks its work before a Think or Deep answer |
 | [`ai-operations.md`](docs/ai-operations.md) | Runbook: release sequence, kill switches, telemetry, job recovery, spend |
 | [`ai-provider-release-gates.md`](docs/ai-provider-release-gates.md) | Privacy, quality and operational gates before AI traffic is enabled |
 | [`ai-quality-benchmark.md`](docs/ai-quality-benchmark.md) | The offline AI benchmark and its report format |

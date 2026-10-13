@@ -10,6 +10,7 @@ import { buildTutorAppInstruction } from "@/lib/ai/jami-app-guide";
 import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import type { PreparedSource } from "@/lib/ai/source-ingestion";
 import type { TutorAttachment } from "@/lib/ai/tutor-attachments";
+import { TUTOR_AGENT_WORKING_INSTRUCTION } from "@/lib/ai/tutor-agent";
 import { buildTutorRecallInstruction } from "@/lib/ai/tutor-chat-recall";
 import { TUTOR_DIAGRAM_FORMAT } from "@/lib/ai/tutor-diagram";
 import { buildTutorStudyMaterialInstruction } from "@/lib/ai/tutor-study-material";
@@ -147,6 +148,8 @@ export type TutorSystemInstructionInput = {
   attachmentInstruction: string;
   /** What the student referred back to, when a recall ran; null when it did not. */
   recall: { found: number } | null;
+  /** The agent had the student's problem worked through independently (reference V1). */
+  independentWorking?: boolean;
   markingInvited: boolean;
   pendingCheck: PendingTutorCheck | null;
   checkInvited: boolean;
@@ -182,7 +185,7 @@ The answer is final text the student watches arrive, not a draft. Never think al
 For ordinary notebook Mark my work requests, provide indicative feedback. Give a numerical mark or formal grade only when the supplied evidence contains a defensible mark allocation, rubric, or mark scheme; otherwise explicitly label the result as feedback rather than an official mark. Never invoke or imitate the formal full-paper double-marker workflow for short work.
 Work in a notebook often runs across a page break. If the working you have been given starts mid-step, continues from a line you cannot see, or depends on setup that is not in front of you, say so and ask for the page it started on. Do not mark or correct the part you can see as though it were the whole answer: reporting errors that only look like errors because the first half is missing is worse than saying you cannot see it yet.
 ${input.movedChat ? `${describeMovedChat(input.movedChat.from, input.movedChat.to)}\n` : ""}${input.attachmentInstruction ? `${input.attachmentInstruction}
-` : ""}${input.recall ? `${buildTutorRecallInstruction("R1", input.recall.found > 0)}\n` : ""}${context.learningContext ? `${context.learningContext}
+` : ""}${input.recall ? `${buildTutorRecallInstruction("R1", input.recall.found > 0)}\n` : ""}${input.independentWorking ? `${TUTOR_AGENT_WORKING_INSTRUCTION}\n` : ""}${context.learningContext ? `${context.learningContext}
 ` : ""}${context.memoryContext ? `${context.memoryContext}
 ` : ""}Return JSON only with exactly these fields:
 {${context.memoryWritable === true ? `"memory":[],` : ""}"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"diagrams":[],"studyMaterial":"none","studyMaterialFocus":"","suggestions":[]}
@@ -207,6 +210,8 @@ export type TutorTurnContentsInput = {
   attachments: readonly TutorTurnAttachment[];
   /** What the student referred back to, when a recall found it. */
   recall: { text: string } | null;
+  /** Independent workings of the student's problem, from the agent (reference V1). */
+  workings?: readonly string[];
   currentLabel: string;
   currentParts: AiContentPart[];
   message: string;
@@ -264,6 +269,14 @@ export function buildTutorTurnContents(input: TutorTurnContentsInput): TutorTurn
               boundaryToken: input.newBoundaryToken(),
               label: "Earlier conversation the student referred back to",
               parts: [{ text: input.recall.text }],
+            })
+          : []),
+        ...(input.workings && input.workings.length > 0
+          ? buildJamiAssistantReferenceParts({
+              reference: "V1",
+              boundaryToken: input.newBoundaryToken(),
+              label: "An independent working of the student's problem",
+              parts: input.workings.map((working) => ({ text: working })),
             })
           : []),
         ...buildJamiAssistantReferenceParts({

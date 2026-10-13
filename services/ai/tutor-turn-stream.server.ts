@@ -9,6 +9,7 @@ import {
 import type { AiResponseDiagnostics } from "@/lib/ai/provider-router";
 import { longestCopiedRun, type SourceEvidencePlan } from "@/lib/ai/source-evidence";
 import { extractStreamingAnswer } from "@/lib/ai/streaming-answer";
+import type { TutorAgentLiveStep, TutorAgentStepView } from "@/lib/ai/tutor-agent";
 import { buildTutorAnswerPackage, type TutorAnswerPackageInput } from "@/lib/ai/tutor-turn-answer";
 import type { Logger } from "@/lib/observability/logger";
 import { getAiTokenCap } from "@/services/ai/budgets";
@@ -26,9 +27,10 @@ import {
 } from "@/services/ai/tutor-turn-save.server";
 
 /**
- * The answer as the student receives it: newline-delimited JSON events,
- * text as it is written and then one terminal event, either the finished
- * answer with its saved chat or an error raised after the response began.
+ * The answer as the student receives it: newline-delimited JSON events --
+ * the agent's steps as they start, text as it is written -- and then one
+ * terminal event, either the finished answer with its saved chat or an error
+ * raised after the response began.
  */
 
 /**
@@ -60,6 +62,14 @@ export function watchTutorTurnCancellation(request: NextRequest): TutorTurnCance
   };
 }
 
+/** What the answer is asked with once the agent has looked things up. */
+export type TutorTurnPrepared = {
+  call: TutorAnswerCall;
+  allowedSourceRefs: string[];
+  answer: TutorAnswerPackageInput;
+  agentSteps: TutorAgentStepView[];
+};
+
 export type TutorTurnStreamInput = {
   call: TutorAnswerCall;
   maxOutputTokens: number;
@@ -84,12 +94,23 @@ export type TutorTurnStreamInput = {
   refund: (why: string) => Promise<void>;
   cancellation: TutorTurnCancellation;
   log: Logger;
+  /**
+   * Work inside the stream before the answer: the agent's look-ups
+   * (`runTutorAgent`), each step shown to the student as it starts. Returns
+   * what the answer is then asked with; failing, other than by the student
+   * leaving, it leaves the answer to go ahead as planned.
+   */
+  prepare?: (onStep: (step: TutorAgentLiveStep) => void) => Promise<TutorTurnPrepared>;
 };
 
 export function createTutorTurnStream(input: TutorTurnStreamInput) {
-  const { call, allowedSourceRefs, record, report, providerDiagnostics, refund, cancellation, log } = input;
+  const { record, report, providerDiagnostics, refund, cancellation, log } = input;
   const message = input.answer.message;
-  const webResearchAvailable = input.answer.research.ok;
+  // Replaced by what the agent gathered, when it runs.
+  let { call, allowedSourceRefs } = input;
+  let answerInput = input.answer;
+  let agentSteps: TutorAgentStepView[] = [];
+  let webResearchAvailable = answerInput.research.ok;
   const encoder = new TextEncoder();
   const event = (payload: Record<string, unknown>) =>
     encoder.encode(`${JSON.stringify(payload)}\n`);
@@ -120,6 +141,18 @@ export function createTutorTurnStream(input: TutorTurnStreamInput) {
       let emitted = "";
 
       try {
+        if (input.prepare) {
+          try {
+            const prepared = await input.prepare((step) => controller.enqueue(event({ type: "step", ...step })));
+            ({ call, allowedSourceRefs, agentSteps } = prepared);
+            answerInput = prepared.answer;
+            webResearchAvailable = answerInput.research.ok;
+          } catch (error) {
+            if (cancellation.signal.aborted) throw error;
+            log.warn("agent.failed", { error });
+          }
+        }
+
         for await (const chunk of streamTutorAnswer(call, input.maxOutputTokens)) {
           buffer += chunk;
           const answerSoFar = extractStreamingAnswer(buffer);
@@ -174,7 +207,7 @@ export function createTutorTurnStream(input: TutorTurnStreamInput) {
           return;
         }
 
-        const payload = buildTutorAnswerPackage(parsedAnswer, input.answer);
+        const payload = buildTutorAnswerPackage(parsedAnswer, answerInput);
         if (!payload) {
           log.warn("provider.empty_answer", {
             depth: input.depth,
@@ -193,7 +226,7 @@ export function createTutorTurnStream(input: TutorTurnStreamInput) {
           return;
         }
 
-        const saved = await saveTutorTurn(record, payload, parsedAnswer);
+        const saved = await saveTutorTurn(record, payload, parsedAnswer, agentSteps);
         await recordTutorTurnAssessments(record, parsedAnswer, saved.now);
 
         // The retry path, and any cleanup applied to the streamed text, can
@@ -203,6 +236,7 @@ export function createTutorTurnStream(input: TutorTurnStreamInput) {
           event({
             type: "done",
             ...payload,
+            ...(agentSteps.length > 0 ? { agentSteps } : {}),
             savedThread: savedTutorThread(record, payload, saved),
           })
         );

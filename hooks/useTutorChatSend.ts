@@ -10,6 +10,7 @@ import {
   getJamiAssistantSavedContext,
   type JamiAssistantThread,
 } from "@/lib/ai/jami-assistant-history";
+import type { TutorAgentLiveStep } from "@/lib/ai/tutor-agent";
 import { selectTutorRequestAttachments } from "@/lib/ai/tutor-attachments";
 import {
   TUTOR_WAITING_LABELS,
@@ -78,6 +79,8 @@ export function useTutorChatSend({
    * the line is only shown while waiting, so it is never seen stale.
    */
   const [waitingStage, setWaitingStage] = useState(0);
+  /** What Jami is looking up or working out for the current question, as each step starts. */
+  const [agentSteps, setAgentSteps] = useState<TutorAgentLiveStep[]>([]);
   const reasoningSaveRef = useRef<Promise<void>>(Promise.resolve());
   const handleReasoningSaveStarted = useCallback((save: Promise<void>) => {
     reasoningSaveRef.current = save;
@@ -108,6 +111,7 @@ export function useTutorChatSend({
       clearInput();
       setLoading(true);
       setWaitingStage(0);
+      setAgentSteps([]);
       setError(null);
       setHistoryNotice(null);
 
@@ -156,7 +160,10 @@ export function useTutorChatSend({
               return next;
             });
           },
-          request.controller.signal
+          request.controller.signal,
+          (step) => {
+            if (isCurrentRequest(request)) setAgentSteps((current) => [...current, step]);
+          }
         );
 
         if (!isCurrentRequest(request)) return;
@@ -269,6 +276,9 @@ export function useTutorChatSend({
     sendMessage,
     handleReasoningSaveStarted,
     answerHasStarted,
-    waitingLabel: TUTOR_WAITING_LABELS[waitingStage].text,
+    // A real step says what is happening; until there is one, the waiting lines do.
+    waitingLabel: agentSteps.at(-1)?.doing ?? TUTOR_WAITING_LABELS[waitingStage].text,
+    /** The steps finished so far, while the student waits; the one under way is the waiting line. */
+    agentStepsDone: waiting ? agentSteps.slice(0, -1).map((step) => ({ tool: step.tool, label: step.done })) : [],
   };
 }

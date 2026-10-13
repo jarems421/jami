@@ -43,6 +43,10 @@ Data and privacy:
   are never modified.
 - When a student adds or changes a source, Jami builds a private search index
   of it. The tutor reads matching passages only after the student asks.
+- Before a harder answer the tutor may look things up and check its work in a
+  few visible steps (the student's material, their earlier chats, the web,
+  an independent working), inside that one request. Anything it would change
+  is a proposal the student confirms.
 - AI marking and help run only when the student asks.
 - Do not infer always-on screen watching, browser monitoring, or a public demo
   workspace.
