@@ -8,7 +8,6 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import { useUser } from "@/components/providers/UserProvider";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
@@ -35,6 +34,7 @@ import NotebookSheetsLayer, {
 import { getNotebookSwipePreviews } from "@/components/workspace/NotebookSwipePreviews";
 import NotebookTextBlockLayer from "@/components/workspace/NotebookTextBlockLayer";
 import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
+import NotebookTutorDrawer from "@/components/workspace/NotebookTutorDrawer";
 import NotebookViewport from "@/components/workspace/NotebookViewport";
 import { useFeedback } from "@/hooks/useFeedback";
 import { NOTEBOOK_PHONE_LAYOUT_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -490,11 +490,7 @@ export default function NotebookEditorPage() {
     onTouchPointerEnd: handleTouchPointerEnd,
   });
 
-  const {
-    quickActions: notebookAssistantQuickActions,
-    handleAssistantOpenChange,
-    handleTutorAnswerInsert,
-  } = useNotebookTutorBridge({
+  const tutor = useNotebookTutorBridge({
     userId,
     notebook,
     pageState,
@@ -856,12 +852,12 @@ export default function NotebookEditorPage() {
             closeDrawingToolMenus();
             const nextOpen = !pagesDrawerOpen;
             setPagesDrawerOpen(nextOpen);
-            if (nextOpen) handleAssistantOpenChange(false);
+            if (nextOpen) tutor.handleAssistantOpenChange(false);
           }}
           tutorLocked={practicePaperTutorLocked}
           sheets={sheetsBeside}
           assistantOpen={assistantOpen}
-          onToggleAssistant={() => handleAssistantOpenChange(!assistantOpen)}
+          onToggleAssistant={() => tutor.handleAssistantOpenChange(!assistantOpen)}
           practicePaper={{
             onStatusChange: handlePracticePaperStatusChange,
             onBeforeSubmit: prepareForNavigation,
@@ -892,25 +888,16 @@ export default function NotebookEditorPage() {
           />
 
           {!practicePaperTutorLocked ? (
-            <JamiAssistantDrawer
+            <NotebookTutorDrawer
               userId={userId}
+              notebook={notebook}
               open={assistantOpen}
-              onOpenChange={handleAssistantOpenChange}
-              layout="floating"
-              // Keep one conversation across page turns; the current page is
-              // still resolved fresh for every message.
-              resetKey={`notebook:${notebook.id}`}
-              contextKey={`notebook:${notebook.id}`}
-              contextLabel="Current notebook page"
-              historyContextLabel={notebook.title}
+              tutor={tutor}
               getContext={getNotebookAssistantContext}
-              quickActions={notebookAssistantQuickActions}
-              settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}
               onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
               onIllustrationInserted={handleIllustrationInserted}
               onGraphInsert={handleTutorGraphInsert}
               onDrawingInsert={handleAddImage}
-              onAnswerInsert={handleTutorAnswerInsert}
               onKeepAttachmentBeside={sheetsBeside.keepAttachment}
               onAddNotebookPages={pageEditingEnabled ? turn.appendBlankPages : undefined}
             />
