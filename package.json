@@ -19,6 +19,7 @@
     "check:disk": "node scripts/check-disk.mjs",
     "eval:interventions": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/intervention-generation-batch.ts",
     "eval:revision-lesson": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/revision-lesson.ts",
+    "eval:tutor-agent": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/tutor-agent.ts",
     "eval:research-models": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/research-model-compare.ts",
     "eval:image-models": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/image-model-compare.ts",
     "eval:tutor-diagrams": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/tutor-diagram.ts",
