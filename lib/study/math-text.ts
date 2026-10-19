@@ -129,11 +129,88 @@ export function wrapBareLatex(text: string): string {
       if (segment.type === "math") {
         return segment.display ? `$$${segment.value}$$` : `$${segment.value}$`;
       }
-      return segment.value.replace(BARE_LATEX_PATTERN, (match, _environment, offset: number, whole: string) =>
-        offset > 0 && whole[offset - 1] === "\\" ? match : `$${match.trim()}$`
-      );
+      return wrapBareFormulas(segment.value);
     })
     .join("");
+}
+
+/*
+ * The pieces of a line of prose, for finding where a bare formula starts and
+ * ends. A command is a seed; scripts, braces, escaped symbols, numbers and
+ * operators are maths around it; a word stops the formula, unless it is a
+ * one- or two-letter name such as x, dt or ln.
+ */
+const BARE_TOKEN_PATTERN = new RegExp(
+  [
+    `(?<seed>${BARE_LATEX_PATTERN.source})`,
+    String.raw`(?<math>\\\\|\\[{}|,;:! ]|\{(?:[^{}\n]|\{[^{}\n]*\})*\}|[\^_]|\d+(?:\.\d+)?)`,
+    String.raw`(?<op>[=+\-*/<>|()\[\],!'~])`,
+    String.raw`(?<name>[A-Za-z]+)`,
+    String.raw`(?<space>[ \t]+)`,
+    String.raw`(?<stop>[\s\S])`,
+  ].join("|"),
+  "g"
+);
+
+/** Short words that are English rather than a variable's name. */
+const SHORT_WORDS = new Set(
+  "a i am an as at be by do go he if in is it me my no of on or so to up us we".split(" ")
+);
+
+/**
+ * Wraps each bare formula whole: `\mathcal{L}\{f(t)\} = \int_0^\infty e^{-st}`
+ * becomes one `$...$`, not a `$` round each command with the braces, scripts
+ * and powers between them left as raw text -- which is how Tutor's undelimited
+ * maths reached students as "\{f(t)\} = ^ e^{-st}".
+ */
+function wrapBareFormulas(text: string) {
+  if (!/\\[a-zA-Z]/.test(text)) return text;
+  const tokens = [...text.matchAll(BARE_TOKEN_PATTERN)].map((match) => {
+    const groups = match.groups ?? {};
+    const kind = groups.seed
+      ? "seed"
+      : groups.space
+        ? "space"
+        : groups.math || groups.op || (groups.name && groups.name.length <= 2 && !SHORT_WORDS.has(groups.name.toLowerCase()))
+          ? "math"
+          : "stop";
+    return { kind, value: match[0], index: match.index ?? 0 };
+  });
+
+  let out = "";
+  let at = 0;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const seed = tokens[index];
+    // `\\` before a command is a line break inside maths, not the start of one.
+    if (seed.kind !== "seed" || text[seed.index - 1] === "\\") continue;
+    let start = index;
+    while (start > 0 && tokens[start - 1].kind !== "stop" && tokens[start - 1].index >= at) start -= 1;
+    let end = index;
+    while (end + 1 < tokens.length && tokens[end + 1].kind !== "stop") end += 1;
+    // Spaces, commas and dangling signs at the edges belong to the sentence.
+    while (start < index && (tokens[start].kind === "space" || /^[,=)\]]$/.test(tokens[start].value))) start += 1;
+    while (end > index && (tokens[end].kind === "space" || /^[,=(\[]$/.test(tokens[end].value))) end -= 1;
+    let from = tokens[start].index;
+    let to = tokens[end].index + tokens[end].value.length;
+    // So does a bracket the formula never opened or closed: "(see \alpha)".
+    for (const [open, close] of [["(", ")"], ["[", "]"]] as const) {
+      for (;;) {
+        const formula = text.slice(from, to);
+        const balance = count(formula, open) - count(formula, close);
+        if (balance > 0 && formula.startsWith(open)) from += 1;
+        else if (balance < 0 && formula.endsWith(close)) to -= 1;
+        else break;
+      }
+    }
+    out += `${text.slice(at, from)}$${text.slice(from, to).trim()}$`;
+    at = to;
+    index = end;
+  }
+  return out + text.slice(at);
+}
+
+function count(text: string, character: string) {
+  return text.split(character).length - 1;
 }
 
 export function attachInlineMathPunctuation(

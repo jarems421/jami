@@ -24,8 +24,20 @@ describe("wrapping LaTeX written without delimiters", () => {
   });
 
   it("wraps a single command with its arguments", () => {
-    expect(wrapBareLatex("25 \\div 10 (= 2.5)")).toBe("25 $\\div$ 10 (= 2.5)");
     expect(wrapBareLatex("\\frac{3}{4} of the total")).toBe("$\\frac{3}{4}$ of the total");
+  });
+
+  it("wraps a whole bare formula as one, not a command at a time", () => {
+    expect(
+      wrapBareLatex("The Laplace transform is \\mathcal{L}\\{f(t)\\} = \\int_0^\\infty e^{-st} f(t)\\,dt.")
+    ).toBe("The Laplace transform is $\\mathcal{L}\\{f(t)\\} = \\int_0^\\infty e^{-st} f(t)\\,dt$.");
+    expect(wrapBareLatex("25 \\div 10 (= 2.5)")).toBe("$25 \\div 10 (= 2.5)$");
+    expect(wrapBareLatex("so x = \\sqrt{2} and y = 3")).toBe("so $x = \\sqrt{2}$ and y = 3");
+  });
+
+  it("leaves a bracket the formula never opened to the sentence", () => {
+    expect(wrapBareLatex("(see \\alpha)")).toBe("(see $\\alpha$)");
+    expect(wrapBareLatex("where \\lambda is the rate, and")).toBe("where $\\lambda$ is the rate, and");
   });
 
   it("keeps a \\left...\\right pair together", () => {
