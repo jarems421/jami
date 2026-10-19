@@ -30,10 +30,11 @@
  *
  * Canvases are lent by the tile store when a stroke first reaches a tile on
  * screen and given back when it ends. The store keeps a screenful of spares
- * warm; with none spare it takes one from a tile out of sight, and it never
- * makes one during a stroke. With nothing to lend, the tile is noted as
- * missed: the stroke does not show there while it is written, and the lift
- * paints it in. Nothing is reserved for live ink.
+ * warm, topped up after every stroke; with none spare it takes one from a tile
+ * out of sight, and failing that makes one within the budget. Only with the
+ * budget spent on tiles all on screen is there nothing to lend: the tile is
+ * noted as missed, the stroke does not show there while it is written, and
+ * the lift paints it in. Nothing is reserved for live ink.
  *
  * Live tiles stack in tile order (`compareInkTiles`), the order the lift
  * adopts them in, so the lift does not change their stacking. Canvases that

@@ -380,11 +380,21 @@ export class InkTileStore {
 
   /**
    * A canvas for live ink, detached: a spare, else one freed from a tile out
-   * of sight; never a new one, so a stroke makes no canvas. Spares are kept
-   * warm for a screenful (`warmSpares`). Null when all of them are pinned.
+   * of sight, else a new one within the budget. Null only when the budget is
+   * spent on tiles that are all on screen.
+   *
+   * It used to stop at the tile out of sight, so a stroke made no canvas. But
+   * writing on blank paper uses a spare up for good -- the live canvas becomes
+   * the tile, with no dry one to hand back -- and with the whole page on
+   * screen there is no tile out of sight to take. A screenful of writing in,
+   * every new stroke went unseen until its lift: on iPad the pen simply
+   * stopped writing, on one page and not the next, until the page was
+   * scrolled or zoomed and the spares warmed again (19 Oct 2026). Making one
+   * canvas when a stroke first reaches a tile costs far less than ink that
+   * does not appear.
    */
   lend(): InkCanvas | null {
-    return this.free.pop() ?? this.evict(null, 1, true);
+    return this.free.pop() ?? this.evict(null, 1, true) ?? this.create();
   }
 
   /** A spare canvas, if one is waiting: no tile gives one up and none is made. */

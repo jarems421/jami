@@ -446,6 +446,18 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
     noteDrawn(displayed);
   };
 
+  /**
+   * Tops the spare canvases back up to a screenful, when the page is next idle.
+   * After every stroke as well as every new view: writing on blank paper keeps
+   * the canvases it was lent, so the spares run down as a page fills.
+   */
+  const queueSpares = () => {
+    const target = pending ?? displayed;
+    if (!viewport || !target || !store) return;
+    const screenful = inkLiveTileCount(target.level, viewport.visible);
+    scheduler.enqueue("spares", INK_PRIORITY_IDLE, () => store?.warmSpares(spares ?? screenful));
+  };
+
   /** Queues what is missing: the visible tiles of the level being drawn, then the ring, then spares. */
   const plan = () => {
     warm.abort();
@@ -467,8 +479,7 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
         if (!target.isDrawn(tile)) queueTile(target, tile, INK_PRIORITY_PREFETCH);
       }
     }
-    const screenful = inkLiveTileCount(target.level, viewport.visible);
-    scheduler.enqueue("spares", INK_PRIORITY_IDLE, () => store?.warmSpares(spares ?? screenful));
+    queueSpares();
     queueWarmUp();
     if (pending && visible.every((tile) => pending!.isDrawn(tile))) swapLevels();
     notifyVisible();
@@ -603,6 +614,7 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
     liveLayer.end();
     live = null;
     scheduler.resume("live");
+    queueSpares();
     queueWarmUp();
     // Document changes that arrived mid-stroke, in order, then the viewport.
     for (const work of deferredDocument.splice(0)) {
