@@ -745,7 +745,7 @@ describe("universal Jami assistant route", () => {
     expect(mocks.prepareSource).not.toHaveBeenCalled();
   });
 
-  it("rejects invented source references from the provider", async () => {
+  it("never reports an invented source reference, and keeps the answer the student has read", async () => {
     const invalidAnswer = JSON.stringify({
       answer: "Unsupported answer.",
       sourceRefs: ["S9"],
@@ -756,17 +756,18 @@ describe("universal Jami assistant route", () => {
     mocks.generateText.mockResolvedValue(invalidAnswer);
 
     const response = await postAssistant(request(validBody()));
-    const { terminal } = await readStream(response);
+    const { streamedText, terminal } = await readStream(response);
 
-    // Once the response has started the status line is already sent, so a
-    // failure after that point arrives as a terminal event rather than a code.
     expect(response.status).toBe(200);
+    expect(streamedText).toBe("Unsupported answer.");
     expect(terminal).toMatchObject({
-      type: "error",
-      code: "invalid_provider_response",
+      type: "done",
+      reply: "Unsupported answer.",
+      used: [{ kind: "general-knowledge", label: "general knowledge" }],
     });
+    // Asking again would only replace the answer already on screen.
     expect(mocks.streamText).toHaveBeenCalledTimes(1);
-    expect(mocks.generateText).toHaveBeenCalledTimes(1);
+    expect(mocks.generateText).not.toHaveBeenCalled();
   });
 
   it("retries one malformed structured response with the alternate model", async () => {

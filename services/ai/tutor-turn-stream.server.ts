@@ -4,11 +4,17 @@ import type { NextRequest } from "next/server";
 import {
   isExplicitTutorGraphRequest,
   parseJamiAssistantModelAnswer,
+  salvageJamiAssistantModelAnswer,
   type JamiAssistantResponseDepth,
 } from "@/lib/ai/jami-assistant";
 import type { AiResponseDiagnostics } from "@/lib/ai/provider-router";
 import { longestCopiedRun, type SourceEvidencePlan } from "@/lib/ai/source-evidence";
-import { extractStreamingAnswer } from "@/lib/ai/streaming-answer";
+import {
+  extractStreamingAnswer,
+  isRunawayAnswerTail,
+  readCompletedStreamingAnswer,
+  readStreamingAnswerTail,
+} from "@/lib/ai/streaming-answer";
 import type { TutorAgentLiveStep, TutorAgentStepView } from "@/lib/ai/tutor-agent";
 import { buildTutorAnswerPackage, type TutorAnswerPackageInput } from "@/lib/ai/tutor-turn-answer";
 import type { Logger } from "@/lib/observability/logger";
@@ -32,6 +38,12 @@ import {
  * terminal event, either the finished answer with its saved chat or an error
  * raised after the response began.
  */
+
+/**
+ * How long the rest of a reply may take once its answer is whole. The fields
+ * after it are a few flags and any graphs, normally done within a second.
+ */
+const ANSWER_TAIL_TIMEOUT_MS = 10_000;
 
 /**
  * Stops the work when the reader goes away.
@@ -116,9 +128,9 @@ export function createTutorTurnStream(input: TutorTurnStreamInput) {
     encoder.encode(`${JSON.stringify(payload)}\n`);
 
   /**
-   * Recovers from a malformed structured response using the existing
-   * non-streaming retry. Nothing was shown to the student, because text is only
-   * emitted while the first attempt still parses as a growing JSON object.
+   * Asks again, in one piece, for an answer that streamed short. Only when the
+   * answer string itself never finished: a whole one is kept rather than
+   * replaced (`salvageJamiAssistantModelAnswer`).
    */
   const retryWithoutStreaming = async (generated: string) => {
     log.warn("provider.invalid_structured_output", {
@@ -153,22 +165,80 @@ export function createTutorTurnStream(input: TutorTurnStreamInput) {
           }
         }
 
-        for await (const chunk of streamTutorAnswer(call, input.maxOutputTokens)) {
-          buffer += chunk;
-          const answerSoFar = extractStreamingAnswer(buffer);
-          if (answerSoFar.length > emitted.length) {
-            controller.enqueue(
-              event({ type: "text", value: answerSoFar.slice(emitted.length) })
-            );
-            emitted = answerSoFar;
+        /*
+         * Once the answer is whole the student is reading it, and the reply
+         * box stays locked until this turn is saved. What the model writes
+         * after it is bookkeeping -- the used flags, any graphs -- so it gets a
+         * few seconds and a sane length, and is cut off the moment it starts
+         * repeating itself (`isRunawayAnswerTail`). It used to get the full
+         * stall timeout and the whole token allowance.
+         */
+        const tailCut = new AbortController();
+        let tailTimer: ReturnType<typeof setTimeout> | undefined;
+        let streamEnd: "complete" | "failed" | "tail_slow" | "tail_runaway" = "complete";
+        let streamError: unknown = null;
+        try {
+          const answerCall = { ...call, signal: AbortSignal.any([call.signal, tailCut.signal]) };
+          for await (const chunk of streamTutorAnswer(answerCall, input.maxOutputTokens)) {
+            buffer += chunk;
+            const answerSoFar = extractStreamingAnswer(buffer);
+            if (answerSoFar.length > emitted.length) {
+              controller.enqueue(
+                event({ type: "text", value: answerSoFar.slice(emitted.length) })
+              );
+              emitted = answerSoFar;
+            }
+            const tail = readStreamingAnswerTail(buffer);
+            if (tail === null) continue;
+            tailTimer ??= setTimeout(() => {
+              streamEnd = "tail_slow";
+              tailCut.abort("answer_tail_slow");
+            }, ANSWER_TAIL_TIMEOUT_MS);
+            if (isRunawayAnswerTail(tail)) {
+              streamEnd = "tail_runaway";
+              tailCut.abort("answer_tail_runaway");
+              break;
+            }
           }
+        } catch (error) {
+          // A stream that breaks once the answer is whole -- a stall or a
+          // dropped connection while the fields after it were written -- still
+          // leaves the answer the student has read. Anything less is a failure.
+          if (cancellation.signal.aborted) throw error;
+          if (!tailCut.signal.aborted) {
+            if (!readCompletedStreamingAnswer(buffer)) throw error;
+            streamEnd = "failed";
+            streamError = error;
+          }
+        } finally {
+          clearTimeout(tailTimer);
         }
 
-        let parsedAnswer = parseJamiAssistantModelAnswer(buffer, allowedSourceRefs, {
-          webResearchAvailable,
-        });
+        let parsedAnswer =
+          streamEnd === "complete"
+            ? parseJamiAssistantModelAnswer(buffer, allowedSourceRefs, { webResearchAvailable })
+            : null;
         if (!parsedAnswer) {
-          parsedAnswer = await retryWithoutStreaming(buffer);
+          /*
+           * The student has already watched this answer arrive. When all of it
+           * did, it is kept, whatever went wrong around it; asking again here
+           * replaced it with a different answer at best, and when the second
+           * call failed as well the one on screen disappeared.
+           */
+          parsedAnswer = salvageJamiAssistantModelAnswer(buffer, allowedSourceRefs, {
+            webResearchAvailable,
+          });
+          if (parsedAnswer) {
+            log.warn("provider.streamed_answer_kept", {
+              depth: input.depth,
+              generatedCharacters: buffer.length,
+              streamEnd,
+              ...(streamError ? { error: streamError } : {}),
+              providerDiagnostics,
+            });
+          } else {
+            parsedAnswer = await retryWithoutStreaming(buffer);
+          }
         }
 
         /*

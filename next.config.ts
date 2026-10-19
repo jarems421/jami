@@ -2,6 +2,23 @@ import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
 /**
+ * What typesetting a generated paper reads from disk. The body font, pdfkit's
+ * metrics and MathJax's glyph ranges are all read by path at render time.
+ * MathJax also reaches its default font through the `#default-font/*` import
+ * alias in its package.json, which tracing does not follow: without the whole
+ * SVG font the step function cannot load, and every workflow -- not only
+ * papers -- sits queued (10 Oct 2026).
+ */
+const PAPER_TYPESETTING_FILES = [
+  "./node_modules/pdfjs-dist/standard_fonts/LiberationSans-*.ttf",
+  "./node_modules/pdfkit/js/data/**",
+  "./node_modules/@mathjax/mathjax-newcm-font/package.json",
+  "./node_modules/@mathjax/mathjax-newcm-font/mjs/package.json",
+  "./node_modules/@mathjax/mathjax-newcm-font/mjs/{common,svg}.js",
+  "./node_modules/@mathjax/mathjax-newcm-font/mjs/svg/**/*.js",
+];
+
+/**
  * Directives that cannot break resource loading, so they are safe to enforce
  * without first observing real traffic. They close clickjacking, base-tag
  * injection, plugin embedding and form hijacking.
@@ -92,20 +109,14 @@ export const nextConfig: NextConfig = {
   // Pearson's JBIG2 diagrams as blank space.
   outputFileTracingIncludes: {
     "/api/internal/exam-questions/ingest/**": ["./node_modules/pdfjs-dist/wasm/**"],
-    // Generated papers are typeset in the workflow step. The body font, pdfkit's
-    // metrics and MathJax's glyph ranges are all read by path at render time.
-    // MathJax also reaches its default font through the `#default-font/*`
-    // import alias in its package.json, which tracing does not follow: without
-    // the whole SVG font the step function cannot load, and every workflow --
-    // not only papers -- sits queued (10 Oct 2026).
-    "/.well-known/workflow/v1/step": [
-      "./node_modules/pdfjs-dist/standard_fonts/LiberationSans-*.ttf",
-      "./node_modules/pdfkit/js/data/**",
-      "./node_modules/@mathjax/mathjax-newcm-font/package.json",
-      "./node_modules/@mathjax/mathjax-newcm-font/mjs/package.json",
-      "./node_modules/@mathjax/mathjax-newcm-font/mjs/{common,svg}.js",
-      "./node_modules/@mathjax/mathjax-newcm-font/mjs/svg/**/*.js",
-    ],
+    "/.well-known/workflow/v1/step": PAPER_TYPESETTING_FILES,
+    // These routes never typeset, but they import the paper workflow's
+    // services, and MathJax fails at import, not at use: shipped without its
+    // font, the job and paper routes answered every request with a 500 -- a
+    // generated paper could be neither followed nor opened (19 Oct 2026).
+    "/api/practice/paper-jobs/**": PAPER_TYPESETTING_FILES,
+    "/api/practice/papers/**": PAPER_TYPESETTING_FILES,
+    "/api/internal/paper-quality/**": PAPER_TYPESETTING_FILES,
   },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];

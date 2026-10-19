@@ -19,7 +19,8 @@ const {
   generateGeminiImage,
   generateGeminiVideoText,
   generateGroundedResearch,
-  uploadTemporaryGeminiVideo,
+  readTemporaryGeminiVideoState,
+  startTemporaryGeminiVideoUpload,
   geminiBilledTokens,
   groundedSearchCount,
 } = await import("@/lib/ai/gemini");
@@ -355,40 +356,30 @@ describe("Gemini specialists", () => {
   describe("uploaded videos", () => {
     const uploaded = { uri: "https://files/abc", name: "files/abc" };
 
-    it("waits for Gemini to finish processing before handing the file over", async () => {
-      vi.useFakeTimers();
-      try {
-        uploadFile.mockResolvedValue({ ...uploaded, state: "PROCESSING" });
-        getFile.mockResolvedValueOnce({ state: "PROCESSING" }).mockResolvedValueOnce({ state: "ACTIVE" });
-        const pending = uploadTemporaryGeminiVideo({ path: "/tmp/v", mimeType: "video/mp4" });
-        await vi.advanceTimersByTimeAsync(10_000);
-        await expect(pending).resolves.toEqual(uploaded);
-        expect(getFile).toHaveBeenCalledTimes(2);
-        expect(deleteFile).not.toHaveBeenCalled();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("returns at once when the upload is already active", async () => {
-      uploadFile.mockResolvedValue({ ...uploaded, state: "ACTIVE" });
-      await expect(uploadTemporaryGeminiVideo({ path: "/tmp/v", mimeType: "video/mp4" })).resolves.toEqual(uploaded);
+    it("returns as soon as the upload is in, with Gemini's processing state, rather than waiting on it", async () => {
+      uploadFile.mockResolvedValue({ ...uploaded, state: "PROCESSING" });
+      await expect(startTemporaryGeminiVideoUpload({ path: "/tmp/v", mimeType: "video/mp4" })).resolves.toEqual({
+        ...uploaded,
+        state: "PROCESSING",
+      });
+      expect(uploadFile).toHaveBeenCalledWith({
+        file: "/tmp/v",
+        config: { mimeType: "video/mp4", displayName: "Temporary Jami video import" },
+      });
       expect(getFile).not.toHaveBeenCalled();
     });
 
-    it("deletes the temporary file when Gemini cannot process it", async () => {
-      vi.useFakeTimers();
-      try {
-        uploadFile.mockResolvedValue({ ...uploaded, state: "PROCESSING" });
-        getFile.mockResolvedValue({ state: "FAILED" });
-        const pending = uploadTemporaryGeminiVideo({ path: "/tmp/v", mimeType: "video/mp4" });
-        const outcome = expect(pending).rejects.toThrow("gemini_file_processing_failed");
-        await vi.advanceTimersByTimeAsync(5_000);
-        await outcome;
-        expect(deleteFile).toHaveBeenCalledWith({ name: "files/abc" });
-      } finally {
-        vi.useRealTimers();
-      }
+    it("refuses an upload Gemini gave no name or address", async () => {
+      uploadFile.mockResolvedValue({ uri: "https://files/abc", state: "ACTIVE" });
+      await expect(startTemporaryGeminiVideoUpload({ path: "/tmp/v", mimeType: "video/mp4" })).rejects.toThrow(
+        "gemini_upload_failed"
+      );
+    });
+
+    it("reads where Gemini is with processing an upload", async () => {
+      getFile.mockResolvedValue({ state: "ACTIVE" });
+      await expect(readTemporaryGeminiVideoState("files/abc")).resolves.toBe("ACTIVE");
+      expect(getFile).toHaveBeenCalledWith({ name: "files/abc" });
     });
   });
 });

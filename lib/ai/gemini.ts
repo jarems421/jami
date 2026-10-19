@@ -513,46 +513,38 @@ export async function generateGeminiImage(input: {
   }
 }
 
-/** Video imports are deliberately isolated from the normal text/image router. */
-export async function uploadTemporaryGeminiVideo(input: { path: string; mimeType: string }) {
+function geminiVideoClient() {
   if (!resolveAiProviderPolicy(process.env).geminiReady) throw new Error("gemini_not_configured");
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) throw new Error("gemini_not_configured");
-  const ai = new GoogleGenAI({ apiKey });
-  const file = await ai.files.upload({ file: input.path, config: { mimeType: input.mimeType, displayName: "Temporary Jami video import" } });
-  if (!file.uri) throw new Error("gemini_upload_failed");
-  try {
-    await waitForGeminiFileActive(ai, file.name, file.state);
-  } catch (error) {
-    await deleteTemporaryGeminiVideo(file.name);
-    throw error;
-  }
-  return { uri: file.uri, name: file.name };
+  return new GoogleGenAI({ apiKey });
 }
 
-const GEMINI_FILE_POLL_MS = 5_000;
-const GEMINI_FILE_ACTIVE_TIMEOUT_MS = 10 * 60_000;
-
 /**
- * Gemini processes an uploaded video before a model may read it, and a
- * request against a file still PROCESSING is refused. A long lecture can take
- * minutes to become ACTIVE, so wait for it, within a bound.
+ * Uploads a video for one import, and returns at once with Gemini's state for
+ * it. Video imports are deliberately isolated from the normal text/image router.
+ *
+ * Gemini processes an uploaded video before a model may read it, and a long
+ * lecture can take minutes to become ACTIVE. That wait used to happen here, in
+ * the same function as the download and the read, and on a long lecture the
+ * three together outlasted the platform's five-minute limit: the function was
+ * killed and retried from the start until the import failed. The import's
+ * workflow now waits between steps (`readTemporaryGeminiVideoState`).
  */
-async function waitForGeminiFileActive(
-  ai: GoogleGenAI,
-  name: string | undefined,
-  initialState: string | undefined,
-  options: { pollMs?: number; timeoutMs?: number } = {}
-) {
-  const pollMs = options.pollMs ?? GEMINI_FILE_POLL_MS;
-  const deadline = Date.now() + (options.timeoutMs ?? GEMINI_FILE_ACTIVE_TIMEOUT_MS);
-  let state = initialState;
-  while (state !== "ACTIVE") {
-    if (state === "FAILED") throw new Error("gemini_file_processing_failed");
-    if (!name || Date.now() > deadline) throw new Error("gemini_file_processing_timeout");
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-    state = (await ai.files.get({ name })).state;
-  }
+export async function startTemporaryGeminiVideoUpload(input: { path: string; mimeType: string }) {
+  const file = await geminiVideoClient().files.upload({
+    file: input.path,
+    config: { mimeType: input.mimeType, displayName: "Temporary Jami video import" },
+  });
+  if (!file.uri || !file.name) throw new Error("gemini_upload_failed");
+  const state: string = file.state ?? "PROCESSING";
+  return { uri: file.uri, name: file.name, state };
+}
+
+/** Where Gemini is with processing an uploaded video: PROCESSING, ACTIVE or FAILED. */
+export async function readTemporaryGeminiVideoState(name: string) {
+  const state: string = (await geminiVideoClient().files.get({ name })).state ?? "PROCESSING";
+  return state;
 }
 
 export async function deleteTemporaryGeminiVideo(name?: string) {

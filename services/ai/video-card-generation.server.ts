@@ -25,7 +25,12 @@ import {
   rankBySupport,
 } from "@/lib/ai/video-card-quality";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
-import { deleteTemporaryGeminiVideo, generateGeminiVideoText, uploadTemporaryGeminiVideo } from "@/lib/ai/gemini";
+import {
+  deleteTemporaryGeminiVideo,
+  generateGeminiVideoText,
+  readTemporaryGeminiVideoState,
+  startTemporaryGeminiVideoUpload,
+} from "@/lib/ai/gemini";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { prepareSourceForTutor } from "@/lib/ai/source-ingestion";
 import type { Source } from "@/lib/material/sources";
@@ -305,15 +310,6 @@ function promptForSource(coverage: VideoCoverage, focus?: string) {
 }
 
 
-async function prepareGeminiUpload(storagePath: string, mimeType: string) {
-  const directory = join(tmpdir(), `jami-video-${randomUUID()}`);
-  await mkdir(directory, { recursive: true });
-  const path = join(directory, "upload");
-  await getAdminStorageBucket().file(storagePath).download({ destination: path });
-  const uploaded = await uploadTemporaryGeminiVideo({ path, mimeType });
-  return { uri: uploaded.uri, name: uploaded.name, cleanup: async () => { await deleteTemporaryGeminiVideo(uploaded.name); await rm(directory, { recursive: true, force: true }); } };
-}
-
 type FlaggedItem = { kind: string; id: string; timestampSeconds?: number; detail: string };
 
 /**
@@ -580,52 +576,125 @@ async function generateCardsFromSource(uid: string, jobId: string, job: Record<s
   });
 }
 
-export async function generateVideoCardsForJob(uid: string, jobId: string) {
-  return runWithAiSpendContext(aiSpendContextFor(uid, "videoCardImport"), () =>
-    generateVideoCardsForJobMetered(uid, jobId)
-  );
+/*
+ * A video import, as the steps of its workflow (`workflows/video-card-generation.ts`).
+ *
+ * It was one step: download the student's upload, copy it to Gemini, wait for
+ * Gemini to process it, read it, take the second look and tidy the batch. Each
+ * step runs as one function with a five-minute limit, and on a long lecture
+ * those together ran past it -- the function was killed part way, retried from
+ * the download, killed again, and the import failed after twenty minutes at
+ * "reading video". Each part is now its own step, and the wait for Gemini sits
+ * between steps, where it costs no function time at all.
+ */
+
+function videoCardJobRef(uid: string, jobId: string) {
+  return getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId);
 }
 
-async function generateVideoCardsForJobMetered(uid: string, jobId: string) {
-  const ref = getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId);
-  const snapshot = await ref.get();
-  if (!snapshot.exists || snapshot.data()?.cancellationRequested) return;
-  const job = snapshot.data() ?? {};
-  if (job.sourceKind === "file" || job.sourceKind === "text") {
-    await generateCardsFromSource(uid, jobId, job);
-    return;
-  }
-  await ref.update({ status: "running", stage: "reading_video", progress: 30, providerStartedAt: Date.now(), updatedAt: Date.now() });
-  const sourceKind = job.sourceKind === "upload" ? "upload" : "youtube";
-  const durationSeconds = Number(job.durationSeconds) || 0;
-  if (durationSeconds <= 0 || durationSeconds > VIDEO_MAX_SECONDS) throw new Error("invalid_duration");
-  const coverage = job.coverage as VideoCoverage;
-  const route = chooseVideoRoute({ durationSeconds });
-  const prompt = promptFor(coverage, typeof job.focus === "string" ? job.focus : undefined, job.maxCards);
-  let cleanup: () => Promise<void> = async () => {};
-  let uri = typeof job.youtubeUrl === "string" ? job.youtubeUrl : "";
-  let mimeType = "video/mp4";
-  if (sourceKind === "upload") {
-    const prepared = await prepareGeminiUpload(String(job.storagePath), String(job.mimeType || "video/mp4"));
-    uri = prepared.uri;
-    mimeType = String(job.mimeType || "video/mp4");
-    cleanup = prepared.cleanup;
-  }
-  let result: { text: string; provider: string; usage?: unknown };
+function meteredForVideoImport<T>(uid: string, work: () => Promise<T>) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "videoCardImport"), work);
+}
+
+/** A video Gemini can read: a public YouTube link, or this import's temporary upload with its processing state. */
+export type VideoCardSourceVideo = { uri: string; mimeType: string; name?: string; state?: string };
+
+/** The video read once, ready for the second look and the tidy. */
+export type VideoCardRead = {
+  generation: Generation;
+  durationSeconds: number;
+  provider: string;
+  model: string;
+  usage: Record<string, number>;
+};
+
+/**
+ * Starts an import. A file or pasted notes is short work and is turned into
+ * cards here in one go; a video is checked, marked as being read, and handed
+ * on to the steps that read it.
+ */
+export async function startVideoCardJob(
+  uid: string,
+  jobId: string
+): Promise<{ kind: "stopped" } | { kind: "done" } | { kind: "upload" } | { kind: "youtube"; video: VideoCardSourceVideo }> {
+  return meteredForVideoImport(uid, async () => {
+    const ref = videoCardJobRef(uid, jobId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists || snapshot.data()?.cancellationRequested) return { kind: "stopped" as const };
+    const job = snapshot.data() ?? {};
+    if (job.sourceKind === "file" || job.sourceKind === "text") {
+      await generateCardsFromSource(uid, jobId, job);
+      return { kind: "done" as const };
+    }
+    await ref.update({ status: "running", stage: "reading_video", progress: 30, providerStartedAt: Date.now(), updatedAt: Date.now() });
+    const durationSeconds = Number(job.durationSeconds) || 0;
+    if (durationSeconds <= 0 || durationSeconds > VIDEO_MAX_SECONDS) throw new Error("invalid_duration");
+    if (job.sourceKind === "upload") return { kind: "upload" as const };
+    return {
+      kind: "youtube" as const,
+      video: { uri: typeof job.youtubeUrl === "string" ? job.youtubeUrl : "", mimeType: "video/mp4" },
+    };
+  });
+}
+
+/** Copies the student's upload to Gemini, without waiting for Gemini to process it. */
+export async function uploadVideoCardSource(uid: string, jobId: string): Promise<VideoCardSourceVideo> {
+  const job = (await videoCardJobRef(uid, jobId).get()).data() ?? {};
+  const mimeType = String(job.mimeType || "video/mp4");
+  const directory = join(tmpdir(), `jami-video-${randomUUID()}`);
+  await mkdir(directory, { recursive: true });
   try {
-    result = await generateGeminiVideoText({ uri, mimeType, model: route.model, processing: { fps: route.fps }, prompt });
-    if ((await ref.get()).data()?.cancellationRequested) return;
+    const path = join(directory, "upload");
+    await getAdminStorageBucket().file(String(job.storagePath)).download({ destination: path });
+    return { ...(await startTemporaryGeminiVideoUpload({ path, mimeType })), mimeType };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+/** The upload again, with Gemini's latest processing state. */
+export async function checkVideoCardSource(video: VideoCardSourceVideo): Promise<VideoCardSourceVideo> {
+  return video.name ? { ...video, state: await readTemporaryGeminiVideoState(video.name) } : video;
+}
+
+/** Reads the video once: most of an import's time and cost. Null when the student cancelled meanwhile. */
+export async function readVideoCardSource(
+  uid: string,
+  jobId: string,
+  video: VideoCardSourceVideo
+): Promise<VideoCardRead | null> {
+  return meteredForVideoImport(uid, async () => {
+    const ref = videoCardJobRef(uid, jobId);
+    const job = (await ref.get()).data() ?? {};
+    if (job.cancellationRequested) return null;
+    const durationSeconds = Number(job.durationSeconds) || 0;
+    const route = chooseVideoRoute({ durationSeconds });
+    const prompt = promptFor(job.coverage as VideoCoverage, typeof job.focus === "string" ? job.focus : undefined, job.maxCards);
+    const result = await generateGeminiVideoText({ uri: video.uri, mimeType: video.mimeType, model: route.model, processing: { fps: route.fps }, prompt });
+    if ((await ref.get()).data()?.cancellationRequested) return null;
     await ref.update({ stage: "creating_cards", progress: 75, updatedAt: Date.now() });
 
-    // The video has been read and paid for by this point, so a batch short of
-    // the coverage minimum is delivered with a warning rather than discarded.
-    const initial = parseAndValidateVideoGeneration(result.text, { durationSeconds, maxCards: job.maxCards });
-    const checked = await reviewFlaggedItems(initial, { uri, mimeType });
-    const { generation: parsed, applied } = await refineCardsWithPrivateRouter(checked.generation, durationSeconds);
+    return {
+      // The video has been read and paid for by this point, so a batch short of
+      // the coverage minimum is delivered with a warning rather than discarded.
+      generation: parseAndValidateVideoGeneration(result.text, { durationSeconds, maxCards: job.maxCards }),
+      durationSeconds,
+      provider: result.provider,
+      model: route.model,
+      usage: safeUsage(result.usage),
+    };
+  });
+}
+
+/** The second look, the tidy, and the cards saved for the student to review. */
+export async function finishVideoCardJob(uid: string, jobId: string, video: VideoCardSourceVideo, read: VideoCardRead) {
+  return meteredForVideoImport(uid, async () => {
+    const checked = await reviewFlaggedItems(read.generation, video);
+    const { generation: parsed, applied } = await refineCardsWithPrivateRouter(checked.generation, read.durationSeconds);
 
     const now = Date.now();
     const visualIds = new Set(parsed.evidence.filter((item) => item.kind === "visual").map((item) => item.id));
-    await ref.update({
+    await videoCardJobRef(uid, jobId).update({
       status: "ready",
       stage: "ready",
       progress: 100,
@@ -633,9 +702,9 @@ async function generateVideoCardsForJobMetered(uid: string, jobId: string) {
       drafts: parsed.cards,
       warnings: parsed.warnings,
       evidence: parsed.evidence,
-      provider: result.provider,
-      model: route.model,
-      usage: safeUsage(result.usage),
+      provider: read.provider,
+      model: read.model,
+      usage: read.usage,
       secondPassRan: checked.ran,
       refinePassApplied: applied,
       detectedVisuals: visualIds.size,
@@ -644,10 +713,14 @@ async function generateVideoCardsForJobMetered(uid: string, jobId: string) {
       expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000),
       updatedAt: now,
     });
-  } finally {
-    // The temporary copies go now. The student's own upload stays until they
-    // approve or discard, so the timestamps on the cards they are reviewing
-    // still point at something they can watch.
-    await cleanup();
-  }
+  });
+}
+
+/**
+ * Removes Gemini's temporary copy. The student's own upload stays until they
+ * approve or discard, so the timestamps on the cards they are reviewing still
+ * point at something they can watch.
+ */
+export async function removeVideoCardSourceCopy(video: VideoCardSourceVideo) {
+  await deleteTemporaryGeminiVideo(video.name);
 }

@@ -13,6 +13,7 @@ import {
   splitJamiAssistantHistoryWindow,
   stripJamiAssistantReferenceMarkers,
   parseJamiAssistantModelAnswer,
+  salvageJamiAssistantModelAnswer,
   sanitizeTutorResearchQuery,
   shouldOfferTutorIllustration,
   isExplicitTutorGraphRequest,
@@ -264,6 +265,52 @@ describe("Jami assistant model and receipt contract", () => {
         { kind: "general-knowledge", label: "general knowledge" },
       ])
     ).toBe("Used: Current page, Respiration.pdf and general knowledge");
+  });
+});
+
+describe("keeping a streamed answer the student has already read", () => {
+  it("keeps a whole answer whose references and flags fell short, cutting references to those offered", () => {
+    const streamed = JSON.stringify({
+      answer: "Photosynthesis stores light energy.",
+      sourceRefs: ["S1", "S9"],
+      usedCurrentContext: true,
+    });
+    expect(parseJamiAssistantModelAnswer(streamed, ["S1"])).toBeNull();
+    expect(salvageJamiAssistantModelAnswer(streamed, ["S1"])).toMatchObject({
+      answer: "Photosynthesis stores light energy.",
+      sourceRefs: ["S1"],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+    });
+  });
+
+  it("keeps a whole answer, and every field that arrived whole, when the object never closed", () => {
+    expect(
+      salvageJamiAssistantModelAnswer(
+        '{"memory":[{"op":"remember"}],"answer":"Done: x = 4.","sourceRefs":["S1"],"usedCur',
+        ["S1"]
+      )
+    ).toMatchObject({
+      answer: "Done: x = 4.",
+      memory: [{ op: "remember" }],
+      sourceRefs: ["S1"],
+      usedCurrentContext: false,
+      usedGeneralKnowledge: true,
+    });
+  });
+
+  it("does not keep an answer cut off mid-string, which is asked for again instead", () => {
+    expect(salvageJamiAssistantModelAnswer('{"answer":"Photosynthesis is the', [])).toBeNull();
+    expect(salvageJamiAssistantModelAnswer('{"answer":"   ","sourceRefs":[]', [])).toBeNull();
+  });
+
+  it("claims web research only when it was available and the model said so", () => {
+    const streamed = '{"answer":"Checked.","sourceRefs":[],"usedWebResearch":true}';
+    expect(salvageJamiAssistantModelAnswer(streamed, [], { webResearchAvailable: true })).toMatchObject({
+      usedWebResearch: true,
+    });
+    expect(salvageJamiAssistantModelAnswer(streamed, [])).toMatchObject({ usedWebResearch: false });
   });
 });
 

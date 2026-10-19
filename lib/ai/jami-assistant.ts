@@ -5,6 +5,7 @@ import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 
 import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-normalize";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
+import { readCompletedStreamingAnswer } from "@/lib/ai/streaming-answer";
 
 import { extractTutorGraphs, MAX_TUTOR_GRAPHS, readTutorGraphSpecs } from "@/lib/ai/assistant-graph";
 import {
@@ -810,26 +811,83 @@ function modelAnswerCandidates(value: string) {
   return [unwrapJson(value), ...keyed];
 }
 
+function readModelAnswerPayload(value: string): ModelAnswerPayload | null {
+  for (const candidate of modelAnswerCandidates(value)) {
+    try {
+      const parsed: unknown = JSON.parse(repairModelJsonBackslashes(candidate));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as ModelAnswerPayload;
+      }
+    } catch {
+      // Try the next reading. Output with none that parses is rejected by the
+      // caller so the route can retry it.
+    }
+  }
+  return null;
+}
+
 export function parseJamiAssistantModelAnswer(
   value: string,
   allowedSourceRefs: readonly string[],
   options: { webResearchAvailable?: boolean } = {}
 ): ParsedJamiAssistantModelAnswer | null {
-  let payload: ModelAnswerPayload | null = null;
-  for (const candidate of modelAnswerCandidates(value)) {
-    try {
-      const parsed: unknown = JSON.parse(repairModelJsonBackslashes(candidate));
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        payload = parsed as ModelAnswerPayload;
-        break;
-      }
-    } catch {
-      // Try the next reading. Output with none that parses is rejected below so
-      // the route can retry it.
-    }
-  }
-  if (!payload) return null;
+  const payload = readModelAnswerPayload(value);
+  return payload ? readModelAnswer(payload, allowedSourceRefs, options) : null;
+}
 
+/**
+ * A streamed answer the student has already watched arrive in full, kept when
+ * the object around it falls short of `parseJamiAssistantModelAnswer`.
+ *
+ * The strict reading refuses a reply over its bookkeeping -- a source reference
+ * the turn never offered, a missing used flag, a stream that broke or looped
+ * while the fields after the answer were being written. Refusing it then sent
+ * the route to ask again, and when that failed too the reply the student had
+ * just finished reading vanished from the chat. The answer itself is whole, so
+ * it is kept with every field that arrived whole around it: source references
+ * are cut to those actually offered, a missing flag reads as "not used"
+ * (general knowledge as "used", since the answer came from somewhere), and
+ * anything that could not be read is simply absent.
+ *
+ * Null when the answer string itself never closed: a reply cut off mid-answer
+ * is still asked for again.
+ */
+export function salvageJamiAssistantModelAnswer(
+  value: string,
+  allowedSourceRefs: readonly string[],
+  options: { webResearchAvailable?: boolean } = {}
+): ParsedJamiAssistantModelAnswer | null {
+  const completed = readCompletedStreamingAnswer(value);
+  const answer = completed?.answer;
+  if (!completed || !answer?.trim()) return null;
+  let payload = readModelAnswerPayload(value);
+  for (const reading of completed.closedReadings) {
+    if (payload) break;
+    payload = readModelAnswerPayload(reading);
+  }
+  payload ??= {};
+  const allowed = new Set(allowedSourceRefs);
+  return readModelAnswer(
+    {
+      ...payload,
+      answer,
+      sourceRefs: Array.isArray(payload.sourceRefs)
+        ? payload.sourceRefs.filter((sourceRef) => typeof sourceRef === "string" && allowed.has(sourceRef))
+        : [],
+      usedCurrentContext: payload.usedCurrentContext === true,
+      usedGeneralKnowledge: payload.usedGeneralKnowledge !== false,
+      usedWebResearch: payload.usedWebResearch === true,
+    },
+    allowedSourceRefs,
+    options
+  );
+}
+
+function readModelAnswer(
+  payload: ModelAnswerPayload,
+  allowedSourceRefs: readonly string[],
+  options: { webResearchAvailable?: boolean }
+): ParsedJamiAssistantModelAnswer | null {
   const extracted = extractTutorGraphs(typeof payload.answer === "string" ? payload.answer : "");
   const extractedDiagrams = extractTutorDiagrams(extracted.answer);
   const answer = extractedDiagrams.answer.trim();

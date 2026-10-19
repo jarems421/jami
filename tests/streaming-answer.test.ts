@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { extractStreamingAnswer } from "@/lib/ai/streaming-answer";
+import {
+  extractStreamingAnswer,
+  isRunawayAnswerTail,
+  readCompletedStreamingAnswer,
+  readStreamingAnswerTail,
+} from "@/lib/ai/streaming-answer";
 
 /**
  * The assistant streams structured JSON, so the client sees the answer field
@@ -58,5 +63,67 @@ describe("extractStreamingAnswer", () => {
     expect(extractStreamingAnswer('{"sourceRefs":["S1"],"usedCurrentContext":true')).toBe(
       ""
     );
+  });
+});
+
+/**
+ * Read from a finished stream: the answer counts as whole only once its
+ * closing quote arrived, whatever happened to the fields after it.
+ */
+describe("readCompletedStreamingAnswer", () => {
+  it("returns the answer once its string has closed, even if the object never did", () => {
+    expect(readCompletedStreamingAnswer('{"answer":"All done.","sourceRefs":["S')?.answer).toBe("All done.");
+  });
+
+  it("returns null for an answer cut off mid-string", () => {
+    expect(readCompletedStreamingAnswer('{"answer":"Photosynthesis is')).toBeNull();
+    expect(readCompletedStreamingAnswer('{"answer":"She said \\"go')).toBeNull();
+  });
+
+  it("returns null when there is no answer field", () => {
+    expect(readCompletedStreamingAnswer('{"sourceRefs":[]}')).toBeNull();
+  });
+
+  it("unescapes a whole answer ending in LaTeX, which the live reading holds back", () => {
+    expect(readCompletedStreamingAnswer('{"answer":"Use \\\\times"}')?.answer).toBe("Use \\times");
+    expect(readCompletedStreamingAnswer('{"answer":"Use \\times"}')?.answer).toBe("Use \\times");
+  });
+
+  it("closes the document after each whole field from the answer on, latest first", () => {
+    const readings = readCompletedStreamingAnswer(
+      '{"memory":[],"answer":"x = 4","sourceRefs":["S1"],"usedCurrentContext":true,"graphs":["[]","[]","[]'
+    )?.closedReadings;
+    expect(readings).toEqual([
+      '{"memory":[],"answer":"x = 4","sourceRefs":["S1"],"usedCurrentContext":true}',
+      '{"memory":[],"answer":"x = 4","sourceRefs":["S1"]}',
+      '{"memory":[],"answer":"x = 4"}',
+    ]);
+    readings?.forEach((reading) => expect(() => JSON.parse(reading)).not.toThrow());
+  });
+
+  it("ends with the whole object when it closed", () => {
+    expect(readCompletedStreamingAnswer('{"answer":"a, b","sourceRefs":[]}')?.closedReadings[0]).toBe(
+      '{"answer":"a, b","sourceRefs":[]}'
+    );
+  });
+});
+
+describe("the reply after its answer", () => {
+  it("is nothing until the answer closes", () => {
+    expect(readStreamingAnswerTail('{"answer":"Still going')).toBeNull();
+    expect(readStreamingAnswerTail('{"answer":"Done.", "sourceRefs": []')).toBe(', "sourceRefs": []');
+  });
+
+  it("is a runaway once the same item repeats, as measured on the worker model", () => {
+    expect(isRunawayAnswerTail(', "graphs": [ "[]", "[]" ] }')).toBe(false);
+    expect(isRunawayAnswerTail(`, "graphs": [ ${Array(6).fill('"[]"').join(" , ")}`)).toBe(true);
+    expect(isRunawayAnswerTail(`, "graphs": [ ${Array(6).fill('"The product rule, with an example"').join(", ")}`)).toBe(
+      true
+    );
+    expect(isRunawayAnswerTail(`, "sourceRefs": [${Array(6).fill("[]").join(",")}`)).toBe(true);
+  });
+
+  it("is a runaway once it is far longer than any real set of fields", () => {
+    expect(isRunawayAnswerTail(`, "graphs": ["${"x".repeat(9_000)}`)).toBe(true);
   });
 });

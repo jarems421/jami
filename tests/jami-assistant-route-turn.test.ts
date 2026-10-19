@@ -36,6 +36,9 @@ const mocks = vi.hoisted(() => {
     retrieveEvidence: vi.fn(),
     generateText: vi.fn(),
     streamText: vi.fn(),
+    /** An error the next stream throws after its last chunk, as a provider dropping mid-response does. */
+    streamBreak: [] as Error[],
+    streamStall: { value: false },
     countTokens: vi.fn(),
     generateResearch: vi.fn(),
     chargeAllowance: vi.fn(),
@@ -142,6 +145,13 @@ vi.mock("@/lib/ai/provider-router", () => ({
     const text: string = await mocks.streamText(...args);
     const size = Math.max(1, Math.ceil(text.length / 3));
     for (let at = 0; at < text.length; at += size) yield text.slice(at, at + size);
+    const breakAfter = mocks.streamBreak.shift();
+    if (breakAfter) throw breakAfter;
+    if (mocks.streamStall.value) {
+      // Goes quiet until the route gives up on it, as a stalled provider does.
+      const { signal } = args[0] as { signal: AbortSignal };
+      await new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
+    }
   },
 }));
 
@@ -224,6 +234,7 @@ function streamCall(index = 0) {
     routeReason: string;
     request: { systemInstruction: string; contents: Array<{ role: string; parts: Array<{ text?: string }> }> };
     generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    signal?: AbortSignal;
   };
 }
 
@@ -275,6 +286,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   mocks.providerConfigured.value = true;
   mocks.writes.length = 0;
+  mocks.streamBreak.length = 0;
+  mocks.streamStall.value = false;
   mocks.stored.clear();
   mocks.storedMessages.length = 0;
   mocks.folders.length = 0;
@@ -556,6 +569,77 @@ describe("handing the request back", () => {
       error: "Jami could not produce a reliable answer just now. Try again.",
       code: "invalid_provider_response",
     });
+    expect(mocks.refundBudget).toHaveBeenCalledTimes(1);
+    expect(mocks.writes).toEqual([]);
+  });
+
+  it("keeps and saves a whole answer when the stream breaks after it", async () => {
+    mocks.streamText.mockResolvedValueOnce(
+      '{"answer":"Plants turn light energy into stored chemical energy.","sourceRefs":["S1"],"usedCurr'
+    );
+    mocks.streamBreak.push(new Error("stalled"));
+
+    const stream = await events(await postAssistant(request(body())));
+
+    expect(stream.at(-1)).toMatchObject({
+      type: "done",
+      reply: "Plants turn light energy into stored chemical energy.",
+      // The source reference arrived whole before the break, so it counts.
+      used: [
+        { kind: "source", id: "source-1", label: "Biology notes" },
+        { kind: "general-knowledge", label: "general knowledge" },
+      ],
+    });
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.refundBudget).not.toHaveBeenCalled();
+    expect(mocks.writes.at(-1)).toEqual({ kind: "commit", path: "" });
+  });
+
+  it("stops reading a reply that loops after its answer, and keeps the answer", async () => {
+    mocks.streamText.mockResolvedValueOnce(
+      `{"answer":"Plants turn light energy into stored chemical energy.","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[${Array(40).fill('"[]"').join(",")}`
+    );
+
+    const stream = await events(await postAssistant(request(body())));
+
+    expect(stream.at(-1)).toMatchObject({
+      type: "done",
+      reply: "Plants turn light energy into stored chemical energy.",
+      used: [
+        { kind: "current-context", label: "Current card" },
+        { kind: "source", id: "source-1", label: "Biology notes" },
+        { kind: "general-knowledge", label: "general knowledge" },
+      ],
+    });
+    expect(streamCall().signal?.aborted).toBe(true);
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("waits only a few seconds for a reply that stalls after its answer", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: NOW });
+    mocks.streamText.mockResolvedValueOnce(
+      '{"answer":"Plants turn light energy into stored chemical energy.","sourceRefs":["S1"],"usedGeneralKnowledge'
+    );
+    mocks.streamStall.value = true;
+
+    const finished = postAssistant(request(body())).then(events);
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(streamCall().signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const stream = await finished;
+
+    expect(stream.at(-1)).toMatchObject({ type: "done", reply: "Plants turn light energy into stored chemical energy." });
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("still fails a stream that breaks before the answer is whole", async () => {
+    mocks.streamText.mockResolvedValueOnce('{"answer":"Plants turn light');
+    mocks.streamBreak.push(new Error("stalled"));
+
+    const stream = await events(await postAssistant(request(body())));
+
+    expect(stream.at(-1)).toMatchObject({ type: "error", code: "provider_failure" });
+    expect(mocks.generateText).not.toHaveBeenCalled();
     expect(mocks.refundBudget).toHaveBeenCalledTimes(1);
     expect(mocks.writes).toEqual([]);
   });
