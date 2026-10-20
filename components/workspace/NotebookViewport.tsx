@@ -180,6 +180,8 @@ function NotebookViewport({
         {activeContent !== null && geometry.pageWidth > 0 ? (
           <div
             ref={trackRef}
+            // Read by the ink editor, which has to hear when a page turn moves its sheet.
+            data-notebook-page-track
             className={`notebook-page-track absolute left-0 top-0 ${scroll ? "" : "h-full w-full"}`}
             style={scroll ? { width: `${scroll.width}px`, height: `${scroll.height}px` } : undefined}
             onTransitionEnd={onTrackTransitionEnd}

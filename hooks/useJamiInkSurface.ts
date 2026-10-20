@@ -185,12 +185,14 @@ export function useJamiInkSurface({
     };
   }, [callbacksRef, hostRef, lifecycleRef, measure, pageHeight, pageId, pageWidth, reportInteraction]);
 
-  // A scroll anywhere moves the sheet; resizing the window can too. Both hold
-  // the engine's background drawing while they last and measure once they stop.
+  // A scroll anywhere moves the sheet; resizing the window can too, and so does
+  // a page turn. Each holds the engine's background drawing while it lasts and
+  // measures once it stops.
   useEffect(() => {
     let timer = 0;
     let scrolling = false;
     const settleAfterQuiet = () => {
+      window.clearTimeout(timer);
       timer = 0;
       if (scrolling) {
         scrolling = false;
@@ -219,12 +221,47 @@ export function useJamiInkSurface({
     const scrollOptions: AddEventListenerOptions = { capture: true, passive: true };
     window.addEventListener("scroll", handleScroll, scrollOptions);
     window.addEventListener("resize", handleResize);
+
+    /*
+     * A page turn moves the sheet too, by a transform on the page track, which
+     * no scroll or resize reports.
+     *
+     * The editor for the page being turned to mounts mid-turn, while its sheet
+     * is still a page's width off to the side, and measured it there. When the
+     * track came home nothing measured again, so every stroke was mapped a page
+     * away from the pen and drawn off the paper: a new page -- always reached by
+     * a turn -- took no writing at all, and turning away and back gave the same
+     * page the same fault, until a reload opened it in place (19 Oct 2026).
+     *
+     * A move without a transition has already arrived, so it is measured at
+     * once; an animated one is measured when its transition ends, and treated
+     * as a scroll until then.
+     */
+    const track = hostRef.current?.closest<HTMLElement>("[data-notebook-page-track]") ?? null;
+    const handleTrackMoved = () => {
+      if (!track) return;
+      const transition = track.style.transition;
+      if (!transition || transition === "none") settleAfterQuiet();
+      else handleScroll();
+    };
+    const handleTrackArrived = (event: TransitionEvent) => {
+      if (event.target === track && event.propertyName === "transform") settleAfterQuiet();
+    };
+    const trackObserver = track ? new MutationObserver(handleTrackMoved) : null;
+    if (track && trackObserver) {
+      trackObserver.observe(track, { attributes: true, attributeFilter: ["style"] });
+      track.addEventListener("transitionend", handleTrackArrived);
+      track.addEventListener("transitioncancel", handleTrackArrived);
+    }
     return () => {
       window.removeEventListener("scroll", handleScroll, scrollOptions);
       window.removeEventListener("resize", handleResize);
+      trackObserver?.disconnect();
+      track?.removeEventListener("transitionend", handleTrackArrived);
+      track?.removeEventListener("transitioncancel", handleTrackArrived);
       window.clearTimeout(timer);
     };
-  }, [measure]);
+  }, [hostRef, measure]);
 
   return useMemo(
     () => ({ surfaceRef, loadedRef, getMapping, measureNow: measure, peekMapping, settle }),

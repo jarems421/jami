@@ -239,6 +239,61 @@ describe("JamiInkEditor", () => {
     expect(lastViewport().screenOrigin).toEqual({ x: 10, y: -140 });
   });
 
+  /*
+   * A new page took no writing (19 Oct 2026): its editor mounts mid-turn, a
+   * page's width off to the side, and the turn ends by moving the page track,
+   * which no scroll or resize reports. Every stroke was mapped from where the
+   * sheet had been.
+   */
+  describe("when a page turn moves the sheet", () => {
+    let track: HTMLDivElement;
+
+    function renderInTrack(props: Props) {
+      act(() => {
+        root.render(
+          <div data-notebook-page-track="" ref={(element) => { if (element) track = element; }}>
+            <JamiInkEditor ref={handle} {...props} />
+          </div>
+        );
+      });
+    }
+
+    it("measures again as soon as the turn ends with a jump", async () => {
+      hostRect = { left: -810, top: 20, width: 450, height: 620 };
+      renderInTrack(baseProps());
+      expect(lastViewport().screenOrigin).toEqual({ x: -810, y: 20 });
+
+      hostRect = { left: 10, top: 20, width: 450, height: 620 };
+      await act(async () => {
+        track.style.transition = "none";
+        track.style.transform = "translate3d(0px, 0, 0)";
+      });
+      expect(lastViewport().screenOrigin).toEqual({ x: 10, y: 20 });
+      expect(surface.beginGesture).not.toHaveBeenCalled();
+    });
+
+    it("holds through an animated turn and measures where it lands", async () => {
+      renderInTrack(baseProps());
+      const before = surface.setViewport.mock.calls.length;
+
+      await act(async () => {
+        track.style.transition = "transform 300ms ease";
+        track.style.transform = "translate3d(-820px, 0, 0)";
+      });
+      expect(surface.beginGesture).toHaveBeenCalledTimes(1);
+      expect(surface.setViewport.mock.calls.length).toBe(before);
+
+      hostRect = { left: -810, top: 20, width: 450, height: 620 };
+      const arrived = new Event("transitionend");
+      Object.defineProperty(arrived, "propertyName", { value: "transform" });
+      act(() => {
+        track.dispatchEvent(arrived);
+      });
+      expect(surface.endGesture).toHaveBeenCalledTimes(1);
+      expect(lastViewport().screenOrigin).toEqual({ x: -810, y: 20 });
+    });
+  });
+
   it("does not measure during a stroke; it waits for it to end", () => {
     render(baseProps());
     const input = container.querySelector('[role="img"]')!;
