@@ -66,10 +66,10 @@ The sidebar has ten destinations in two groups.
 
 | Destination | Route | Purpose |
 | --- | --- | --- |
-| Today | `/dashboard` | With a revision plan: the week, the next task, the rest of today and the exam countdown. Without one: one next step from the learning model |
+| Today | `/dashboard` | With a revision plan: today's planned activities with the next one lit, the week and the exam countdown. Without one: one next step from the learning model |
 | Learn | `/dashboard/study` | Scheduled and focused flashcard review |
 | Practice | `/dashboard/practice` | Folders, notebooks, past-paper questions and generated papers |
-| Jami | `/dashboard/tutor` | The tutor: ask about your sources, make a revision plan, review drafts |
+| Jami | `/dashboard/tutor` | The tutor: ask about your sources, plan your revision timetable, review drafts |
 
 **Workspace**
 
@@ -367,6 +367,7 @@ it). Everything else is in `docs/`:
 | [`learning-engine-verification.md`](docs/learning-engine-verification.md) | Production checks for the Learning Engine, and specification catalogue sign-off |
 | [`revision-sessions.md`](docs/revision-sessions.md) | How Revision Sessions teach, and what they record |
 | [`tutor-agent.md`](docs/tutor-agent.md) | How Tutor looks things up and checks its work before a Think or Deep answer |
+| [`revision-planner.md`](docs/revision-planner.md) | The revision planner: the student's timetable, what fills it, and Jami beside it |
 | [`ai-operations.md`](docs/ai-operations.md) | Runbook: release sequence, kill switches, telemetry, job recovery, spend |
 | [`ai-provider-release-gates.md`](docs/ai-provider-release-gates.md) | Privacy, quality and operational gates before AI traffic is enabled |
 | [`ai-quality-benchmark.md`](docs/ai-quality-benchmark.md) | The offline AI benchmark and its report format |

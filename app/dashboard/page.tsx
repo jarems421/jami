@@ -38,7 +38,7 @@ import TodayPlanPanel from "@/components/today/TodayPlanPanel";
 import TodayWeekList from "@/components/today/TodayWeekList";
 import { planScopeColor } from "@/lib/planning/plan-colors";
 import { planCountdown } from "@/lib/planning/plan-countdown";
-import { planUpNext } from "@/lib/planning/plan-tasks";
+import { timetableUpNext } from "@/lib/planning/timetable";
 import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useStudyActions } from "@/hooks/useStudyActions";
@@ -288,15 +288,13 @@ export default function DashboardHome() {
   }, [loadAll, refreshStudyActions, user.uid]);
 
   /*
-   * The plan is resolved against the same actions the rest of the page draws
-   * on, so it can never disagree with them -- it is the same answer, arranged
-   * on the student's own week.
+   * The plan's week as it was planned: the student's own tasks and Jami's
+   * picks where they were put, ticked as the work behind them is done.
    */
   const revisionPlan = useRevisionPlanToday({
     uid: user.uid,
     enabled: featureFlags.enableRevisionPlans,
-    actions: studyActions.actions,
-    folders: studyActions.folders,
+    folders: studyFolders,
     cards,
     decks,
   });
@@ -562,23 +560,21 @@ export default function DashboardHome() {
     !isLoading &&
     !planUnavailable &&
     !planLoading &&
-    Boolean(revisionPlan.plan && revisionPlan.day);
+    Boolean(revisionPlan.plan && revisionPlan.today);
   /** The plan leads while it has something left to do today; after that, Jami does. */
-  const planLeads = planLed && Boolean(planUpNext(revisionPlan.day));
+  const planLeads = planLed && Boolean(timetableUpNext(revisionPlan.today));
 
   /*
    * What Jami suggests beyond the plan. With the plan leading, anything already
-   * placed in today's sittings is left out, so a suggestion is never shown
-   * twice; with Jami leading, it is everything after its own next step.
+   * on today's timetable is left out, so a suggestion is never shown twice;
+   * with Jami leading, it is everything after its own next step.
    */
   const planPlacedIds = useMemo(
     () =>
       new Set(
-        (revisionPlan.day?.slots ?? []).flatMap((slot) =>
-          slot.item.kind === "action" ? [slot.item.action.id] : []
-        )
+        (revisionPlan.today?.activities ?? []).flatMap((activity) => (activity.actionId ? [activity.actionId] : []))
       ),
-    [revisionPlan.day]
+    [revisionPlan.today]
   );
   const suggestionActions = planLeads
     ? todayPlan.studyActions.filter((action) => !planPlacedIds.has(action.id))
@@ -724,7 +720,9 @@ export default function DashboardHome() {
           */}
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_17rem] lg:gap-8">
           <div className="min-w-0 space-y-5">
-            {planLed ? <TodayPlanPanel planToday={revisionPlan} /> : null}
+            {planLed ? (
+              <TodayPlanPanel planToday={revisionPlan} folders={studyFolders} topics={topics} goals={activeGoals} />
+            ) : null}
 
             <section aria-labelledby="today-suggest-title" className="app-panel rounded-3xl p-4 sm:p-5">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1 pb-3">
@@ -766,11 +764,11 @@ export default function DashboardHome() {
                   Plan around your exams
                 </h2>
                 <p className="px-1 text-xs leading-5 text-text-muted">
-                  Four quick questions and Jami builds a week you can stick to. Today then leads with it.
+                  Lay out your own timetable, or tell Jami your exams and week and watch it build one. Today then leads with it.
                 </p>
                 <div className="px-1 pt-1">
                   <ButtonLink href={getRevisionPlanHref()} size="sm">
-                    Plan with Jami
+                    Make a plan
                   </ButtonLink>
                 </div>
               </section>

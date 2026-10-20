@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Button, DateField, Input, OptionSwitch, Select } from "@/components/ui";
+import { Button, DateField, Input, OptionSwitch, Select, SettingSwitch } from "@/components/ui";
 import PlanExamsEditor from "@/components/planning/PlanExamsEditor";
 import PlanWeightDots from "@/components/planning/PlanWeightDots";
 import {
@@ -207,6 +207,8 @@ export default function RevisionPlanBuilder({
   options,
   initial,
   saving,
+  activityCount = 0,
+  submitLabel,
   onSave,
   onCancel,
   onBack,
@@ -215,6 +217,9 @@ export default function RevisionPlanBuilder({
   options: readonly PlanScopeOption[];
   initial?: RevisionPlanDraft;
   saving?: boolean;
+  /** How much is already on the timetable: a plan with activities needs no usual week to be saved. */
+  activityCount?: number;
+  submitLabel?: string;
   onSave: (draft: RevisionPlanDraft) => void;
   onCancel?: () => void;
   /**
@@ -240,6 +245,7 @@ export default function RevisionPlanBuilder({
   );
   /** Simple mode's one length for the whole week. */
   const [minutes, setMinutes] = useState(start.sessions[0]?.minutes ?? 45);
+  const [autoFill, setAutoFill] = useState(start.autoFill ?? false);
 
   // Ids only have to be unique within this form; the plan is written whole.
   const nextId = useRef(start.sessions.length);
@@ -270,12 +276,12 @@ export default function RevisionPlanBuilder({
       emphasis: start.emphasis,
       // A row still being typed is not an exam yet; the plan keeps only ones with a name.
       ...(exams.some((exam) => exam.label.trim()) ? { exams: exams.filter((exam) => exam.label.trim()) } : {}),
+      autoFill,
     }),
-    [endDayKey, exams, initial?.origin, scopes, sessions, start.emphasis, startDayKey, title]
+    [autoFill, endDayKey, exams, initial?.origin, scopes, sessions, start.emphasis, startDayKey, title]
   );
 
-  const { problems } = normalizeRevisionPlanDraft(draft);
-  const blocking = problems.filter((problem) => problem !== "overlapping-sessions");
+  const { problems, valid } = normalizeRevisionPlanDraft(draft, undefined, { activityCount });
 
   const toggleScope = (option: PlanScopeOption) => {
     setScopes((current) => {
@@ -445,7 +451,10 @@ export default function RevisionPlanBuilder({
       </section>
 
       <section className="space-y-4">
-        <SectionLabel title="When you study" />
+        <SectionLabel
+          title="Your usual week"
+          description="When you can normally study. New weeks start from these as free sessions, and nothing already on your timetable changes."
+        />
         <OptionSwitch
           label="How much detail your week needs"
           hideLabel
@@ -602,6 +611,17 @@ export default function RevisionPlanBuilder({
         />
       </section>
 
+      <SettingSwitch
+        label="Let Jami fill my free sessions"
+        description={
+          autoFill
+            ? "Jami keeps this week and next filled from your usual week, with tasks from your recent work. You can change any of them."
+            : "Free sessions stay free until you fill them, or ask Jami to."
+        }
+        checked={autoFill}
+        onChange={setAutoFill}
+      />
+
       {problems.length > 0 ? (
         <ul className="space-y-1.5">
           {problems.map((problem) => (
@@ -630,10 +650,10 @@ export default function RevisionPlanBuilder({
         ) : null}
         <Button
           type="button"
-          disabled={blocking.length > 0 || saving}
+          disabled={!valid || saving}
           onClick={() => onSave(draft)}
         >
-          {saving ? "Saving…" : initial ? "Save changes" : "Start this plan"}
+          {saving ? "Saving…" : (submitLabel ?? (initial ? "Save changes" : "Start this plan"))}
         </Button>
       </div>
     </div>

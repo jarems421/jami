@@ -127,9 +127,42 @@ describe("the interview's step in the system prompt", () => {
     expect(prompt).not.toContain("A draft they can change beats a question");
   });
 
-  it("keeps the open conversation's instructions when no step is given", () => {
+  it("talks about a running timetable when no step is given", () => {
     const prompt = buildPlanSystemInstruction(base);
     expect(prompt).not.toContain("THE STEP YOU ARE ON");
-    expect(prompt).toContain("A draft they can change beats a question");
+    expect(prompt).toContain("They are looking at their running timetable");
+    expect(prompt).toContain("They see every change before it happens");
+  });
+});
+
+describe("the dates Jami is given", () => {
+  const base = {
+    subjects: [{ ref: "S1", label: "Chemistry", folderId: "chem" }],
+    notices: [],
+  };
+
+  it("names today's weekday and hands over every date, so the model never works one out", () => {
+    // Told only "2026-10-20", a model has to work out which date "next
+    // Thursday" is, and one weekday out puts the session on the wrong day.
+    const prompt = buildPlanSystemInstruction({ ...base, today: "2026-10-20" });
+    expect(prompt).toContain("Today is Tuesday 20 October 2026 (2026-10-20)");
+    expect(prompt).toContain("This week: Mon 2026-10-19, Tue 2026-10-20, Wed 2026-10-21, Thu 2026-10-22");
+    // Across the clock change on 25 October: every day still exactly once, in order.
+    expect(prompt).toContain("Sat 2026-10-24, Sun 2026-10-25\nNext week: Mon 2026-10-26");
+  });
+
+  it("reaches the plan's end, up to eight weeks", () => {
+    const short = buildPlanSystemInstruction({ ...base, today: "2026-10-20", planEndDayKey: "2026-10-30" });
+    const long = buildPlanSystemInstruction({ ...base, today: "2026-10-20", planEndDayKey: "2027-06-30" });
+    expect(short.match(/^(This week|Next week|Week of)/gm)).toHaveLength(4);
+    expect(long.match(/^(This week|Next week|Week of)/gm)).toHaveLength(8);
+  });
+
+  it("shows the timetable by ref, inside its own boundary markers", () => {
+    const prompt = buildPlanSystemInstruction({ ...base, today: "2026-10-20", timetable: "- A1 · Mon 19 Oct (2026-10-19) · 17:00" });
+    const token = prompt.match(/--- BEGIN UNTRUSTED TIMETABLE ([0-9a-f-]+) ---/)?.[1];
+    expect(token).toBeTruthy();
+    expect(prompt).toContain(`--- END UNTRUSTED TIMETABLE ${token} ---`);
+    expect(prompt).toContain('{"op":"move","id":"A3"');
   });
 });

@@ -9,6 +9,7 @@ import {
   type StudyAction,
   type StudyActionContext,
 } from "@/lib/learning/actions/study-actions";
+import { planScopeFromKey } from "@/lib/planning/types";
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
 import { getAdminDb } from "@/services/firebase/admin";
 import { loadLearnerProfileWithMaterial } from "@/services/learning/learner-profile.server";
@@ -173,6 +174,81 @@ export async function loadStudyActions(input: {
     evaluatedFolders: folders.length,
     failedFolders: built.filter((actions) => actions === null).length,
     historyAvailable: historyResult.available,
+    generatedAt: now,
+  };
+}
+
+/** The most subjects one revision plan asks the engine about: a plan holds six. */
+export const MAX_PLAN_ACTION_SCOPES = 6;
+/** Enough of the engine's actions per subject to fill a fortnight without repeating one. */
+export const PLAN_ACTIONS_PER_SCOPE = 8;
+
+export type ScopeStudyActions = {
+  scopeKey: string;
+  /** ok: the engine answered. missing: no such folder or deck. failed: it could not be read. */
+  status: "ok" | "missing" | "failed";
+  actions: StudyAction[];
+};
+
+/**
+ * The engine's actions for exactly the subjects a revision plan covers.
+ *
+ * Today's list is the most recent three folders, four actions between them --
+ * right for a home page, and the reason a plan's Biology evening so often came
+ * up empty: Biology was not among the three, or its one action was spent. A
+ * plan asks about its own subjects, each decided from that subject's evidence
+ * alone, with enough per subject to fill a fortnight. Actions resting after a
+ * recent attempt stay out, as they do on Today.
+ */
+export async function loadStudyActionsForScopes(input: {
+  uid: string;
+  scopeKeys: readonly string[];
+  perScope?: number;
+  now?: number;
+}): Promise<{ scopes: ScopeStudyActions[]; folders: StudyFolder[]; generatedAt: number }> {
+  const uid = input.uid.trim();
+  const now = input.now ?? Date.now();
+  const perScope = Math.max(1, Math.min(PLAN_ACTIONS_PER_SCOPE, input.perScope ?? PLAN_ACTIONS_PER_SCOPE));
+  const scopeKeys = [...new Set(input.scopeKeys)]
+    .filter((scopeKey) => planScopeFromKey(scopeKey) !== null)
+    .slice(0, MAX_PLAN_ACTION_SCOPES);
+  if (!uid || scopeKeys.length === 0) return { scopes: [], folders: [], generatedAt: now };
+
+  const [historyResult, loaded] = await Promise.all([
+    loadStudyActionHistory({ uid, now }),
+    Promise.all(
+      scopeKeys.map(async (scopeKey) => {
+        const scope = planScopeFromKey(scopeKey);
+        try {
+          if (scope?.folderId) {
+            const folder = await loadStudyFolderForActions(uid, scope.folderId);
+            if (!folder) return { scopeKey, status: "missing" as const };
+            const result = await loadLearnerProfileWithMaterial({ uid, folderId: folder.id, folder, now });
+            return result ? { scopeKey, status: "ok" as const, ...result, folder } : { scopeKey, status: "missing" as const, folder };
+          }
+          const result = await loadLearnerProfileWithMaterial({ uid, deckId: scope?.deckId ?? "", now });
+          return result ? { scopeKey, status: "ok" as const, ...result } : { scopeKey, status: "missing" as const };
+        } catch {
+          return { scopeKey, status: "failed" as const };
+        }
+      })
+    ),
+  ]);
+
+  const scopes = loaded.map((result): ScopeStudyActions => {
+    if (result.status !== "ok") return { scopeKey: result.scopeKey, status: result.status, actions: [] };
+    const context = {
+      ...studyActionContextFor("folder" in result && result.folder ? result.folder : {}),
+      notebookMaterial: result.notebookMaterial,
+    };
+    const actions = buildStudyActions(result.profile, context, historyResult.history, now)
+      .filter((action) => action.destination && !action.cooldown)
+      .slice(0, perScope);
+    return { scopeKey: result.scopeKey, status: "ok", actions };
+  });
+  return {
+    scopes,
+    folders: loaded.flatMap((result) => ("folder" in result && result.folder ? [result.folder] : [])),
     generatedAt: now,
   };
 }

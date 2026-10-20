@@ -3,17 +3,16 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import PlanDraftPreview from "@/components/planning/PlanDraftPreview";
 import PlanWithJami from "@/components/planning/PlanWithJami";
-import { usePlanInterview } from "@/hooks/usePlanInterview";
+import { usePlanInterview, type PlanAssistantProposal } from "@/hooks/usePlanInterview";
 import type { PlanInterviewContext } from "@/lib/planning/plan-interview";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
 import type { RevisionPlanDraft } from "@/lib/planning/types";
 
 /**
- * Making a plan with Jami, the way a student does it: one question at a time,
- * answered by tapping or typing, with the plan beside the conversation filling
- * in as they go, and nothing started until the last check.
+ * Planning with Jami, the way a student does it: one question at a time,
+ * answered by tapping or typing -- and, at any point, asking for particular
+ * things on particular days, which come back as a proposal to apply or not.
  */
 
 const service = vi.hoisted(() => ({
@@ -35,8 +34,30 @@ const CONTEXT: PlanInterviewContext = {
   scopeNames: new Map(OPTIONS.map((option) => [option.key, option.label])),
 };
 
-function Harness({ onStart }: { onStart: (draft: RevisionPlanDraft) => void }) {
-  const interview = usePlanInterview(CONTEXT);
+const RUNNING = normalizeRevisionPlanDraft({
+  title: "Summer exams",
+  scopes: [{ folderId: "bio", weight: 2 }],
+  sessions: [{ id: "mon", weekday: 1, minutes: 45 }],
+  startDayKey: "2026-10-19",
+  endDayKey: "2026-11-30",
+}).draft;
+
+const TIMETABLE = [{ dayKey: "2026-10-19", activities: [], doneIds: [] }];
+
+function Harness({
+  onSave = vi.fn(),
+  onApply = vi.fn(async () => true),
+  running = false,
+}: {
+  onSave?: (draft: RevisionPlanDraft) => void;
+  onApply?: (proposal: PlanAssistantProposal) => Promise<boolean>;
+  running?: boolean;
+}) {
+  const interview = usePlanInterview(CONTEXT, {
+    mode: running ? "change" : "build",
+    timetable: () => TIMETABLE,
+    ...(running ? { startFrom: RUNNING } : {}),
+  });
   return (
     <>
       <PlanWithJami
@@ -44,16 +65,17 @@ function Harness({ onStart }: { onStart: (draft: RevisionPlanDraft) => void }) {
         options={OPTIONS}
         notices={CONTEXT.notices}
         saving={false}
-        onStart={() => onStart(interview.draft)}
-        onEditByHand={vi.fn()}
+        canSave={normalizeRevisionPlanDraft(interview.draft).valid}
+        onSave={() => onSave(interview.draft)}
+        onOpenSettings={vi.fn()}
+        describeProposal={(proposal) => ({
+          headline: proposal.changes.length > 0 ? `${proposal.changes.length} changes` : "Changes to your plan",
+          lines: proposal.plan ? ["Usual week: Mon, Thu · 45 min"] : proposal.changes.map((change) => change.kind),
+        })}
+        onApplyProposal={onApply}
+        onDiscardProposal={vi.fn()}
       />
-      <PlanDraftPreview
-        draft={interview.draft}
-        options={OPTIONS}
-        step={interview.step}
-        onEdit={vi.fn()}
-        onJumpToStep={interview.jumpTo}
-      />
+      <output data-testid="draft">{JSON.stringify(interview.draft.sessions)}</output>
     </>
   );
 }
@@ -88,73 +110,78 @@ function click(element: HTMLElement) {
 
 function priority(subject: string, level: string) {
   const group = container.querySelector(`[aria-label="How much time for ${subject}"]`);
-  const option = [...(group?.querySelectorAll('[role="radio"]') ?? [])].find(
-    (entry) => entry.textContent === level
-  );
+  const option = [...(group?.querySelectorAll('[role="radio"]') ?? [])].find((entry) => entry.textContent === level);
   if (!option) throw new Error(`No ${level} for ${subject}`);
   return option as HTMLButtonElement;
 }
 
-function outline() {
-  return container.querySelector('[aria-label="Your plan so far"]')?.textContent ?? "";
-}
-
-function lastJamiQuestion() {
-  const turns = [...container.querySelectorAll('[aria-label="Planning with Jami"] li')];
+function lastJamiTurn() {
+  const turns = [...container.querySelectorAll('[aria-label="Planning with Jami"] > li')];
   return turns.at(-1)?.textContent ?? "";
 }
 
-describe("making a plan with Jami", () => {
-  it("builds the whole plan from taps, filling the outline in as it goes", () => {
-    const onStart = vi.fn();
-    act(() => root.render(<Harness onStart={onStart} />));
+async function type(text: string) {
+  const box = container.querySelector("textarea") as HTMLTextAreaElement;
+  act(() => {
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    setValue?.call(box, text);
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    button("Send to Jami").click();
+  });
+}
 
-    expect(lastJamiQuestion()).toContain("What are you working towards?");
-    // No chips of things Jami noticed above the conversation.
-    expect(container.textContent).not.toContain("From what you’ve actually done so far");
+describe("building a plan with Jami", () => {
+  it("builds the whole plan from taps, and saves it from the last check", () => {
+    const onSave = vi.fn();
+    act(() => root.render(<Harness onSave={onSave} />));
 
+    expect(lastJamiTurn()).toContain("What are you working towards?");
     click(button("No exams coming up"));
-    expect(outline()).toContain("No exams");
     // What the Learning Engine noticed is said in the question it bears on.
-    expect(lastJamiQuestion()).toContain("From your answers in Biology: Enzymes has been slipping.");
+    expect(lastJamiTurn()).toContain("From your answers in Biology: Enzymes has been slipping.");
     expect(button("These are my subjects").disabled).toBe(true);
 
     click(priority("Biology", "Most"));
-    // The plan fills in on the tap, before the step is answered.
-    expect(outline()).toContain("Biology");
     click(priority("Chemistry", "Light"));
     click(button("These are my subjects"));
-    expect(lastJamiQuestion()).toContain("When can you study?");
+    expect(lastJamiTurn()).toContain("When can you study?");
 
     click(button("Monday"));
     click(button("Thursday"));
     click([...container.querySelectorAll('[role="radio"]')].find((entry) => entry.textContent === "30 min") as HTMLButtonElement);
-    expect(outline()).toContain("about 1h a week");
     click(button("That’s my week"));
-
-    expect(lastJamiQuestion()).toContain("Anything else I should fit around?");
-    // Still no way to start before the last check.
-    expect([...container.querySelectorAll("button")].some((entry) => entry.textContent === "Start this plan")).toBe(false);
+    expect(lastJamiTurn()).toContain("Anything else I should fit around?");
     click(button("Nothing else"));
 
-    expect(lastJamiQuestion()).toContain("Any last changes or additions");
-    click(button("Start this plan"));
-
-    expect(onStart).toHaveBeenCalledTimes(1);
-    const started = onStart.mock.calls[0]?.[0] as RevisionPlanDraft;
-    expect(normalizeRevisionPlanDraft(started).valid).toBe(true);
-    expect(started.scopes).toEqual([
+    expect(lastJamiTurn()).toContain("There's your timetable.");
+    click(button("Save plan"));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved = onSave.mock.calls[0]?.[0] as RevisionPlanDraft;
+    expect(saved.scopes).toEqual([
       { folderId: "bio", weight: 3 },
       { folderId: "chem", weight: 1 },
     ]);
-    expect(started.sessions.map((session) => [session.weekday, session.minutes])).toEqual([
+    expect(saved.sessions.map((session) => [session.weekday, session.minutes])).toEqual([
       [1, 30],
       [4, 30],
     ]);
     expect(service.draftPlanWithJami).not.toHaveBeenCalled();
   });
 
-  it("reads a typed answer against the step it answers", async () => {
+  it("goes back to a finished question to change what it decided", () => {
+    act(() => root.render(<Harness />));
+    click(button("No exams coming up"));
+    click(priority("Chemistry", "Normal"));
+    click(button("These are my subjects"));
+
+    click(button("Go back to subjects"));
+    expect(lastJamiTurn()).toContain("Which subjects should this cover?");
+    expect(priority("Chemistry", "Normal").getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("reads a typed answer against the step it answers, with the timetable on screen", async () => {
     service.draftPlanWithJami.mockResolvedValue({
       reply: "Chemistry paper 1 on the 12th of November, noted.",
       plan: normalizeRevisionPlanDraft({
@@ -162,55 +189,72 @@ describe("making a plan with Jami", () => {
         exams: [{ id: "e1", label: "Chemistry Paper 1", dayKey: "2026-11-12", scopeKey: "folder:chem" }],
         scopes: [{ folderId: "chem", weight: 2 }],
       }).draft,
+      changes: [],
       notices: [],
     });
-    act(() => root.render(<Harness onStart={vi.fn()} />));
-
-    const box = container.querySelector("textarea") as HTMLTextAreaElement;
-    act(() => {
-      const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-      setValue?.call(box, "Chemistry paper 1 on 12 November");
-      box.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      button("Send to Jami").click();
-    });
+    act(() => root.render(<Harness />));
+    await type("Chemistry paper 1 on 12 November");
 
     expect(service.draftPlanWithJami).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "Chemistry paper 1 on 12 November", step: "goal" })
+      expect.objectContaining({ message: "Chemistry paper 1 on 12 November", step: "goal", timetable: TIMETABLE })
     );
     expect(container.textContent).toContain("Chemistry paper 1 on the 12th of November, noted.");
-    expect(outline()).toContain("Chemistry Paper 1");
-    expect(lastJamiQuestion()).toContain("I've put Chemistry in because of your exams.");
+    expect(lastJamiTurn()).toContain("I've put Chemistry in because of your exams.");
+  });
+
+  it("turns particular days into a proposal the student applies, whatever step they are on", async () => {
+    const onApply = vi.fn(async () => true);
+    service.draftPlanWithJami.mockResolvedValue({
+      reply: "I've put homeostasis practice at 5pm on Monday, with flashcards straight after.",
+      plan: null,
+      changes: [
+        { kind: "add", dayKey: "2026-10-19", startTime: "17:00", minutes: 20, scopeKey: "folder:bio", title: "Homeostasis practice", method: "practice" },
+        { kind: "add", dayKey: "2026-10-19", startTime: "17:20", minutes: 15, scopeKey: "folder:bio" },
+      ],
+      notices: [],
+    });
+    act(() => root.render(<Harness onApply={onApply} />));
+    await type("Biology on Monday at 5pm, 20 minutes of homeostasis practice, and finish with flashcards");
+
+    expect(container.querySelector('[aria-label="Proposed change"]')?.textContent).toContain("2 changes");
+    await act(async () => {
+      button("Apply changes").click();
+    });
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ changes: expect.arrayContaining([expect.objectContaining({ title: "Homeostasis practice" })]) }));
+    expect(container.querySelector('[aria-label="Proposed change"]')?.textContent).toContain("Applied");
   });
 
   it("keeps the tapped answers when Jami cannot answer", async () => {
     service.draftPlanWithJami.mockRejectedValue(new Error("offline"));
-    act(() => root.render(<Harness onStart={vi.fn()} />));
+    act(() => root.render(<Harness />));
+    await type("mocks soon");
 
-    const box = container.querySelector("textarea") as HTMLTextAreaElement;
-    act(() => {
-      const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-      setValue?.call(box, "mocks soon");
-      box.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      button("Send to Jami").click();
-    });
-
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("answer with the options below");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("change the timetable yourself");
     expect(button("No exams coming up")).toBeTruthy();
   });
+});
 
-  it("goes back to a finished question from the plan", () => {
-    act(() => root.render(<Harness onStart={vi.fn()} />));
-    click(button("No exams coming up"));
-    click(priority("Chemistry", "Normal"));
-    click(button("These are my subjects"));
+describe("changing a running plan with Jami", () => {
+  it("offers a few starting points, and changes nothing until a proposal is applied", async () => {
+    service.draftPlanWithJami.mockResolvedValue({
+      reply: "I can make Thursdays a study day instead of Mondays.",
+      plan: normalizeRevisionPlanDraft({ ...RUNNING, sessions: [{ id: "thu", weekday: 4, minutes: 45 }] }).draft,
+      changes: [],
+      notices: [],
+    });
+    act(() => root.render(<Harness running />));
+    expect(container.textContent).toContain("What would you like to change?");
 
-    click(button("Change subjects"));
-    expect(lastJamiQuestion()).toContain("Which subjects should this cover?");
-    // Reopened with the answer it had, ready to change.
-    expect(priority("Chemistry", "Normal").getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      button("I'm busy on Thursday").click();
+    });
+    // No step: a running plan is a conversation, not the interview.
+    expect(service.draftPlanWithJami).toHaveBeenCalledWith(expect.not.objectContaining({ step: expect.anything() }));
+    expect(container.querySelector('[aria-label="Proposed change"]')?.textContent).toContain("Usual week");
+    // The plan is exactly as it was.
+    expect(container.querySelector('[data-testid="draft"]')?.textContent).toContain('"weekday":1');
+
+    click(button("Discard"));
+    expect(container.querySelector('[aria-label="Proposed change"]')?.textContent).toContain("Discarded");
   });
 });

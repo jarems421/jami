@@ -2,6 +2,8 @@ import { auth } from "@/services/firebase/client";
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
 import type { PlanInterviewStep } from "@/lib/planning/plan-interview";
+import { readPlanProposalChanges, type PlanProposalChange } from "@/lib/planning/plan-proposal";
+import type { PlanTimetableDay } from "@/lib/planning/plan-timetable-prompt";
 import type { RevisionPlanDraft } from "@/lib/planning/types";
 
 /** One side of the planning conversation, as the panel holds it. */
@@ -15,13 +17,15 @@ export type PlanDraftTurn = { role: "student" | "jami"; text: string };
  * to a missing sign-in, an unconfigured provider, a timeout and a genuine
  * outage alike -- and a student pressing send again on a provider that is not
  * there was the commonest version of that. The code comes from the server; the
- * sentence is chosen here, next to the panel that shows it.
+ * sentence is chosen here, next to the panel that shows it, except for a limit,
+ * whose words the server already wrote for the limit that was reached.
  */
 export type PlanDraftErrorCode =
   | "signed_out"
   | "ai_unconfigured"
   | "plan_draft_timeout"
-  | "plan_draft_unavailable";
+  | "plan_draft_unavailable"
+  | "limit_reached";
 
 const PLAN_DRAFT_MESSAGES: Record<PlanDraftErrorCode, string> = {
   signed_out: "Sign in again to plan with Jami.",
@@ -30,6 +34,7 @@ const PLAN_DRAFT_MESSAGES: Record<PlanDraftErrorCode, string> = {
   plan_draft_timeout: "Jami took too long to answer. Try again, or build the plan yourself.",
   plan_draft_unavailable:
     "Jami couldn't answer just now. You can still build a plan yourself.",
+  limit_reached: "Jami has helped plan as much as it can for now. You can still change the timetable yourself.",
 };
 
 export class PlanDraftError extends Error {
@@ -37,21 +42,24 @@ export class PlanDraftError extends Error {
   /** Whether pressing send again could plausibly work. */
   readonly retryable: boolean;
 
-  constructor(code: PlanDraftErrorCode) {
-    super(PLAN_DRAFT_MESSAGES[code]);
+  constructor(code: PlanDraftErrorCode, message?: string) {
+    super(message || PLAN_DRAFT_MESSAGES[code]);
     this.name = "PlanDraftError";
     this.code = code;
     this.retryable = code === "plan_draft_timeout" || code === "plan_draft_unavailable";
   }
 }
 
-function readErrorCode(status: number, body: unknown): PlanDraftErrorCode {
-  const code =
-    body && typeof body === "object" ? (body as Record<string, unknown>).code : undefined;
-  if (code === "ai_unconfigured" || code === "plan_draft_timeout") return code;
-  if (status === 401) return "signed_out";
-  if (status === 504) return "plan_draft_timeout";
-  return "plan_draft_unavailable";
+function readError(status: number, body: unknown): PlanDraftError {
+  const record = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const code = record.code;
+  if (code === "ai_unconfigured" || code === "plan_draft_timeout") return new PlanDraftError(code);
+  if (status === 401) return new PlanDraftError("signed_out");
+  if (status === 429 || status === 403) {
+    return new PlanDraftError("limit_reached", typeof record.error === "string" ? record.error : undefined);
+  }
+  if (status === 504) return new PlanDraftError("plan_draft_timeout");
+  return new PlanDraftError("plan_draft_unavailable");
 }
 
 export type PlanDraftAnswer = {
@@ -63,22 +71,26 @@ export type PlanDraftAnswer = {
    * any subject or day, and the interview keeps only the part it asked about.
    */
   plan: RevisionPlanDraft | null;
+  /** Changes to particular days, checked on the server, for the student to apply or not. */
+  changes: PlanProposalChange[];
   notices: PlanNotice[];
 };
 
 /**
- * Ask Jami to suggest a shape for the week.
+ * Ask Jami to help with the timetable.
  *
- * The plan that comes back is normalised again on arrival. It was normalised on
- * the server too, and doing it twice is deliberate: this is the value that gets
- * put straight into the builder's state, so it has to be a plan by the time it
- * is a React prop, whatever happened in between.
+ * What comes back is normalised again on arrival. It was checked on the server
+ * too, and doing it twice is deliberate: this is the value that gets put
+ * straight into the planner's state, so it has to be a plan, and changes the
+ * timetable can apply, by the time it is a React prop.
  */
 export async function draftPlanWithJami(input: {
   message: string;
   history: readonly PlanDraftTurn[];
   /** The draft on screen, so Jami adjusts it rather than starting again. */
   draft?: RevisionPlanDraft | null;
+  /** The days of the timetable on screen, so Jami can change particular ones. */
+  timetable?: readonly PlanTimetableDay[];
   /** Which question this message answers. */
   step?: PlanInterviewStep;
 }): Promise<PlanDraftAnswer> {
@@ -95,6 +107,7 @@ export async function draftPlanWithJami(input: {
       message: input.message,
       history: input.history,
       ...(input.draft ? { draft: input.draft } : {}),
+      ...(input.timetable && input.timetable.length > 0 ? { timetable: input.timetable } : {}),
       ...(input.step ? { step: input.step } : {}),
     }),
   });
@@ -102,7 +115,7 @@ export async function draftPlanWithJami(input: {
     // Read rather than discarded: the route says which failure this was, and
     // the panel can only tell the student if the reason survives the fetch.
     const failure: unknown = await response.json().catch(() => null);
-    throw new PlanDraftError(readErrorCode(response.status, failure));
+    throw readError(response.status, failure);
   }
 
   const body: unknown = await response.json();
@@ -116,6 +129,7 @@ export async function draftPlanWithJami(input: {
   return {
     reply: typeof record.reply === "string" ? record.reply : "",
     plan: normalized ? normalized.draft : null,
+    changes: readPlanProposalChanges(record.changes),
     notices: Array.isArray(record.notices) ? (record.notices as PlanNotice[]) : [],
   };
 }

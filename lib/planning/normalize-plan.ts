@@ -249,10 +249,16 @@ function normalizeExams(input: unknown, scopes: readonly RevisionPlanScope[]): R
  * Returns the draft even when it is invalid, so a half-finished plan in the
  * builder still renders what the student has set so far and the problems read
  * as guidance rather than as a wall.
+ *
+ * A plan needs either a usual week or something on its timetable: a student
+ * who placed three activities by hand has a plan, with no weekly pattern at
+ * all. Subjects are needed only for the usual week, whose sittings take turns
+ * between them; an activity carries its own.
  */
 export function normalizeRevisionPlanDraft(
   input: Partial<RevisionPlanDraft> | null | undefined,
-  now = Date.now()
+  now = Date.now(),
+  options: { activityCount?: number } = {}
 ): NormalizedPlanDraft {
   const today = getStudyDayKey(now);
   const scopes = normalizeScopes(input?.scopes);
@@ -261,11 +267,12 @@ export function normalizeRevisionPlanDraft(
   const endDayKey = isPlanDayKey(input?.endDayKey)
     ? input.endDayKey
     : shiftStudyDayKey(startDayKey, 27);
+  const activityCount = Math.max(0, options.activityCount ?? 0);
 
   const exams = normalizeExams(input?.exams, scopes);
   const problems: PlanValidationProblem[] = [];
-  if (scopes.length === 0) problems.push("no-scopes");
-  if (sessions.length === 0) problems.push("no-sessions");
+  if (scopes.length === 0 && (sessions.length > 0 || activityCount === 0)) problems.push("no-scopes");
+  if (sessions.length === 0 && activityCount === 0) problems.push("no-sessions");
   if (hasOverlappingSessions(sessions)) problems.push("overlapping-sessions");
   const span = planDaysBetween(startDayKey, endDayKey);
   if (span < 0) problems.push("bad-dates");
@@ -282,6 +289,7 @@ export function normalizeRevisionPlanDraft(
       sessions,
       emphasis: normalizeEmphasis(input?.emphasis, scopes),
       ...(exams.length > 0 ? { exams } : {}),
+      ...(typeof input?.autoFill === "boolean" ? { autoFill: input.autoFill } : {}),
     },
     problems,
     valid: problems.every((problem) => !BLOCKING_PROBLEMS.has(problem)),
@@ -290,7 +298,7 @@ export function normalizeRevisionPlanDraft(
 
 export const PLAN_PROBLEM_MESSAGES: Record<PlanValidationProblem, string> = {
   "no-scopes": "Choose at least one subject to revise.",
-  "no-sessions": "Pick at least one day of the week to study.",
+  "no-sessions": "Add something to your timetable, or pick the days you usually study.",
   "bad-dates": "The finish date is before the start date.",
   "horizon-too-long": "A plan can run for up to about a year.",
   "overlapping-sessions": "Two sessions clash. You can save it, but check the times.",

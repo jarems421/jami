@@ -1,7 +1,10 @@
 import type { NextRequest } from "next/server";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
+import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
+import { aiSpendContextFor } from "@/services/ai/spend.server";
 import {
   buildPlanNotices,
   describeAssistantPlanDraft,
@@ -16,6 +19,7 @@ import {
 import { loadStudyActions } from "@/services/learning/study-actions.server";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
 import { isPlanInterviewStep } from "@/lib/planning/plan-interview";
+import { readPlanTimetableDays } from "@/lib/planning/plan-timetable-prompt";
 import { planScopeKey, type RevisionPlanDraft } from "@/lib/planning/types";
 import { describeUnmetAiProviderRequirements } from "@/lib/ai/provider-policy";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
@@ -136,6 +140,23 @@ export async function POST(request: NextRequest) {
   const message = typeof record.message === "string" ? record.message.trim() : "";
   if (!message) return apiFailure("Say what you need and Jami will suggest a shape.", 400, "bad_request");
 
+  /*
+   * Counted like every other AI request. The daily and burst limits for
+   * planning were set from the start and never asked, so a planner left open
+   * could send as many messages as it liked; with the timetable now built in
+   * conversation, that matters.
+   */
+  let budgetDecision;
+  try {
+    budgetDecision = await checkAiBudget({ uid, action: "planDraft" });
+    enterAiSpendContext(aiSpendContextFor(uid, "planDraft"));
+  } catch (error) {
+    log.error("budget.check_failed", { error });
+    return apiFailure("AI usage limits are temporarily unavailable. Try again shortly.", 503, "budget_unavailable");
+  }
+  if (!budgetDecision.allowed) return createAiBudgetLimitResponse("planDraft", budgetDecision);
+  const budgetGrant = budgetDecision.grant;
+
   const startedAt = Date.now();
   try {
     /*
@@ -194,13 +215,11 @@ export async function POST(request: NextRequest) {
      * it only tells Jami what is on the student's screen, so a small change
      * they ask for does not come back as an entirely new plan.
      */
-    const current =
+    const draft =
       record.draft && typeof record.draft === "object"
-        ? describeAssistantPlanDraft(
-            normalizeRevisionPlanDraft(record.draft as Partial<RevisionPlanDraft>).draft,
-            subjects
-          )
+        ? normalizeRevisionPlanDraft(record.draft as Partial<RevisionPlanDraft>).draft
         : null;
+    const current = draft ? describeAssistantPlanDraft(draft, subjects) : null;
 
     const result = await draftRevisionPlan({
       message: message.slice(0, MAX_PLAN_MESSAGE_LENGTH),
@@ -208,6 +227,9 @@ export async function POST(request: NextRequest) {
       subjects,
       notices,
       current,
+      // The same gate as every other part of the request: bounded, cleaned, never trusted.
+      timetable: readPlanTimetableDays(record.timetable),
+      ...(draft ? { planEndDayKey: draft.endDayKey } : {}),
       // Only a step the interview has; anything else is an open conversation.
       ...(isPlanInterviewStep(record.step) ? { step: record.step } : {}),
     });
@@ -217,15 +239,23 @@ export async function POST(request: NextRequest) {
       subjects: subjects.length,
       notices: notices.length,
       proposed: Boolean(result.plan),
+      changes: result.changes.length,
     });
 
     return Response.json({
       reply: result.reply,
       plan: result.plan?.draft ?? null,
+      changes: result.changes,
       notices,
       subjects: subjects.map((subject) => ({ ref: subject.ref, label: subject.label })),
     });
   } catch (error) {
+    // Nothing the student can use came back, so it is not counted against them.
+    try {
+      await refundAiBudget(budgetGrant);
+    } catch (refundError) {
+      log.warn("budget.refund_failed", { error: refundError });
+    }
     /*
      * Told apart, because the answers differ.
      *

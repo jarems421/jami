@@ -1,6 +1,5 @@
-import { isWithinPlanHorizon, planDaysBetween, planSessionsOn } from "@/lib/planning/plan-schedule";
+import { planDaysBetween } from "@/lib/planning/plan-schedule";
 import type { RevisionPlan } from "@/lib/planning/types";
-import { shiftStudyDayKey } from "@/lib/study/day";
 
 /**
  * What a plan is counting down to, from today.
@@ -17,19 +16,7 @@ export type PlanCountdownItem = {
   dayKey: string;
   daysLeft: number;
   scopeKey?: string;
-  /** Planned sittings from today until the day before it. */
-  sessionsBefore: number;
 };
-
-function sessionsBetween(plan: RevisionPlan, fromDayKey: string, beforeDayKey: string) {
-  const span = Math.min(planDaysBetween(fromDayKey, beforeDayKey), 400);
-  let count = 0;
-  for (let offset = 0; offset < span; offset += 1) {
-    const dayKey = shiftStudyDayKey(fromDayKey, offset);
-    if (isWithinPlanHorizon(plan, dayKey)) count += planSessionsOn(plan.sessions, dayKey).length;
-  }
-  return count;
-}
 
 export function planCountdown(plan: RevisionPlan, todayDayKey: string, limit = 4): PlanCountdownItem[] {
   // Sorted here as well as on save: a plan edited in the console still counts down in order.
@@ -48,13 +35,12 @@ export function planCountdown(plan: RevisionPlan, todayDayKey: string, limit = 4
     dayKey: target.dayKey,
     daysLeft: planDaysBetween(todayDayKey, target.dayKey),
     ...("scopeKey" in target && target.scopeKey ? { scopeKey: target.scopeKey } : {}),
-    sessionsBefore: sessionsBetween(plan, todayDayKey, target.dayKey),
   }));
 }
 
-/** "Week 1 of 7": which week of the plan today falls in, and how many it has. */
-export function planWeekOfPlan(plan: RevisionPlan, todayDayKey: string) {
+/** "Week 1 of 7": which week of the plan a day falls in, and how many it has. */
+export function planWeekOfPlan(plan: Pick<RevisionPlan, "startDayKey" | "endDayKey">, dayKey: string) {
   const total = Math.max(1, Math.ceil((planDaysBetween(plan.startDayKey, plan.endDayKey) + 1) / 7));
-  const current = Math.min(total, Math.max(1, Math.floor(planDaysBetween(plan.startDayKey, todayDayKey) / 7) + 1));
+  const current = Math.min(total, Math.max(1, Math.floor(planDaysBetween(plan.startDayKey, dayKey) / 7) + 1));
   return { current, total };
 }

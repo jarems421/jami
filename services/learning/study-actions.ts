@@ -103,6 +103,66 @@ function readResponse(body: unknown): StudyActionsResponse {
   };
 }
 
+/**
+ * The engine's actions for a revision plan's own subjects.
+ *
+ * Kept per subject and asked for only where this session has no fresh answer,
+ * so moving between weeks, or adding a subject, never asks about the others
+ * again. `answered` holds the subjects the engine actually spoke for: a subject
+ * that failed to load is not one with nothing to do, and the planner must not
+ * read its silence as "everything has changed".
+ */
+export type PlanStudyActions = {
+  actionsByScope: Map<string, StudyAction[]>;
+  answered: Set<string>;
+};
+
+const planCache = new Map<string, { storedAt: number; actions: StudyAction[] }>();
+
+export async function loadPlanStudyActions(
+  scopeKeys: readonly string[],
+  options: { force?: boolean } = {}
+): Promise<PlanStudyActions> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Sign in again to load recommendations.");
+  const now = Date.now();
+  const cacheKey = (scopeKey: string) => `${user.uid}|${scopeKey}`;
+  const unique = [...new Set(scopeKeys)];
+  const wanted = unique.filter((scopeKey) => {
+    const cached = planCache.get(cacheKey(scopeKey));
+    return options.force || !cached || now - cached.storedAt >= STUDY_ACTIONS_CACHE_MS;
+  });
+
+  if (wanted.length > 0) {
+    const response = await fetch(`/api/learning/study-actions?scopes=${encodeURIComponent(wanted.join(","))}`, {
+      headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+    });
+    if (!response.ok) throw new Error("Recommendations are unavailable right now.");
+    const body: unknown = await response.json();
+    const scopes = body && typeof body === "object" ? (body as Record<string, unknown>).scopes : null;
+    for (const raw of Array.isArray(scopes) ? scopes : []) {
+      if (typeof raw !== "object" || raw === null) continue;
+      const entry = raw as Record<string, unknown>;
+      // A subject that could not be read is asked about again next time, never remembered as empty.
+      if (typeof entry.scopeKey !== "string" || (entry.status !== "ok" && entry.status !== "missing")) continue;
+      planCache.set(cacheKey(entry.scopeKey), {
+        storedAt: now,
+        actions: Array.isArray(entry.actions) ? (entry.actions as StudyAction[]) : [],
+      });
+    }
+  }
+
+  const actionsByScope = new Map<string, StudyAction[]>();
+  const answered = new Set<string>();
+  for (const scopeKey of unique) {
+    const cached = planCache.get(cacheKey(scopeKey));
+    if (!cached) continue;
+    actionsByScope.set(scopeKey, cached.actions);
+    answered.add(scopeKey);
+  }
+  return { actionsByScope, answered };
+}
+
 export async function loadStudyActionsForToday(
   options: { force?: boolean } = {}
 ): Promise<StudyActionsResponse> {

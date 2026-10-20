@@ -7,9 +7,10 @@ import {
   SendIcon,
   StopDictationIcon,
 } from "@/components/ai/JamiAssistantIcons";
+import PlanProposalCard from "@/components/planning/PlanProposalCard";
 import PlanStepAnswers from "@/components/planning/PlanStepAnswers";
 import type { PlanScopeOption } from "@/components/planning/RevisionPlanBuilder";
-import type { PlanInterview } from "@/hooks/usePlanInterview";
+import type { PlanAssistantProposal, PlanInterview } from "@/hooks/usePlanInterview";
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
 import {
@@ -21,19 +22,19 @@ import {
 } from "@/lib/planning/plan-interview";
 
 /**
- * Making a plan with Jami, one question at a time.
+ * Planning with Jami, beside the timetable it is planning.
  *
- * It was an open chat, which sounded friendly and planned badly: Jami had to
- * decide what to ask and when it had heard enough, and it usually decided that
- * after one message, so the plan arrived whole and generic. Now the questions
- * are fixed and asked in order -- what you're working towards, which subjects,
- * when you can study, anything else -- and the plan beside this fills in as
- * each is answered. The last one asks whether anything should change before it
- * starts.
+ * Building a plan, Jami asks four questions in order -- what you're working
+ * towards, which subjects, when you can study, anything else -- and the
+ * timetable beside this fills in as each is answered: exams appear, the usual
+ * week appears, and Jami's first fortnight of tasks appears in it. Every
+ * question can be answered by tapping, right under it, or in the student's own
+ * words.
  *
- * Every question can be answered by tapping, right under it, or in the
- * student's own words in the box below. Typing is still a conversation: Jami
- * reads the answer, says what it took from it, and asks again if it needs to.
+ * At any point -- building or running -- a student can say exactly what they
+ * want on particular days ("20 minutes of homeostasis on Monday at 5, then
+ * flashcards"), and Jami answers with a proposal: the changes, in full, to
+ * apply or discard. Nothing on the timetable moves until they apply it.
  */
 
 const PLACEHOLDERS: Record<PlanInterviewStep, string> = {
@@ -44,7 +45,15 @@ const PLACEHOLDERS: Record<PlanInterviewStep, string> = {
   review: "Ask for a change, or add something",
 };
 
-function StepProgress({ step }: { step: PlanInterviewStep }) {
+const CHANGE_STARTERS = [
+  "Move today's work to tomorrow",
+  "I'm busy on Thursday",
+  "Fill next week with your picks",
+  "An exam date changed",
+] as const;
+
+/** Where the questions have got to; a finished one can be gone back to, to change what it decided. */
+function StepProgress({ step, onJumpTo }: { step: PlanInterviewStep; onJumpTo: (step: PlanInterviewStep) => void }) {
   const reviewing = step === "review";
   const position = PLAN_QUESTION_STEPS.indexOf(step as (typeof PLAN_QUESTION_STEPS)[number]);
   return (
@@ -52,20 +61,31 @@ function StepProgress({ step }: { step: PlanInterviewStep }) {
       <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
         {reviewing ? "Last check" : `Step ${position + 1} of ${PLAN_QUESTION_STEPS.length} · ${PLAN_STEP_TITLES[step]}`}
       </p>
-      <ol className="grid grid-cols-4 gap-1.5" aria-hidden="true">
+      <ol className="grid grid-cols-4 gap-1.5">
         {PLAN_QUESTION_STEPS.map((entry) => {
           const status = planStepStatus(entry, step);
+          const bar = `block h-1 w-full rounded-full transition-colors duration-slow ${
+            status === "done"
+              ? "bg-[var(--color-accent)]"
+              : status === "current"
+                ? "bg-[var(--color-accent)] opacity-60"
+                : "bg-[var(--color-border-strong)]"
+          }`;
           return (
-            <li
-              key={entry}
-              className={`h-1 rounded-full transition-colors duration-slow ${
-                status === "done"
-                  ? "bg-[var(--color-accent)]"
-                  : status === "current"
-                    ? "bg-[var(--color-accent)] opacity-60"
-                    : "bg-[var(--color-border-strong)]"
-              }`}
-            />
+            <li key={entry}>
+              {status === "done" ? (
+                <button
+                  type="button"
+                  onClick={() => onJumpTo(entry)}
+                  aria-label={`Go back to ${PLAN_STEP_TITLES[entry].toLowerCase()}`}
+                  className="block w-full rounded-full py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                >
+                  <span aria-hidden="true" className={bar} />
+                </button>
+              ) : (
+                <span aria-hidden="true" className={`${bar} my-1.5`} />
+              )}
+            </li>
           );
         })}
       </ol>
@@ -73,7 +93,19 @@ function StepProgress({ step }: { step: PlanInterviewStep }) {
   );
 }
 
-function Turn({ turn }: { turn: PlanInterviewTurn }) {
+function Turn({
+  turn,
+  proposal,
+  describe,
+  onApply,
+  onDiscard,
+}: {
+  turn: PlanInterviewTurn;
+  proposal?: PlanAssistantProposal;
+  describe: (proposal: PlanAssistantProposal) => { headline: string; lines: string[] };
+  onApply: (proposal: PlanAssistantProposal) => Promise<boolean>;
+  onDiscard: (proposal: PlanAssistantProposal) => void;
+}) {
   if (turn.role === "student") {
     return (
       <li className="flex justify-end">
@@ -83,6 +115,7 @@ function Turn({ turn }: { turn: PlanInterviewTurn }) {
       </li>
     );
   }
+  const summary = proposal ? describe(proposal) : null;
   return (
     <li className="flex animate-slide-up items-start gap-3">
       <span
@@ -91,13 +124,22 @@ function Turn({ turn }: { turn: PlanInterviewTurn }) {
       >
         <JamiTutorIcon className="h-3.5 w-3.5" />
       </span>
-      <p
-        className={`min-w-0 flex-1 pt-0.5 text-sm leading-6 ${
-          turn.question ? "font-medium text-text-primary" : "text-text-secondary"
-        }`}
-      >
-        {turn.text}
-      </p>
+      <div className="min-w-0 flex-1 space-y-2.5">
+        {turn.text ? (
+          <p className={`pt-0.5 text-sm leading-6 ${turn.question ? "font-medium text-text-primary" : "text-text-secondary"}`}>
+            {turn.text}
+          </p>
+        ) : null}
+        {proposal && summary && (summary.lines.length > 0 || proposal.plan) ? (
+          <PlanProposalCard
+            proposal={proposal}
+            headline={summary.headline}
+            lines={summary.lines}
+            onApply={() => onApply(proposal)}
+            onDiscard={() => onDiscard(proposal)}
+          />
+        ) : null}
+      </div>
     </li>
   );
 }
@@ -107,50 +149,75 @@ export default function PlanWithJami({
   options,
   notices,
   saving,
-  startLabel = "Start this plan",
-  onStart,
-  onEditByHand,
+  canSave,
+  onSave,
+  onOpenSettings,
+  describeProposal,
+  onApplyProposal,
+  onDiscardProposal,
 }: {
   interview: PlanInterview;
   options: readonly PlanScopeOption[];
   notices: readonly PlanNotice[];
   saving: boolean;
-  startLabel?: string;
-  onStart: () => void;
-  onEditByHand: () => void;
+  canSave: boolean;
+  onSave: () => void;
+  onOpenSettings: () => void;
+  describeProposal: (proposal: PlanAssistantProposal) => { headline: string; lines: string[] };
+  onApplyProposal: (proposal: PlanAssistantProposal) => Promise<boolean>;
+  onDiscardProposal: (proposal: PlanAssistantProposal) => void;
 }) {
   const [message, setMessage] = useState("");
   const [dictationProblem, setDictationProblem] = useState("");
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
   const dictation = useVoiceDictation({ onText: setMessage, onError: setDictationProblem });
-  const { turns, step, draft, thinking } = interview;
+  const { turns, step, draft, thinking, mode, proposals } = interview;
+  const building = mode === "build";
 
   const scopeNames = new Map(options.map((option) => [option.key, option.label]));
   // The answers sit under the question they answer, and start afresh with
   // every new question -- including one asked again after a jump back.
   const questionIndex = turns.findLastIndex((turn) => turn.question);
 
-  const submit = useCallback(() => {
-    // Dictation is stopped first and its own reading used: a word the
-    // recogniser settles in the same tick would otherwise be lost, because
-    // `message` is a render behind at that moment.
-    const text = dictation.listening ? dictation.stop() : message;
-    if (!text.trim() || thinking) return;
-    setMessage("");
-    setDictationProblem("");
-    interview.send(text);
-    boxRef.current?.focus();
-  }, [dictation, interview, message, thinking]);
+  const submit = useCallback(
+    (override?: string) => {
+      // Dictation is stopped first and its own reading used: a word the
+      // recogniser settles in the same tick would otherwise be lost, because
+      // `message` is a render behind at that moment.
+      const text = override ?? (dictation.listening ? dictation.stop() : message);
+      if (!text.trim() || thinking) return;
+      setMessage("");
+      setDictationProblem("");
+      interview.send(text);
+      boxRef.current?.focus();
+    },
+    [dictation, interview, message, thinking]
+  );
 
   const problem = interview.problem || dictationProblem;
+  const studentHasSpoken = turns.some((turn) => turn.role === "student");
 
   return (
     <div className="flex flex-col gap-5">
-      <StepProgress step={step} />
+      {building ? <StepProgress step={step} onJumpTo={interview.jumpTo} /> : null}
 
       <ol aria-label="Planning with Jami" aria-live="polite" className="space-y-4">
         {turns.map((turn, index) => (
-          <Turn key={`${turn.role}-${index}`} turn={turn} />
+          <Turn
+            key={`${turn.role}-${index}`}
+            turn={turn}
+            {...(turn.proposalId && proposals[turn.proposalId] ? { proposal: proposals[turn.proposalId] } : {})}
+            describe={describeProposal}
+            onApply={async (proposal) => {
+              const applied = await onApplyProposal(proposal);
+              if (applied) interview.settleProposal(proposal.id, "applied");
+              return applied;
+            }}
+            onDiscard={(proposal) => {
+              onDiscardProposal(proposal);
+              interview.settleProposal(proposal.id, "discarded");
+            }}
+          />
         ))}
       </ol>
 
@@ -159,7 +226,7 @@ export default function PlanWithJami({
           <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--color-accent)]" />
           <span>Jami is reading that…</span>
         </p>
-      ) : (
+      ) : building ? (
         <div className="pl-0 sm:pl-10">
           <PlanStepAnswers
             key={questionIndex}
@@ -170,13 +237,27 @@ export default function PlanWithJami({
             scopeNames={scopeNames}
             onDraft={interview.setDraft}
             onAnswer={interview.answer}
-            onStart={onStart}
-            onEditByHand={onEditByHand}
+            onStart={onSave}
+            onEditByHand={onOpenSettings}
             saving={saving}
-            startLabel={startLabel}
+            canStart={canSave}
+            startLabel="Save plan"
           />
         </div>
-      )}
+      ) : !studentHasSpoken ? (
+        <div className="flex flex-wrap gap-1.5 pl-0 sm:pl-10">
+          {CHANGE_STARTERS.map((starter) => (
+            <button
+              key={starter}
+              type="button"
+              onClick={() => submit(starter)}
+              className="app-chip rounded-full px-3 py-1.5 text-xs font-medium transition hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+            >
+              {starter}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {/* The Tutor drawer's composer, so a conversation with Jami looks the
           same wherever it happens. */}
@@ -186,8 +267,8 @@ export default function PlanWithJami({
           rows={2}
           value={message}
           disabled={thinking}
-          aria-label="Answer Jami in your own words"
-          placeholder={PLACEHOLDERS[step]}
+          aria-label="Tell Jami what you need"
+          placeholder={building ? PLACEHOLDERS[step] : "e.g. Move Biology to Wednesday and make Monday a rest day"}
           className="min-h-[4.5rem] w-full resize-none bg-transparent px-4 pb-1 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={(event) => {
@@ -198,7 +279,7 @@ export default function PlanWithJami({
           }}
         />
         <div className="flex items-center justify-between gap-1.5 pb-2 pl-4 pr-2">
-          <span className="text-2xs text-text-muted">Or answer in your own words</span>
+          <span className="text-2xs text-text-muted">{building ? "Or answer in your own words" : "Jami shows every change first"}</span>
           <div className="flex items-center gap-1.5">
             {dictation.supported ? (
               <button
@@ -229,7 +310,7 @@ export default function PlanWithJami({
               aria-label="Send to Jami"
               disabled={thinking || (!message.trim() && !dictation.listening)}
               className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-accent-on shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
-              onClick={submit}
+              onClick={() => submit()}
             >
               <SendIcon />
             </button>

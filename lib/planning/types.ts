@@ -1,36 +1,39 @@
-import type { StudyAction } from "@/lib/learning/actions/study-actions";
-
 /**
- * A revision plan: the shape of a student's own week, filled by the Learning
- * Engine.
+ * A revision plan: the student's own timetable of dated study activities.
  *
- * The division of labour matters more here than anywhere else in the feature.
- * The plan owns *when* a student studies and *how much* -- days, session
- * lengths, which subjects, how heavily each. The Learning Engine owns *what*
- * they do in that time, and it decides that from recorded evidence alone. A
- * plan therefore stores almost nothing about content: it is a timetable that
- * asks the engine what goes in each slot every time it is read.
+ * Two things live in a plan, and keeping them apart is what makes it both
+ * dependable and adaptive.
  *
- * That is what keeps a plan from going stale. A plan written out as six weeks
- * of fixed tasks is wrong within a week -- the student learns some of it, fails
- * at some of it, and the list knows neither. A plan that is a shape plus a live
- * question re-answers itself every morning.
+ * - **The timetable**: real activities on real dates -- "Monday 17:00, 30
+ *   minutes, Biology, homeostasis questions". It belongs to the student. They
+ *   add, edit, move, remove and fix activities directly, and nothing changes
+ *   one behind their back. A day with a timetable shows exactly that.
+ * - **The usual week** (`sessions`): when the student can normally study. It
+ *   is how new weeks get their shape -- each sitting is a free session until
+ *   it is filled, by the student or, when they ask, by Jami.
  *
- * Nothing in here is learner evidence. Ticking a slot says a student believes
- * they did something, which is not the same as knowing it, and it must never
- * reach the learner profile. See `lib/learning/types.ts` for what may.
+ * The Learning Engine still owns *what* Jami suggests. When Jami fills a free
+ * session it puts a real provisional task in it, chosen from recorded evidence
+ * alone, and marks it adaptive: Jami may later suggest something better as the
+ * evidence moves, and the student sees and accepts every such change. A fixed
+ * activity -- one the student chose, kept or wrote -- is never replaced.
+ *
+ * Nothing in here is learner evidence. Ticking an activity says a student
+ * believes they did something, which is not the same as knowing it, and it must
+ * never reach the learner profile. See `lib/learning/types.ts` for what may.
  */
 
 /**
- * 2 is sessions; 1 was cadence.
+ * 3 is dated activities; 2 was sessions; 1 was cadence.
  *
- * A version 1 plan carried one `{weekday, minutes}` entry per weekday and could
- * say nothing about clock times, about a second session in an evening, or about
- * which subject a particular sitting was for. Version 2 keeps every one of
- * those optional -- a migrated plan behaves identically -- but the shape can now
- * hold a real timetable. See `lib/planning/migrate-plan.ts`.
+ * Version 2 resolved every day afresh from the usual week and asked the engine
+ * only on the day itself, so every later day read "Jami fills this in on the
+ * day" and arrived with whatever the engine had to hand -- often nothing.
+ * Version 3 stores the timetable a day at a time in `entries`, and a version 2
+ * plan is read forward without a migration: its days simply have no timetable
+ * of their own yet. See `lib/planning/timetable.ts`.
  */
-export const REVISION_PLAN_SCHEMA_VERSION = 2;
+export const REVISION_PLAN_SCHEMA_VERSION = 3;
 
 /** Sunday first, matching `Date#getDay`. */
 export const PLAN_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
@@ -56,23 +59,18 @@ export const PLAN_WEEKDAY_FULL_LABELS: Record<PlanWeekday, string> = {
   6: "Saturday",
 };
 
-/** The shortest and longest a session may be, in minutes. */
+/** The shortest and longest a sitting in the usual week may be, in minutes. */
 export const PLAN_MINUTES_MIN = 10;
 export const PLAN_MINUTES_MAX = 240;
-/** Roughly how long one thing takes, used to decide how many fit in a session. */
+/** Roughly how long one thing takes, used where an intervention states its effort. */
 export const PLAN_MINUTES_PER_ITEM = 15;
-/** However long the session, more than this in one sitting is a list, not a plan. */
-export const PLAN_MAX_ITEMS_PER_DAY = 4;
 /**
- * How many sittings a day may hold, and how many pieces of work across all of
- * them.
+ * How many sittings a day of the usual week may hold.
  *
- * A day is allowed several sessions now, which means the old per-session cap no
- * longer bounds the day. Four sittings is already an unusual day; eight things
- * to do in one is the point past which a plan reads as a backlog.
+ * Four sittings is already an unusual day; past that the week stops reading as
+ * a plan anybody could keep.
  */
 export const PLAN_MAX_SESSIONS_PER_DAY = 4;
-export const PLAN_MAX_SLOTS_PER_DAY = 8;
 /** How far ahead a plan may run. Longer than a school year is a mistake, not a plan. */
 export const PLAN_MAX_HORIZON_DAYS = 400;
 
@@ -93,36 +91,25 @@ export type RevisionPlanScope = {
 };
 
 /**
- * One sitting in the student's week.
+ * One sitting in the student's usual week.
  *
- * Everything past `weekday` and `minutes` is optional, and that is the whole
- * design. A student who wants to say only "Mondays, 45 minutes" writes exactly
- * what version 1 wrote. A student who wants a timetable can say "Monday 16:30,
- * 45 minutes, Chemistry" and then "Monday 18:00, 30 minutes" as well. Neither
- * is the real one; the plan carries however much they chose to tell it.
+ * Everything past `weekday` and `minutes` is optional. A student who wants to
+ * say only "Mondays, 45 minutes" writes exactly that; one who wants "Monday
+ * 16:30, 45 minutes, Chemistry" can say so.
  *
  * `startTime` is a time of day as written -- "16:30" -- and never a moment. A
- * plan that said Monday at half four should say that wherever it is read, and
- * putting it through a timestamp would make it depend on a timezone it has
- * nothing to do with. It orders the day and it prints; nothing schedules on it.
+ * plan that said Monday at half four should say that wherever it is read.
  */
 export type RevisionPlanSession = {
-  /**
-   * Stable across edits, so a session keeps its identity while it is being
-   * moved, renamed or re-timed. Slot ids are positional and do not use this --
-   * see `planSlotId` -- so changing it cannot orphan a student's ticks.
-   */
+  /** Stable across edits, so a sitting keeps its identity while it is moved or re-timed. */
   id: string;
   weekday: PlanWeekday;
   minutes: number;
   /** "HH:MM", 24 hour. Absent means a sitting with no fixed time. */
   startTime?: string;
   /**
-   * Pins this sitting to one subject.
-   *
-   * Absent means the plan's weighting decides, which is what every version 1
-   * plan does. Present means the student said "Monday evening is Chemistry",
-   * and the engine still chooses what inside Chemistry.
+   * Pins this sitting to one subject. Absent means the plan's weighting
+   * decides, rotating the week's sittings between its subjects.
    */
   scopeKey?: string;
   /** The student's own name for it, e.g. "After dinner". */
@@ -130,25 +117,10 @@ export type RevisionPlanSession = {
 };
 
 /**
- * What a student said they want from a subject, in their own words.
- *
- * A self-report is not evidence of what somebody knows -- it is a feeling, and
- * letting it into the learner profile would corrupt the one thing that model is
- * careful about. What it can honestly do is decide where to *look* first: a
- * subject the student is worried about opens with diagnosis, and the engine
- * then learns the truth from what they actually get right.
- *
- * `note` is kept so the student can read back what they told Jami. It is never
- * sent to the profile and never used to score anything.
- */
-/**
  * An exam the plan is counting down to.
  *
- * A plan already has an end date, but a student revising for four papers over
- * a week of mocks is counting down to each of them, and the one that comes
- * first is the one that shapes this week. `dayKey` is a study day, like every
- * date in a plan; `scopeKey` ties the exam to one of the plan's subjects where
- * the student said which.
+ * `dayKey` is a study day, like every date in a plan; `scopeKey` ties the exam
+ * to one of the plan's subjects where the student said which.
  */
 export type RevisionPlanExam = {
   id: string;
@@ -157,6 +129,14 @@ export type RevisionPlanExam = {
   scopeKey?: string;
 };
 
+/**
+ * What a student said they want from a subject, in their own words.
+ *
+ * A self-report is not evidence of what somebody knows, and letting it into the
+ * learner profile would corrupt the one thing that model is careful about.
+ * `note` is kept so the student can read back what they told Jami. It is never
+ * sent to the profile and never used to score anything.
+ */
 export type RevisionPlanEmphasis = {
   scopeKey: string;
   wants: "diagnose" | "practice";
@@ -173,10 +153,19 @@ export type RevisionPlan = {
   startDayKey: string;
   endDayKey: string;
   scopes: RevisionPlanScope[];
+  /** The usual week. May be empty: a plan can be nothing but activities the student placed. */
   sessions: RevisionPlanSession[];
   emphasis: RevisionPlanEmphasis[];
   /** Exams the plan counts down to. Absent on plans made before there was anywhere to say. */
   exams?: RevisionPlanExam[];
+  /**
+   * "Let Jami fill my free sessions": Jami keeps this week and next filled in
+   * from the usual week, with adaptive tasks the student can change.
+   *
+   * Absent on a version 2 plan, which always had Jami choose each day's work;
+   * `planAutoFills` reads that as on, so nothing those students relied on stops.
+   */
+  autoFill?: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -187,29 +176,117 @@ export type RevisionPlanDraft = Omit<
   "id" | "createdAt" | "updatedAt" | "schemaVersion"
 >;
 
+/** Whether Jami keeps the coming days filled in for this plan. */
+export function planAutoFills(plan: Pick<RevisionPlan, "autoFill"> & { schemaVersion?: number }) {
+  if (typeof plan.autoFill === "boolean") return plan.autoFill;
+  return (plan.schemaVersion ?? REVISION_PLAN_SCHEMA_VERSION) < 3;
+}
+
+/* ------------------------------------------------------------------ */
+/* The timetable.                                                       */
+/* ------------------------------------------------------------------ */
+
 /**
- * Something the student put in a particular day themselves.
+ * How a piece of planned work is done.
  *
- * The href is stored rather than re-resolved because a pinned item is a
- * decision, not a recommendation: if the engine would no longer suggest it, the
- * student still asked for it.
+ * Kept to the ways Jami can actually carry work out, plus the student's own:
+ * a task like "finish my homework" is a real part of a revision week, and a
+ * planner that could not hold it would send them back to paper.
+ */
+export const PLAN_ACTIVITY_METHODS = [
+  "practice",
+  "flashcards",
+  "revision",
+  "notebook",
+  "notes",
+  "other",
+] as const;
+export type PlanActivityMethod = (typeof PLAN_ACTIVITY_METHODS)[number];
+
+/**
+ * Fixed: chosen, kept or written by the student. Jami never replaces it.
+ * Adaptive: a slot Jami may suggest better work for as the evidence changes --
+ * suggest, never swap unseen.
+ */
+export type PlanActivityMode = "fixed" | "adaptive";
+
+/** What a task is about, where it is about one thing. */
+export type PlanActivityTopic = {
+  /** A student Topic, a deck, or a verified specification concept. */
+  kind: "topic" | "deck" | "spec";
+  id: string;
+  /** Student-written for topics and decks, so shown as text only. */
+  label: string;
+};
+
+/**
+ * One activity on one day of the timetable.
+ *
+ * Stored whole inside its day's entry, so a day reads in one document and an
+ * edit to it is one write. Ids are unique within the day.
+ */
+export type PlanActivity = {
+  id: string;
+  /** What the student reads: "Homeostasis", "Finish my homework". Empty only on a free session. */
+  title: string;
+  method: PlanActivityMethod;
+  minutes: number;
+  /** "HH:MM". Absent: some time that day. */
+  startTime?: string;
+  /** The subject, as a plan scope key. Absent for something that is no subject's. */
+  scopeKey?: string;
+  mode: PlanActivityMode;
+  /** Who put it there. */
+  origin: "student" | "jami";
+  /**
+   * Time set aside with nothing chosen for it yet -- a free session from the
+   * usual week. Said plainly rather than filled with a promise: it is time,
+   * and the student or Jami still has to decide what it is for.
+   */
+  open?: boolean;
+  topic?: PlanActivityTopic;
+  /** Where starting it goes. Stored, because a task is a decision, not a lookup. */
+  href?: string;
+  /** The Learning Engine action this task came from, when Jami chose it. */
+  actionId?: string;
+  /** How many cards or questions it is worth, where that is how it is measured. */
+  targetItems?: number;
+  /**
+   * Jami writes the questions or cards when the student starts it, because
+   * none exist yet. Said on the task, so it is never presented as ready.
+   */
+  writtenOnStart?: boolean;
+  /** The usual-week sitting it came from, if any. */
+  routineId?: string;
+};
+
+/**
+ * That an activity was done, and how Jami knows.
+ *
+ * `manual`: the student ticked it. `activity`: Jami saw the work -- the session
+ * opened from it was finished, or enough of its own cards were reviewed -- and
+ * wrote that down the day it saw it, so the record does not fade when the same
+ * cards are reviewed again tomorrow.
+ *
+ * Kept beside the day's activities rather than inside them, one key per
+ * activity, so a tick merges into the day without rewriting it: two devices
+ * ticking different things never lose either, and a tick made offline is kept.
+ */
+export type PlanActivityDone = { by: "manual" | "activity"; at: number };
+
+/**
+ * A task pinned to a day by a version 2 plan, read so it is not lost.
+ *
+ * `own:` ids are tasks the student wrote; anything else was one of Jami's
+ * suggestions they kept. Never written by this version.
  */
 export type PinnedPlanItem = {
   actionId: string;
   label: string;
   href?: string;
-  /**
-   * The sitting it belongs to, when the student added it to one. Absent means
-   * the day's first free place, which is where every earlier pin went.
-   */
   sessionId?: string;
 };
 
-/**
- * A task the student wrote themselves -- "redo question 3 from Monday's
- * paper" -- rather than one of Jami's suggestions they kept. It has no
- * destination; ticking it is the student's word that it is done.
- */
 export const OWN_TASK_PREFIX = "own:";
 
 export function isOwnPlanTask(item: Pick<PinnedPlanItem, "actionId">) {
@@ -217,81 +294,24 @@ export function isOwnPlanTask(item: Pick<PinnedPlanItem, "actionId">) {
 }
 
 /**
- * What the student changed about one day. Days they left alone store nothing.
+ * One day of the plan, stored only once something is decided about it.
  *
- * A plan of six weeks is six weeks of documents if every day is written out,
- * and forty of them would say only "unchanged". The schedule is computed; this
- * holds the exceptions.
+ * `activities` absent: the day has no timetable of its own, and the usual week
+ * applies -- its sittings show as free sessions. Present and empty: the day was
+ * deliberately cleared, a rest day. Days nobody touched store nothing, so a
+ * six-week plan is not six weeks of documents saying "unchanged".
  */
 export type RevisionPlanEntry = {
   dayKey: string;
-  pinned?: PinnedPlanItem[];
+  activities?: PlanActivity[];
+  /** What was done that day, by activity id. */
+  done?: Record<string, PlanActivityDone>;
+  /** Version 2's day off. Read as a rest day; never written now. */
   skipped?: boolean;
-  /** Slot ids the student ticked by hand, for work Jami cannot see. */
+  /** Version 2's pinned tasks and slot ticks. Read once into activities, then cleared. */
+  pinned?: PinnedPlanItem[];
   completedSlotIds?: string[];
   updatedAt?: number;
-};
-
-export type PlanSlotItem =
-  | { kind: "action"; action: StudyAction }
-  | { kind: "pinned"; pinned: PinnedPlanItem }
-  /** Time set aside that the engine had nothing to put in. */
-  | { kind: "open" };
-
-export type PlanSlotState = "todo" | "done" | "skipped";
-
-export type PlanSlot = {
-  /** Stable for a given plan, day and position, so a tick survives a refresh. */
-  id: string;
-  position: number;
-  minutes: number;
-  scopeKey: string;
-  item: PlanSlotItem;
-  state: PlanSlotState;
-  /**
-   * How a done slot came to be done. `activity` means Jami saw the work;
-   * `manual` means the student said so.
-   */
-  completedBy?: "activity" | "manual";
-};
-
-/**
- * One sitting as it is actually shown, with the work the engine put in it.
- *
- * The plan's session says when and how long; this says what came of it today.
- */
-export type PlanDaySession = {
-  /** The plan session this came from. */
-  id: string;
-  index: number;
-  minutes: number;
-  startTime?: string;
-  /** Derived from `startTime` and `minutes`, for reading only. */
-  endTime?: string;
-  label?: string;
-  /** The subject this sitting is for, whether pinned or decided by weighting. */
-  scopeKey: string;
-  slots: PlanSlot[];
-  doneCount: number;
-};
-
-export type PlanDay = {
-  planId: string;
-  dayKey: string;
-  /** Whether the plan calls for any study at all on this day. */
-  scheduled: boolean;
-  skipped: boolean;
-  minutes: number;
-  sessions: PlanDaySession[];
-  /**
-   * Every slot in the day, in order, across all of its sessions.
-   *
-   * Kept alongside `sessions` because completion, ticking and progress all work
-   * on the day rather than on a sitting, and a caller that only wants "what is
-   * left today" should not have to flatten it first.
-   */
-  slots: PlanSlot[];
-  doneCount: number;
 };
 
 /** A scope key that reads the same wherever it is built. */
@@ -299,4 +319,11 @@ export function planScopeKey(scope: Pick<RevisionPlanScope, "folderId" | "deckId
   if (scope.folderId) return `folder:${scope.folderId}`;
   if (scope.deckId) return `deck:${scope.deckId}`;
   return "none";
+}
+
+/** The scope a key names, or null for one that names nothing. */
+export function planScopeFromKey(scopeKey: string): Pick<RevisionPlanScope, "folderId" | "deckId"> | null {
+  if (scopeKey.startsWith("folder:") && scopeKey.length > 7) return { folderId: scopeKey.slice(7) };
+  if (scopeKey.startsWith("deck:") && scopeKey.length > 5) return { deckId: scopeKey.slice(5) };
+  return null;
 }

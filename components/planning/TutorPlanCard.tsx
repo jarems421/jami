@@ -68,7 +68,12 @@ export default function TutorPlanCard({
       tone="success"
       icon={<CalendarIcon />}
       title={plan.title}
-      description={`About ${perWeek >= 60 ? `${Math.round(perWeek / 60)}h` : `${perWeek} min`} a week, on ${studyDays.join(", ")}.`}
+      description={
+        // A plan can be nothing but activities placed by hand, with no usual week to describe.
+        studyDays.length > 0
+          ? `About ${perWeek >= 60 ? `${Math.round(perWeek / 60)}h` : `${perWeek} min`} a week, usually on ${studyDays.join(", ")}.`
+          : "Your timetable, planned day by day."
+      }
       status={daysLeft > 0 ? `${daysLeft} days to go` : "Finishing today"}
       action="Open your plan"
     />

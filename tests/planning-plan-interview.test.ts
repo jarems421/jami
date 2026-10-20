@@ -80,13 +80,13 @@ describe("the order of the questions", () => {
     expect(state.step).toBe("extras");
     state = answerPlanStep(state, "Nothing else", state.draft, CONTEXT);
     expect(state.step).toBe("review");
-    expect(state.turns.at(-1)?.text).toContain("Any last changes or additions");
+    expect(state.turns.at(-1)?.text).toContain("There's your timetable.");
   });
 
   it("opens a running plan's change on the last check, asking what to change", () => {
     const state = startPlanInterview({ context: CONTEXT, draft: full(), reshaping: true });
     expect(state.step).toBe("review");
-    expect(state.turns[0]?.text).toBe("What would you like to change about your plan?");
+    expect(state.turns[0]?.text).toContain("What would you like to change?");
   });
 
   it("goes back to an earlier question without losing the plan", () => {
@@ -264,7 +264,7 @@ describe("typed answers", () => {
     );
     expect(state.step).toBe("review");
     expect(state.draft.sessions.map((session) => session.weekday)).toEqual([1, 4]);
-    expect(state.turns.at(-1)?.text).toBe("Any other changes, or is it ready to start?");
+    expect(state.turns.at(-1)?.text).toBe("Anything else to change, or is it ready to save?");
   });
 });
 

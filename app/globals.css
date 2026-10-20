@@ -1682,6 +1682,35 @@
   }
 
   /*
+   * The planner's week, by the width it is given rather than the screen's.
+   *
+   * Seven columns are a week only while a task's name fits in one: beside Jami
+   * on a laptop, or on a tablet, they came out about 85px wide and every title
+   * broke a letter to a line. Narrower than that, the week wraps to four
+   * columns -- Monday to Thursday, then the weekend's end of it -- and on a
+   * phone it reads down the screen a day at a time.
+   */
+  .plan-week-layout {
+    container: plan-week / inline-size;
+  }
+
+  .plan-week-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container plan-week (min-width: 36rem) {
+    .plan-week-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  @container plan-week (min-width: 58rem) {
+    .plan-week-grid {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+  }
+
+  /*
    * OptionSwitch's columns, by the width it is given rather than the screen's.
    *
    * Each step is where a tile still fits its label on a line or two: about

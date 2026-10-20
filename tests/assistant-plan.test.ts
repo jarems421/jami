@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPlanNotices,
+  describeAssistantPlanDraft,
   MAX_NOTICES_PER_SUBJECT,
   MAX_PLAN_NOTICES,
   parseAssistantPlanSpec,
   type PlanSubjectOption,
 } from "@/lib/ai/assistant-plan";
-import { planScopeKey } from "@/lib/planning/types";
+import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
+import { planScopeKey, type RevisionPlanDraft } from "@/lib/planning/types";
 import { getStudyDayKey } from "@/lib/study/day";
 import type { StudyAction } from "@/lib/learning/actions/study-actions";
 import type { LearningRecommendationReason } from "@/lib/learning/types";
@@ -340,8 +342,7 @@ describe("what Jami says it has noticed", () => {
 });
 
 describe("exams Jami was told about", () => {
-  it("keeps the exams the student named, tied to a subject where Jami said which", async () => {
-    const { describeAssistantPlanDraft } = await import("@/lib/ai/assistant-plan");
+  it("keeps the exams the student named, tied to a subject where Jami said which", () => {
     const parsed = parseAssistantPlanSpec(
       spec({
         title: "Mocks",
@@ -365,5 +366,53 @@ describe("exams Jami was told about", () => {
     ]);
     // Jami is shown them again next turn, so changing one thing does not lose the exams.
     expect(describeAssistantPlanDraft(parsed!.draft, SUBJECTS)).toContain('- Exams: "Chemistry Paper 1" 2026-11-12 (S1); "Biology Paper 1" 2026-11-20');
+  });
+});
+
+describe("telling Jami what the plan already says", () => {
+  const OFFERED = [
+    { ref: "S1", label: "Chemistry", folderId: "chem" },
+    { ref: "S2", label: "Biology", folderId: "bio" },
+  ];
+  function draft(overrides: Partial<RevisionPlanDraft> = {}): RevisionPlanDraft {
+    return normalizeRevisionPlanDraft({
+      title: "Summer mocks",
+      scopes: [
+        { folderId: "chem", weight: 2 },
+        { folderId: "bio", weight: 1 },
+      ],
+      sessions: [
+        { id: "a", weekday: 1, minutes: 45, startTime: "16:30", scopeKey: "folder:chem" },
+        { id: "b", weekday: 3, minutes: 30 },
+      ],
+      startDayKey: "2026-09-14",
+      endDayKey: "2026-10-12",
+      ...overrides,
+    }).draft;
+  }
+
+  it("describes the draft in the refs the model was given", () => {
+    // Refs rather than names, so there is nothing in here the model could
+    // mistake for a new subject it is allowed to invent.
+    const described = describeAssistantPlanDraft(draft(), OFFERED);
+    expect(described).toContain("S1 weight 2");
+    expect(described).toContain("S2 weight 1");
+    expect(described).toContain("Mon 16:30 45 min (S1)");
+    expect(described).toContain("Wed 30 min");
+    expect(described).toContain("2026-09-14 to 2026-10-12");
+    expect(described).not.toContain("Chemistry");
+  });
+
+  it("says a subject is unknown rather than quietly dropping it", () => {
+    expect(describeAssistantPlanDraft(draft(), [OFFERED[0]!])).toContain("unknown");
+  });
+
+  it("says nothing at all about an empty draft, and something about one holding only exams", () => {
+    expect(describeAssistantPlanDraft(normalizeRevisionPlanDraft(null).draft, OFFERED)).toBeNull();
+    const examsOnly = normalizeRevisionPlanDraft({
+      title: "Mocks",
+      exams: [{ id: "e1", label: "Chemistry Paper 1", dayKey: "2026-11-12" }],
+    }).draft;
+    expect(describeAssistantPlanDraft(examsOnly, OFFERED)).toContain("Chemistry Paper 1");
   });
 });

@@ -121,6 +121,13 @@ none of them computes mastery or chooses a plan. The product rules are in
 `AGENTS.md`, and production checks in
 [`learning-engine-verification.md`](learning-engine-verification.md).
 
+The revision planner is a consumer in the same way
+([`revision-planner.md`](revision-planner.md)): it fills free sessions with the
+engine's actions for each of the plan's subjects, in the engine's order, and
+suggests a replacement when a planned task stops being recommended -- both
+deterministic, in `lib/planning/plan-drafting.ts`. Its ticks are plan data,
+never evidence.
+
 Goals (`lib/goals/`) are consumers too, and only consumers. A topic goal reads
 its topic's demonstration and the engine's study action for it through
 `/api/learning/topic-standing`; goal suggestions take the engine's topic

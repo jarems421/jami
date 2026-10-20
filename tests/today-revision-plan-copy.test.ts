@@ -14,7 +14,15 @@ declare global {
 const server = vi.hoisted(() => ({
   loadActiveRevisionPlan: vi.fn(),
   loadRevisionPlanEntries: vi.fn(),
-  saveRevisionPlanEntry: vi.fn(),
+  applyRevisionPlanOps: vi.fn(),
+  recordRevisionPlanActivitiesSeen: vi.fn(async () => undefined),
+}));
+
+vi.mock("@/services/learning/study-action-events", () => ({
+  loadCompletedStudyActions: vi.fn(async () => new Map()),
+}));
+vi.mock("@/services/learning/study-actions", () => ({
+  loadPlanStudyActions: vi.fn(async () => ({ actionsByScope: new Map(), answered: new Set() })),
 }));
 
 vi.mock("@/services/firebase/client", () => ({ db: {}, auth: {} }));
@@ -37,7 +45,8 @@ const UID = "planner";
 function plan(overrides: Partial<RevisionPlan> = {}): RevisionPlan {
   return {
     id: "plan-1",
-    schemaVersion: 2,
+    schemaVersion: 3,
+    autoFill: false,
     title: "Summer exams",
     status: "active",
     origin: "manual",
@@ -68,29 +77,25 @@ type Hook = ReturnType<typeof useRevisionPlanToday>;
 async function mount() {
   const seen: Hook[] = [];
   function Probe() {
-    seen.push(
-      useRevisionPlanToday({ uid: UID, enabled: true, actions: [], folders: [], cards: [], decks: [] })
-    );
+    seen.push(useRevisionPlanToday({ uid: UID, enabled: true, folders: [], cards: [], decks: [] }));
     return null;
   }
   const root = createRoot(document.createElement("div"));
   await act(async () => {
     root.render(createElement(Probe));
   });
-  return { seen, latest: () => seen[seen.length - 1], unmount: () => act(() => root.unmount()) };
+  return { seen, latest: () => seen[seen.length - 1] as Hook, unmount: () => act(() => root.unmount()) };
 }
 
-const pinnedLabels = (state: Hook) =>
-  (state.day?.slots ?? []).flatMap((slot) =>
-    slot.item.kind === "pinned" ? [slot.item.pinned.label] : []
-  );
+const taskTitles = (state: Hook) =>
+  (state.today?.activities ?? []).flatMap((activity) => (activity.open ? [] : [activity.title]));
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   window.localStorage.clear();
   server.loadActiveRevisionPlan.mockReset();
   server.loadRevisionPlanEntries.mockReset();
-  server.saveRevisionPlanEntry.mockReset();
+  server.applyRevisionPlanOps.mockReset();
 });
 
 afterEach(() => {
@@ -160,35 +165,33 @@ describe("Today's plan, kept for the next launch", () => {
 
   it("never lets a read from before a change undo it", async () => {
     storeTodayRevisionPlan(UID, WEEK, { plan: plan(), entries: [] });
-    const firstRead = held<RevisionPlan | null>();
-    const save = held<void>();
-    server.loadActiveRevisionPlan.mockReturnValueOnce(firstRead.promise);
-    server.loadRevisionPlanEntries.mockResolvedValueOnce([]);
-    server.saveRevisionPlanEntry.mockReturnValue(save.promise);
+    const firstRead = held<RevisionPlanEntry[]>();
+    const save = held<RevisionPlanEntry[]>();
+    server.loadActiveRevisionPlan.mockResolvedValue(plan());
+    server.loadRevisionPlanEntries.mockReturnValueOnce(firstRead.promise);
+    server.applyRevisionPlanOps.mockReturnValue(save.promise);
 
     const hook = await mount();
+    const task = { id: "task", title: "Read chapter 3", method: "notes" as const, minutes: 20, mode: "fixed" as const, origin: "student" as const };
     // The student adds a task to the kept plan while the first read is out.
     await act(async () => {
-      expect(hook.latest().addOwnTask(TODAY, "today-session", "Read chapter 3")).toBe(true);
+      expect(hook.latest().timetable.apply([{ type: "add", dayKey: TODAY, activity: task }])).toBe(true);
     });
-    expect(pinnedLabels(hook.latest())).toEqual(["Read chapter 3"]);
+    expect(taskTitles(hook.latest())).toEqual(["Read chapter 3"]);
+    // The free session the student could see is still there beside it.
+    expect(hook.latest().today?.openCount).toBe(1);
 
     // That read began before the task existed, and comes back without it.
-    await act(async () => firstRead.settle(plan()));
-    expect(pinnedLabels(hook.latest())).toEqual(["Read chapter 3"]);
+    await act(async () => firstRead.settle([]));
+    expect(taskTitles(hook.latest())).toEqual(["Read chapter 3"]);
 
-    // Once the task is saved, the plan is read again -- and that read has it.
-    const withTask: RevisionPlanEntry[] = [
-      {
-        dayKey: TODAY,
-        pinned: [{ actionId: "own:task", label: "Read chapter 3", sessionId: "today-session" }],
-      },
-    ];
-    server.loadActiveRevisionPlan.mockResolvedValueOnce(plan());
-    server.loadRevisionPlanEntries.mockResolvedValueOnce(withTask);
-    await act(async () => save.settle());
-    expect(server.loadActiveRevisionPlan).toHaveBeenCalledTimes(2);
-    expect(pinnedLabels(hook.latest())).toEqual(["Read chapter 3"]);
+    // The save answers with the day as the server now has it.
+    const saved = server.applyRevisionPlanOps.mock.calls[0]?.[2];
+    expect(saved).toEqual([{ type: "add", dayKey: TODAY, activity: task }]);
+    await act(async () =>
+      save.settle([{ dayKey: TODAY, activities: [{ ...task }, { id: "routine-today-session", title: "", method: "other", minutes: 45, mode: "adaptive", origin: "student", open: true, scopeKey: "folder:biology", routineId: "today-session" }] }])
+    );
+    expect(taskTitles(hook.latest())).toEqual(["Read chapter 3"]);
     hook.unmount();
   });
 

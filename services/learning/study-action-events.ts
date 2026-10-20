@@ -1,8 +1,9 @@
-import { doc, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, limit, query, setDoc, where } from "firebase/firestore";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
   STUDY_ACTION_EVENTS_COLLECTION,
   buildStudyActionEventWrite,
+  decodeStudyActionEvent,
   parseStudyActionId,
   studyActionEventId,
   type StudyActionOutcome,
@@ -66,6 +67,50 @@ export async function recordStudyActionEvent(
     if ((error as { code?: unknown } | null)?.code === "permission-denied") return "already-recorded";
     throw error;
   }
+}
+
+/** A fortnight of a busy student's finished sessions, and then some. */
+const COMPLETED_READ_LIMIT = 300;
+
+/**
+ * Which of the engine's actions were finished, on each study day of a range.
+ *
+ * What lets a revision plan tick a task because its own session was finished
+ * -- the one piece of evidence that is about exactly that task. Read with one
+ * range on the day key, which needs no index of its own. An empty answer on
+ * any failure: the plan then shows only what was ticked by hand.
+ */
+export async function loadCompletedStudyActions(
+  userId: string,
+  fromDayKey: string,
+  toDayKey: string
+): Promise<Map<string, Set<string>>> {
+  const byDay = new Map<string, Set<string>>();
+  if (!featureFlags.enableStudyActions || !userId.trim()) return byDay;
+  try {
+    const snapshot = await withTimeout(
+      getDocs(
+        query(
+          collection(db, "users", userId, STUDY_ACTION_EVENTS_COLLECTION),
+          where("studyDayKey", ">=", fromDayKey),
+          where("studyDayKey", "<=", toDayKey),
+          limit(COMPLETED_READ_LIMIT)
+        )
+      ),
+      RECORD_MS,
+      "Load finished study actions"
+    );
+    for (const document of snapshot.docs) {
+      const event = decodeStudyActionEvent(document.id, document.data() as Record<string, unknown>);
+      if (!event || event.outcome !== "completed") continue;
+      const ids = byDay.get(event.studyDayKey) ?? new Set<string>();
+      ids.add(event.actionId);
+      byDay.set(event.studyDayKey, ids);
+    }
+  } catch {
+    // The plan draws without it.
+  }
+  return byDay;
 }
 
 /**

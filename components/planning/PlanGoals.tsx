@@ -27,29 +27,35 @@ export default function PlanGoals({
   uid,
   plan,
   folders,
+  goals: given,
 }: {
   uid: string;
   plan: RevisionPlan;
   folders: readonly { id: string; name: string }[];
+  /** Goals the page already read, so they are read once; read here when absent. Null while they load. */
+  goals?: readonly Goal[] | null;
 }) {
-  const [goals, setGoals] = useState<Goal[] | null>(null);
+  const [loaded, setLoaded] = useState<readonly Goal[] | null>(null);
   const [now] = useState(() => Date.now());
+  const provided = given !== undefined;
 
   useEffect(() => {
+    if (provided) return;
     let live = true;
     // The plan draws without goals; a failed read just leaves this card quiet.
     void getActiveGoalsWithCurrentStatuses(uid).then(
-      (loaded) => {
-        if (live) setGoals(loaded);
+      (result) => {
+        if (live) setLoaded(result);
       },
       () => {
-        if (live) setGoals([]);
+        if (live) setLoaded([]);
       }
     );
     return () => {
       live = false;
     };
-  }, [uid]);
+  }, [provided, uid]);
+  const goals = provided ? given : loaded;
 
   const { related, nextExam } = useMemo(() => {
     const folderIds = new Set(plan.scopes.flatMap((scope) => (scope.folderId ? [scope.folderId] : [])));

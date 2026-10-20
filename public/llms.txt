@@ -6,7 +6,7 @@ signed-in user's own Firebase data; a signed-out visitor cannot reach seeded or
 public dashboard data.
 
 Primary destinations:
-- /dashboard - Today: the next step, or the week of a revision plan
+- /dashboard - Today: the next step, or today's activities from a revision plan
 - /dashboard/study - Learn: flashcard review
 - /dashboard/practice - Practice: folders, notebooks, past-paper questions and generated papers
 - /dashboard/tutor - Jami, the tutor
@@ -26,7 +26,7 @@ Additional routes:
 - /dashboard/practice/new - Generate a practice paper
 - /dashboard/practice/history - Practice history
 - /dashboard/revision/start - Start a Revision Session
-- /dashboard/tutor/plan - Revision plan
+- /dashboard/tutor/plan - Revision planner: your timetable of study activities, with Jami beside it
 - /dashboard/tutor/personalise - Personalise the tutor, including its memory
 - /dashboard/decks/[id] - Deck detail and card management
 - /dashboard/decks/[id]/study - Deck study session

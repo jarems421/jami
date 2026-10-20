@@ -48,6 +48,8 @@ type StepAnswersProps = {
   onStart: () => void;
   onEditByHand: () => void;
   saving: boolean;
+  /** Whether the plan, timetable included, has what it needs to be saved. */
+  canStart: boolean;
   startLabel: string;
 };
 
@@ -265,11 +267,11 @@ function WeekAnswers({ draft, onDraft, onAnswer }: StepAnswersProps) {
   );
 }
 
-function ReviewAnswers({ draft, onStart, onEditByHand, saving, startLabel }: StepAnswersProps) {
-  const { problems, valid } = normalizeRevisionPlanDraft(draft);
+function ReviewAnswers({ draft, onStart, onEditByHand, saving, canStart, startLabel }: StepAnswersProps) {
+  const { problems } = normalizeRevisionPlanDraft(draft);
   return (
     <div className="space-y-2">
-      {problems.length > 0 ? (
+      {problems.length > 0 && !canStart ? (
         <ul className="space-y-1">
           {problems.map((problem) => (
             <li key={problem} className="text-xs leading-5 text-text-secondary">
@@ -280,10 +282,10 @@ function ReviewAnswers({ draft, onStart, onEditByHand, saving, startLabel }: Ste
       ) : null}
       <ActionRow>
         <Button type="button" variant="secondary" onClick={onEditByHand}>
-          Edit by hand
+          Plan settings
         </Button>
-        <Button type="button" disabled={!valid || saving} onClick={onStart}>
-          {saving ? "Starting…" : startLabel}
+        <Button type="button" disabled={!canStart || saving} onClick={onStart}>
+          {saving ? "Saving…" : startLabel}
         </Button>
       </ActionRow>
     </div>

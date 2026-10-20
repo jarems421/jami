@@ -1,9 +1,11 @@
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
+import { shortPlanDate } from "@/lib/planning/plan-format";
 import { clampPlanMinutes, planDaysBetween } from "@/lib/planning/plan-schedule";
 import {
   PLAN_WEEKDAY_LABELS,
   PLAN_WEEKDAYS,
+  planScopeFromKey,
   planScopeKey,
   type PlanWeekday,
   type RevisionPlanDraft,
@@ -176,18 +178,12 @@ function withExamSubjects(
     if (!exam.scopeKey || have.has(exam.scopeKey)) continue;
     const scope =
       offered.find((candidate) => planScopeKey(candidate) === exam.scopeKey) ??
-      scopeFromKey(exam.scopeKey);
+      planScopeFromKey(exam.scopeKey);
     if (!scope) continue;
     next.push({ ...scope, weight: 2 });
     have.add(exam.scopeKey);
   }
   return next;
-}
-
-function scopeFromKey(scopeKey: string): RevisionPlanScope | null {
-  if (scopeKey.startsWith("folder:")) return { folderId: scopeKey.slice(7), weight: 2 };
-  if (scopeKey.startsWith("deck:")) return { deckId: scopeKey.slice(5), weight: 2 };
-  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -341,18 +337,6 @@ export type PlanInterviewContext = {
   scopeNames: ReadonlyMap<string, string>;
 };
 
-/** "Thu 12 Nov", read the same in every timezone. */
-export function shortPlanDate(dayKey: string) {
-  const [year, month, day] = dayKey.split("-").map(Number);
-  if (!year || !month || !day) return dayKey;
-  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
-
 function listNames(names: readonly string[]) {
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -371,7 +355,9 @@ export function planStepQuestion(
   context: PlanInterviewContext,
   options: { again?: boolean; reshaping?: boolean } = {}
 ) {
-  if (options.reshaping) return "What would you like to change about your plan?";
+  if (options.reshaping) {
+    return "What would you like to change? I can move, add or clear sessions, fill your free time, or change your usual week.";
+  }
   if (step === "goal") {
     return options.again
       ? "What are you working towards now? Change the exams or the date you want to be ready by."
@@ -398,8 +384,8 @@ export function planStepQuestion(
     return "Anything else I should fit around? A subject to start with, a day off, coursework that's due — or nothing, and we're nearly done.";
   }
   return options.again
-    ? "Any other changes, or is it ready to start?"
-    : "That's your plan. Any last changes or additions before you start it?";
+    ? "Anything else to change, or is it ready to save?"
+    : "There's your timetable. Change anything on it directly, or tell me what to move — then save it.";
 }
 
 /** What a tapped subjects answer said, for the conversation to show. */
@@ -438,6 +424,8 @@ export type PlanInterviewTurn = {
   step: PlanInterviewStep;
   /** A step's fixed question, as opposed to Jami answering something said. */
   question?: boolean;
+  /** Changes Jami proposed in this reply, shown under it for the student to apply or not. */
+  proposalId?: string;
 };
 
 export type PlanInterviewState = {
@@ -520,12 +508,14 @@ export function answerPlanStep(
  */
 export function applyJamiReply(
   state: PlanInterviewState,
-  reply: { text: string; proposal: RevisionPlanDraft | null },
+  reply: { text: string; proposal: RevisionPlanDraft | null; proposalId?: string },
   context: PlanInterviewContext
 ): PlanInterviewState {
   const turns: PlanInterviewTurn[] = [
     ...state.turns,
-    ...(reply.text ? [{ role: "jami" as const, text: reply.text, step: state.step }] : []),
+    ...(reply.text || reply.proposalId
+      ? [{ role: "jami" as const, text: reply.text, step: state.step, ...(reply.proposalId ? { proposalId: reply.proposalId } : {}) }]
+      : []),
   ];
 
   if (!reply.proposal) {
@@ -564,4 +554,87 @@ export function jumpToPlanStep(
 /** The draft changed by hand -- a tap, or the full builder -- without a turn. */
 export function withPlanDraft(state: PlanInterviewState, draft: RevisionPlanDraft): PlanInterviewState {
   return { ...state, draft };
+}
+
+/**
+ * Jami's answer about a plan that is already running.
+ *
+ * Nothing moves on its own here: whatever Jami would change is a proposal the
+ * student applies or discards, so the reply is recorded with the proposal it
+ * carries and the plan stays exactly as it is.
+ */
+export function recordJamiTurn(state: PlanInterviewState, text: string, proposalId?: string): PlanInterviewState {
+  if (!text && !proposalId) return state;
+  return {
+    ...state,
+    turns: [...state.turns, { role: "jami", text, step: state.step, ...(proposalId ? { proposalId } : {}) }],
+  };
+}
+
+/** An item without its id: two sittings or exams that differ only in id are the same one. */
+function withoutId<T extends { id: string }>(item: T) {
+  const copy: Partial<T> = { ...item };
+  delete copy.id;
+  return copy;
+}
+
+function usualWeekKey(draft: RevisionPlanDraft) {
+  return JSON.stringify(
+    [...draft.sessions].sort((left, right) => left.weekday - right.weekday).map(withoutId)
+  );
+}
+
+/** Whether two drafts describe the same plan, so an unchanged one is not proposed as a change. */
+export function samePlanShape(left: RevisionPlanDraft, right: RevisionPlanDraft) {
+  const shape = (draft: RevisionPlanDraft) => {
+    const { draft: normal } = normalizeRevisionPlanDraft(draft);
+    return JSON.stringify({
+      title: normal.title,
+      startDayKey: normal.startDayKey,
+      endDayKey: normal.endDayKey,
+      scopes: normal.scopes,
+      sessions: usualWeekKey(normal),
+      exams: (normal.exams ?? []).map(withoutId),
+    });
+  };
+  return shape(left) === shape(right);
+}
+
+/**
+ * What a proposed change to the plan itself would do, a line a change: the
+ * dates, the exams, the subjects, the usual week.
+ */
+export function describePlanShapeChanges(
+  before: RevisionPlanDraft,
+  after: RevisionPlanDraft,
+  scopeNames: ReadonlyMap<string, string>
+): string[] {
+  const lines: string[] = [];
+  if (after.title !== before.title) lines.push(`Call it "${after.title}"`);
+  if (after.startDayKey !== before.startDayKey || after.endDayKey !== before.endDayKey) {
+    lines.push(`Run ${shortPlanDate(after.startDayKey)} – ${shortPlanDate(after.endDayKey)}`);
+  }
+  const examKey = (exam: RevisionPlanExam) => `${exam.label}|${exam.dayKey}`;
+  const beforeExams = new Set((before.exams ?? []).map(examKey));
+  const afterExams = new Set((after.exams ?? []).map(examKey));
+  for (const exam of after.exams ?? []) {
+    if (!beforeExams.has(examKey(exam))) lines.push(`Count down to ${exam.label} on ${shortPlanDate(exam.dayKey)}`);
+  }
+  for (const exam of before.exams ?? []) {
+    if (!afterExams.has(examKey(exam))) lines.push(`Stop counting down to ${exam.label} on ${shortPlanDate(exam.dayKey)}`);
+  }
+  const weights = new Map(before.scopes.map((scope) => [planScopeKey(scope), scope.weight]));
+  const name = (key: string) => scopeNames.get(key) ?? "A subject";
+  for (const scope of after.scopes) {
+    const key = planScopeKey(scope);
+    const was = weights.get(key);
+    if (was === undefined) lines.push(`Add ${name(key)} (${PLAN_PRIORITY_LABELS[scope.weight as 1 | 2 | 3].toLowerCase()})`);
+    else if (was !== scope.weight) lines.push(`Give ${name(key)} ${scope.weight >= 3 ? "the most time" : scope.weight <= 1 ? "a light touch" : "a normal share"}`);
+    weights.delete(key);
+  }
+  for (const key of weights.keys()) lines.push(`Take ${name(key)} out of the plan`);
+  if (usualWeekKey(before) !== usualWeekKey(after)) {
+    lines.push(after.sessions.length > 0 ? `Usual week: ${describeWeekChoice(after)}` : "No usual week: only what is on the timetable");
+  }
+  return lines;
 }

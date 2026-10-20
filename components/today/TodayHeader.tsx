@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { longDayLabel } from "@/components/planning/PlanActiveView";
+import { longPlanDate } from "@/lib/planning/plan-format";
 import type { PlanCountdownItem } from "@/lib/planning/plan-countdown";
 
 /**
@@ -47,7 +47,7 @@ export default function TodayHeader({
         ) : null}
       </div>
       <p className="text-sm text-text-muted">
-        {[longDayLabel(dayKey), planTitle, summary].filter(Boolean).join(" · ")}
+        {[longPlanDate(dayKey), planTitle, summary].filter(Boolean).join(" · ")}
       </p>
       {countdown.length > 0 ? (
         <p aria-label="Counting down" className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-text-secondary">

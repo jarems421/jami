@@ -216,8 +216,23 @@ it can be judged from a screenshot taken at the right moment.
 5. In Personalise Jami (`/dashboard/tutor/personalise`), open the memory map.
    Correct a note, delete one, then turn memory off and confirm Tutor stops
    using it.
-6. Make a revision plan from Tutor, and confirm Today then leads with the week
-   and the next task.
+6. Revision planner (`/dashboard/tutor/plan`, design in
+   [`revision-planner.md`](revision-planner.md)):
+   - Build one by hand: add "20 minutes of homeostasis practice" to Monday at
+     17:00 and flashcards after it, then Save plan. Today leads with them on
+     Monday, in that order.
+   - Build one with Jami: answer the four questions by tapping. As the week is
+     answered, the first fortnight fills with real tasks (Jami's mark beside
+     them); weeks after that show free sessions, never "decided on the day".
+   - Ask Jami to "move Biology to Wednesday and make Monday a rest day". A
+     proposal appears naming both; nothing moves until Apply, and Undo puts it
+     back.
+   - Edit an activity's time, length, subject and method; move it by changing its
+     date; copy it; remove it. Navigate six weeks ahead and add to a day there;
+     reload and it is still there.
+   - Reviewing cards in a subject never ticks that subject's practice task.
+   - Between midnight and 4am, the planner says it is still yesterday's plan.
+   - At phone width the timetable comes first and Jami opens in a drawer.
 
 ## 7. Today, the Learning Engine and Revision Sessions
 
