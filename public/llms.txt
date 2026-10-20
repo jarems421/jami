@@ -13,7 +13,7 @@ Primary destinations:
 - /dashboard/decks - Flashcard decks
 - /dashboard/cards - All flashcards
 - /dashboard/topics - Concepts and subtopics linking material across folders
-- /dashboard/goals - Scoped study goals
+- /dashboard/goals - Goals: flashcard, practice-question and topic targets, paced, each earning a star
 - /dashboard/constellation - Stars and constellation rewards
 - /dashboard/progress - Progress and weak areas
 - /dashboard/profile - Account and settings

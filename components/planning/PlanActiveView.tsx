@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Skeleton } from "@/components/ui";
 import PlanChangeWithJami from "@/components/planning/PlanChangeWithJami";
 import PlanCountdown from "@/components/planning/PlanCountdown";
+import PlanGoals from "@/components/planning/PlanGoals";
 import PlanTodayTimeline from "@/components/planning/PlanTodayTimeline";
 import PlanWeekRow from "@/components/planning/PlanWeekRow";
 import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
@@ -176,6 +177,7 @@ export default function PlanActiveView({
         </div>
         <aside className="space-y-5">
           <PlanCountdown items={countdown} scopeColor={scopeColor} />
+          <PlanGoals uid={uid} plan={plan} folders={folders} />
           <PlanChangeWithJami onStart={onChangeWithJami} />
           {/* Ending a plan is rare and final, so it is not a button at the top
               of it beside the one everybody wants. */}

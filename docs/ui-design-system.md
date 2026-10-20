@@ -140,6 +140,35 @@ Use language like:
 
 Progress MVP should stay focused on weak topics, weak/due cards by topic, notebook/folder activity, source links, and generated drafts. Do not turn it into an advanced analytics dashboard yet, and do not reintroduce legacy attempt analytics.
 
+### Goals
+
+Goals are targets a student sets themselves. They should feel like aiming at
+something, not like filling in a form or auditing a counter.
+
+- A goal counts one kind of work: flashcard reviews, practice answers Jami
+  marked, or a topic reaching strong as the Learning Engine judges it. Counted
+  goals are a total ("40 cards by Sunday") or a daily amount on a number of days
+  ("20 cards a day, on 5 days") -- the daily shape is how a habit can finish and
+  earn a star instead of being a streak that only breaks.
+- Count only work Jami can see. A goal never asks the student to tick itself
+  off, and never estimates anything; a topic goal shows the engine's own
+  ladder (Not tested, Too early to tell, Weak, Developing, Strong).
+- Every running goal says where it stands and whether it is on pace. Pace is a
+  sum -- what an even spread from the day it was set asks of each day left --
+  never a prediction. Topic goals have no pace.
+- Every running goal opens the work that moves it: a session over its cards,
+  Practice for its folder, or the engine's current step for its topic.
+- The composer starts filled in, so a goal takes two taps. Suggestions (the
+  next exam in the revision plan, a topic the engine recommends, cards due
+  today, a week-long habit) only fill the composer in; nothing is created until
+  the student presses Create. The live star preview stays beside the composer
+  and grows with the goal.
+- Once a goal has started, what it counts and where from are fixed; how much,
+  by when and its name can change.
+- Deadlines are study days, not clock times, and a goal set for an exam is due
+  the evening before it. Goals appear on Today and beside the revision plan;
+  past goals stay closed until asked for, and any can be started again.
+
 ### Sources
 
 Sources is a focused reference workspace, not a file manager.

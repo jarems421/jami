@@ -31,6 +31,7 @@ import {
 import { PracticePaperMarkingCostLimitError } from "@/lib/practice/marking-accounting";
 import { getAiTokenCap } from "@/services/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+import { countMarkedAnswersTowardGoals } from "@/services/study/goal-progress.server";
 
 const STEP_DEADLINE_MS = 25 * 60_000;
 
@@ -384,6 +385,7 @@ async function finalizeQueuedPracticePaperMarkingMetered(uid: string, jobId: str
   const paperId = typeof job.paperId === "string" ? job.paperId : "";
   const attemptId = typeof job.attemptId === "string" ? job.attemptId : "";
   const now = Date.now();
+  let paperFolderId: string | undefined;
   await getAdminDb().runTransaction(async (transaction) => {
     const paperRef = userRef.collection("pastPapers").doc(paperId);
     const attemptRef = userRef.collection("practicePaperAttempts").doc(attemptId);
@@ -392,6 +394,8 @@ async function finalizeQueuedPracticePaperMarkingMetered(uid: string, jobId: str
       transaction.get(attemptRef),
     ]);
     if (!paperSnapshot.exists || !attemptSnapshot.exists) throw new Error("Submitted attempt no longer exists.");
+    const folderId = paperSnapshot.data()?.folderId;
+    paperFolderId = typeof folderId === "string" && folderId ? folderId : undefined;
     if (job.kind === "question_recheck") {
       const updates = {
         result: artifact.result as PracticePaperResult,
@@ -427,6 +431,18 @@ async function finalizeQueuedPracticePaperMarkingMetered(uid: string, jobId: str
       updatedAt: now,
     });
   });
+  if (job.kind !== "question_recheck") {
+    // Every question the student answered in the paper is a marked answer towards a
+    // practice-question goal, once: a re-run of this step finds the receipt.
+    const answered = (artifact.result as PracticePaperResult).questionResults.filter((question) => question.attempted);
+    await countMarkedAnswersTowardGoals({
+      uid,
+      receiptId: `paper:${attemptId}`,
+      folderId: paperFolderId,
+      scores: answered.map((question) => (question.maxMarks > 0 ? question.awardedMarks / question.maxMarks : 0)),
+      at: now,
+    });
+  }
   const { notifyPracticePaperMarkingReady } = await import(
     "@/services/notifications/practice-paper-ready.server"
   );

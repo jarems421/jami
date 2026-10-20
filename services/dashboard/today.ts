@@ -3,7 +3,7 @@ import { getStudyDayKey } from "@/lib/study/day";
 import type { DailyStudyActivity } from "@/lib/study/activity";
 import type { Card } from "@/lib/study/cards";
 import type { Deck } from "@/lib/study/decks";
-import type { Goal } from "@/lib/study/goals";
+import type { Goal } from "@/lib/goals/model";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Source } from "@/lib/material/sources";
 import type { Topic } from "@/lib/material/topics";

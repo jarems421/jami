@@ -1660,10 +1660,6 @@
     outline: none;
   }
 
-  .goal-form-layout {
-    container: goal-form / inline-size;
-  }
-
   /*
    * The plan dates go side by side when their own panel is wide enough.
    *
@@ -1920,14 +1916,6 @@
     }
   }
 
-  .goal-form-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .goal-form-span-all {
-    grid-column: 1 / -1;
-  }
-
   /*
    * A native date or time control may be narrower than it would like.
    *
@@ -1935,18 +1923,10 @@
    * content and the field overflows whatever column it was put in -- which is
    * how two date fields in a two-column grid came to overlap on an iPad.
    */
-  .goal-deadline-field,
-  .goal-deadline-native,
   .date-field,
   .date-field-native {
     min-inline-size: 0;
     max-inline-size: 100%;
-  }
-
-  @container goal-form (min-width: 34rem) {
-    .goal-form-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 
   .app-subtle-panel {

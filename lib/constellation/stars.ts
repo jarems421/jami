@@ -143,17 +143,24 @@ export function getEffectiveStarVisualSize(star: {
     : getStarVisualSize(star.size);
 }
 
+/**
+ * The star a goal will earn, drawn before it is earned.
+ *
+ * `effort` and `glow` are the same two numbers the real star is written with
+ * (`goalStarEffort` and `goalStarGlow`), so the preview is that star and not
+ * an approximation of it.
+ */
 export function buildPreviewStar({
-  targetCards,
-  targetAccuracy,
+  effort,
+  glow,
   constellationId = "preview-constellation",
   id = "preview-star",
   goalId = "preview-goal",
   createdAt = 0,
   position = { x: 50, y: 50 },
 }: {
-  targetCards: number;
-  targetAccuracy: number;
+  effort: number;
+  glow: number;
   constellationId?: string;
   id?: string;
   goalId?: string;
@@ -164,8 +171,8 @@ export function buildPreviewStar({
     id,
     goalId,
     constellationId,
-    size: getStarRewardSize(targetCards),
-    glow: targetAccuracy,
+    size: getStarRewardSize(effort),
+    glow,
     createdAt,
     position,
   });

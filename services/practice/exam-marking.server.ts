@@ -36,6 +36,7 @@ import {
 } from "@/lib/practice/single-question-paper";
 import { markSingleQuestionAdaptively } from "@/services/ai/practice-paper-marking.server";
 import { recordExamDifficultyContribution } from "@/services/practice/exam-difficulty.server";
+import { countMarkedAnswersTowardGoals } from "@/services/study/goal-progress.server";
 import {
   examQuestionVisualParts,
   loadExamQuestionSecret,
@@ -350,6 +351,14 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
         uid, attemptId, questionId: attempt.questionId, studyLevel: session.studyLevel,
         fraction: result.awardedMarks / question.marks,
         durationMs: Math.max(0, (attempt.submittedAt ?? Date.now()) - attempt.startedAt),
+      });
+      // A first answer, marked and not blank: what a practice-question goal counts.
+      await countMarkedAnswersTowardGoals({
+        uid,
+        receiptId: `exam:${attemptId}`,
+        folderId: session.folderId,
+        scores: [result.maxMarks > 0 ? result.awardedMarks / result.maxMarks : 0],
+        at: Date.now(),
       });
     }
     return "marked" as const;

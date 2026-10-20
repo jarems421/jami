@@ -77,7 +77,7 @@ The sidebar has ten destinations in two groups.
 | --- | --- | --- |
 | Flashcards | `/dashboard/decks` | Decks, with every card at `/dashboard/cards` |
 | Topics | `/dashboard/topics` | Concepts and subtopics linking material across folders |
-| Goals | `/dashboard/goals` | Time, card, accuracy and streak targets for a chosen scope |
+| Goals | `/dashboard/goals` | Flashcard, practice-question and topic targets, as totals or daily habits, paced to a date or a plan's exam; each finished goal earns a star |
 | Stars | `/dashboard/constellation` | Earned constellation rewards |
 | Progress | `/dashboard/progress` | Weak topics, recent activity and review history |
 | Account | `/dashboard/profile` | Profile, authentication and account deletion |

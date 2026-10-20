@@ -8,7 +8,7 @@ import {
   type Constellation,
 } from "@/lib/constellation/constellations";
 import { spreadBackfilledStars, type NormalizedStar } from "@/lib/constellation/stars";
-import type { Goal } from "@/lib/study/goals";
+import type { Goal } from "@/lib/goals/model";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import { backfillStarPositions, getStars } from "@/services/constellation/stars";
 import { getGoals } from "@/services/study/goals";

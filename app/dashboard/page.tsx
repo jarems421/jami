@@ -1,24 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import { runDashboardDataRequest } from "@/lib/app/dashboard-data";
 import type { Deck } from "@/lib/study/decks";
-import type { Goal } from "@/lib/study/goals";
+import type { Goal } from "@/lib/goals/model";
 import { getCustomStudyHref, getRevisionPlanHref } from "@/lib/app/routes";
 import { countTodayReviews, type DailyStudyActivity } from "@/lib/study/activity";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import AppPage from "@/components/layout/AppPage";
-import { Button, ButtonLink, FeedbackBanner, ProgressBar, Skeleton } from "@/components/ui";
+import { Button, ButtonLink, FeedbackBanner, Skeleton } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import type { Topic } from "@/lib/material/topics";
 import type { Source } from "@/lib/material/sources";
 import {
   buildTodayPlan,
-  type TodayGoalSummary,
   type TodayPlan,
   type TodayStudyAction,
 } from "@/lib/dashboard/today-plan";
@@ -34,6 +32,7 @@ import MissionCard from "@/components/today/MissionCard";
 import MaterialReady from "@/components/today/MaterialReady";
 import MomentumStrip, { buildMomentumWeek } from "@/components/today/MomentumStrip";
 import TodayAnytime, { type TodayAnytimeItem } from "@/components/today/TodayAnytime";
+import TodayGoals from "@/components/today/TodayGoals";
 import TodayHeader from "@/components/today/TodayHeader";
 import TodayPlanPanel from "@/components/today/TodayPlanPanel";
 import TodayWeekList from "@/components/today/TodayWeekList";
@@ -44,6 +43,8 @@ import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useStudyActions } from "@/hooks/useStudyActions";
 import { useInterventionMaterial } from "@/hooks/useInterventionMaterial";
+import { useWaitingGoalStars } from "@/hooks/useWaitingGoalStars";
+import StarRewardOverlay from "@/components/constellation/StarRewardOverlay";
 import {
   DAILY_REVIEW_MISSION_ID,
   noteMissionStarted,
@@ -89,28 +90,6 @@ import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
  */
 
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
-
-/** The goal with the nearest deadline, in the side column: where it stands, and the way to it. */
-function TodayGoalCard({ goal }: { goal: TodayGoalSummary }) {
-  return (
-    <section aria-labelledby="today-goal-title" className="app-panel rounded-3xl p-4">
-      <p className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">Goal</p>
-      <h2 id="today-goal-title" className="mt-1 px-1 text-sm font-bold text-text-primary">
-        {goal.title}
-      </h2>
-      <p className="mt-1 px-1 text-xs leading-5 text-text-muted">{goal.detail}</p>
-      <div className="mt-3 px-1">
-        <ProgressBar progress={goal.progressPercent} />
-      </div>
-      <Link
-        href={goal.href}
-        className="mt-3 inline-block px-1 text-xs font-semibold text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
-      >
-        Open goals
-      </Link>
-    </section>
-  );
-}
 
 export default function DashboardHome() {
   const { user } = useUser();
@@ -380,6 +359,7 @@ export default function DashboardHome() {
   );
 
   const material = useInterventionMaterial({ uid: user.uid, decks, folderName });
+  const waitingStars = useWaitingGoalStars(user.uid);
   const startMaterial = material.start;
 
   const mission = useMemo(
@@ -795,9 +775,7 @@ export default function DashboardHome() {
                 </div>
               </section>
             ) : null}
-            {!isLoading && sectionStates.goals !== "unavailable" && todayPlan.goalSummary ? (
-              <TodayGoalCard goal={todayPlan.goalSummary} />
-            ) : null}
+            {!isLoading && sectionStates.goals !== "unavailable" ? <TodayGoals goals={todayPlan.goals} /> : null}
           </aside>
         </div>
 
@@ -811,6 +789,7 @@ export default function DashboardHome() {
           onConfirm={material.confirm}
         />
       </AppPage>
+      <StarRewardOverlay reward={waitingStars.reward} onDone={waitingStars.dismiss} />
     </Refreshable>
   );
 }

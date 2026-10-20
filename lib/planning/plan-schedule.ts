@@ -11,7 +11,7 @@ import {
   type RevisionPlanScope,
   type RevisionPlanSession,
 } from "@/lib/planning/types";
-import { shiftStudyDayKey } from "@/lib/study/day";
+import { shiftStudyDayKey, studyDaysBetween } from "@/lib/study/day";
 
 /**
  * Which days a plan asks for, and how the time on one is divided.
@@ -39,14 +39,8 @@ export function planWeekdayOf(dayKey: string): PlanWeekday {
   return new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1)).getUTCDay() as PlanWeekday;
 }
 
-/** Whole days from one key to another, negative if the second is earlier. */
-export function planDaysBetween(fromDayKey: string, toDayKey: string) {
-  const at = (key: string) => {
-    const [year, month, day] = key.split("-").map(Number);
-    return Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1);
-  };
-  return Math.round((at(toDayKey) - at(fromDayKey)) / (24 * 60 * 60 * 1000));
-}
+/** Whole days from one key to another, negative if the second is earlier. Goals count days the same way. */
+export const planDaysBetween = studyDaysBetween;
 
 export function isWithinPlanHorizon(plan: Pick<RevisionPlan, "startDayKey" | "endDayKey">, dayKey: string) {
   return (

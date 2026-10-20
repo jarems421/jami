@@ -9,12 +9,12 @@ import { EmptyState } from "@/components/ui";
 import type { ConstellationLine } from "@/lib/constellation/constellations";
 import { getShootingStarCount } from "@/lib/constellation/shooting-stars";
 import { SKY_CONTAINER_ID, type NormalizedStar } from "@/lib/constellation/stars";
-import type { Goal } from "@/lib/study/goals";
+import { goalStarLabel, type Goal } from "@/lib/goals/model";
 
 function starLabel(star: NormalizedStar, goalsById: Record<string, Goal>) {
   if (star.rewardKind === "onboarding") return star.rewardLabel ?? "First study loop";
   const goal = goalsById[star.goalId];
-  return goal ? `Earned for a ${goal.targetCards}-card goal` : "Earned star";
+  return goal ? goalStarLabel(goal) : "Earned star";
 }
 
 /**

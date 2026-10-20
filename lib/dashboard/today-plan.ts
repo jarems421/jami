@@ -4,7 +4,8 @@ import type { StudyAction, StudyActionDestinationKind } from "@/lib/learning/act
 import type { LearningRecommendationReason } from "@/lib/learning/types";
 import { buildTopicProgress, type TopicProgressSummary } from "@/lib/material/progress";
 import type { Topic } from "@/lib/material/topics";
-import { getGoalDisplayName, type Goal } from "@/lib/study/goals";
+import { getGoalDisplayName, type Goal, type GoalMeasure } from "@/lib/goals/model";
+import { goalStanding, sortGoalsForDisplay, type GoalTone } from "@/lib/goals/standing";
 import type { Card } from "@/lib/study/cards";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import type { Source } from "@/lib/material/sources";
@@ -73,8 +74,13 @@ export type TodayDraft = {
 export type TodayGoalSummary = {
   goalId: string;
   title: string;
+  measure: GoalMeasure;
+  /** Where it stands: "34 of 50 cards", "Today: 12 of 20 cards", "Developing". */
+  headline: string;
+  /** What the rest asks for: "On track · about 6 a day". */
   detail: string;
   progressPercent: number;
+  tone: GoalTone;
   isAtRisk: boolean;
   href: string;
 };
@@ -146,7 +152,10 @@ export type TodayPlan = {
   studyActions: TodayStudyAction[];
   weakTopics: TodayWeakTopic[];
   drafts: TodayDraft[];
+  /** The goal Today would lead with: one at risk first, else the soonest due. */
   goalSummary?: TodayGoalSummary;
+  /** Running goals for the side column, the lead goal first. */
+  goals: TodayGoalSummary[];
   workspace: TodayWorkspaceSummary;
   topicProgress: TopicProgressSummary[];
 };
@@ -449,37 +458,30 @@ function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
     .slice(0, TODAY_STUDY_ACTION_LIMIT);
 }
 
-function buildGoalSummary(input: BuildTodayPlanInput, now: number): TodayGoalSummary | undefined {
-  const goal = (input.activeGoals ?? [])
-    .filter(
-      (item) =>
-        item.status === "active" &&
-        (item.deadline <= 0 || item.deadline > now)
-    )
-    .sort(
-      (left, right) =>
-        (left.deadline > 0 ? left.deadline : Number.MAX_SAFE_INTEGER) -
-        (right.deadline > 0 ? right.deadline : Number.MAX_SAFE_INTEGER)
-    )[0];
+/** How many running goals the side column shows; the rest are a tap away. */
+const TODAY_GOAL_LIMIT = 3;
 
-  if (!goal) return undefined;
-
-  const progressPercent =
-    goal.targetCards > 0
-      ? Math.min(100, Math.round((goal.progress.cardsCompleted / goal.targetCards) * 100))
-      : 0;
-  const remainingCards = Math.max(0, goal.targetCards - goal.progress.cardsCompleted);
-  const timeRemaining = goal.deadline > 0 ? goal.deadline - now : Number.POSITIVE_INFINITY;
-  const isAtRisk = remainingCards > 0 && timeRemaining <= 48 * 60 * 60 * 1000;
-
-  return {
-    goalId: goal.id,
-    title: getGoalDisplayName(goal),
-    detail: `${goal.progress.cardsCompleted} / ${goal.targetCards} cards complete.`,
-    progressPercent,
-    isAtRisk,
-    href: "/dashboard/goals",
-  };
+function buildGoalSummaries(input: BuildTodayPlanInput, now: number): TodayGoalSummary[] {
+  const running = (input.activeGoals ?? []).filter(
+    (goal) => goal.status === "active" && (goal.deadline <= 0 || goal.deadline > now)
+  );
+  const summaries = sortGoalsForDisplay(running).map((goal): TodayGoalSummary => {
+    const standing = goalStanding(goal, now);
+    return {
+      goalId: goal.id,
+      title: getGoalDisplayName(goal),
+      measure: goal.measure,
+      headline: standing.headline,
+      detail: standing.pace,
+      progressPercent: standing.percent,
+      tone: standing.tone,
+      isAtRisk: standing.atRisk,
+      href: "/dashboard/goals",
+    };
+  });
+  // A goal about to slip leads, wherever its deadline puts it; the order is otherwise soonest due.
+  const atRisk = summaries.filter((summary) => summary.isAtRisk);
+  return [...atRisk, ...summaries.filter((summary) => !summary.isAtRisk)].slice(0, TODAY_GOAL_LIMIT);
 }
 
 function buildWorkspaceSummary(input: BuildTodayPlanInput): TodayWorkspaceSummary {
@@ -550,7 +552,7 @@ function buildNextAction(input: {
     return {
       type: "continue_goal",
       title: "Keep this goal within reach.",
-      description: input.goalSummary.detail,
+      description: `${input.goalSummary.title}: ${input.goalSummary.headline}. ${input.goalSummary.detail}.`,
       href: input.goalSummary.href,
       label: "Open goal",
       priority: 3,
@@ -623,7 +625,7 @@ function buildNextAction(input: {
     return {
       type: "continue_goal",
       title: "Keep your current goal moving.",
-      description: input.goalSummary.detail,
+      description: `${input.goalSummary.title}: ${input.goalSummary.headline}. ${input.goalSummary.detail}.`,
       href: input.goalSummary.href,
       label: "Open goal",
       priority: 8,
@@ -696,7 +698,8 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   const drafts = buildDrafts(input);
   const { topicProgress, weakTopics } = buildWeakTopics(input, now);
   const studyActions = buildStudyActions(input);
-  const goalSummary = buildGoalSummary(input, now);
+  const goals = buildGoalSummaries(input, now);
+  const goalSummary = goals[0];
   const workspace = buildWorkspaceSummary(input);
   const nextAction = buildNextAction({
     decks: input.decks,
@@ -719,6 +722,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     weakTopics,
     drafts,
     goalSummary,
+    goals,
     workspace,
     topicProgress,
   };

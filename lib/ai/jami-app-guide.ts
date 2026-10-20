@@ -101,7 +101,7 @@ Sidebar: Study -- Today, Learn, Practice, Jami. Workspace -- Flashcards, Topics,
 - Sources (in Jami): "Add source" (text, link or upload: PDF, image, Word, PowerPoint). Select one for "Ask Jami about this" or "Create from this" (flashcards, or a practice set saved to Practice).
 - Jami page: ask about your material, drafts "Waiting for your OK", "Revision plan" (Jami plans revision around exam dates), and "Personalise Jami" (what you study, how Jami teaches, notes for every subject, what Jami remembers -- memory can be corrected, forgotten or switched off).
 - Revision sessions: Jami teaches one topic step by step, with short exercises. Start from Today, a topic page, or "Revision session" in a folder.
-- Topics: concepts that connect cards, notebooks and sources. Goals: "New goal" (cards to review, accuracy, a deadline). Stars: finishing goals earns stars in your sky. Progress: what needs attention, deck health, practice results.
+- Topics: concepts that connect cards, notebooks and sources. Goals: "New goal" -- review flashcards, answer practice questions Jami marks, or get a topic to strong; as a total or a daily amount, optionally by a date or before an exam in the plan, with suggested goals to start from. Stars: finishing goals earns stars in your sky. Progress: what needs attention, deck health, practice results.
 - Account: name, reminders, sign-in and data. "Personalise" (appearance): colour theme, background photo, typeface.
 In this chat you can also make flashcards and practice sets from the conversation (see the study-material instruction).`;
 

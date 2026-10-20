@@ -194,6 +194,20 @@ export function shiftStudyDayKey(dayKey: string, deltaDays: number) {
   return formatDayKey(shifted.year, shifted.month, shifted.day);
 }
 
+/**
+ * Whole days from one key to another, negative if the second is earlier.
+ *
+ * Read as plain calendar dates through `Date.UTC`, never as moments, so a
+ * clock change between the two days cannot add or lose one.
+ */
+export function studyDaysBetween(fromDayKey: string, toDayKey: string) {
+  const at = (key: string) => {
+    const [year, month, day] = key.split("-").map(Number);
+    return Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1);
+  };
+  return Math.round((at(toDayKey) - at(fromDayKey)) / (24 * 60 * 60 * 1000));
+}
+
 export function getStudyDayStartFromKey(dayKey: string) {
   const { year, month, day } = parseDayKey(dayKey);
   return localDateTimeToUtcTimestamp(

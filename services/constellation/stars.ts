@@ -11,7 +11,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { getActiveOrCreateInitialConstellation } from "@/services/constellation/constellations";
-import type { Goal } from "@/lib/study/goals";
+import { goalStarEffort, goalStarGlow, type Goal } from "@/lib/goals/model";
 import {
   getDefaultStarPosition,
   getStarRewardSize,
@@ -114,8 +114,9 @@ export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
   const star = {
     goalId: goal.id,
     constellationId: activeConstellation.id,
-    size: getStarRewardSize(goal.targetCards),
-    glow: goal.targetAccuracy,
+    // The same two numbers the goal's preview star was drawn from.
+    size: getStarRewardSize(goalStarEffort(goal)),
+    glow: goalStarGlow(goal),
     // Says which scale `size` is on. Without it the star reads as pre-preset,
     // whose sizes were 0..1, and is drawn on the wrong curve.
     starSchemaVersion: STAR_SCHEMA_VERSION,

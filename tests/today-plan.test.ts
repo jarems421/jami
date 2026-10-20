@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildTodayPlan } from "@/lib/dashboard/today-plan";
 import type { Card } from "@/lib/study/cards";
-import type { Goal } from "@/lib/study/goals";
+import { normalizeGoal } from "@/lib/goals/model";
 import type { Topic } from "@/lib/material/topics";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
@@ -235,8 +235,8 @@ describe("today plan", () => {
   });
 
   it("continues an active goal before card setup once folders exist", () => {
-    const goal: Goal = {
-      id: "goal-1",
+    // A goal stored before kinds, read through the same compatibility path as Firestore.
+    const goal = normalizeGoal("goal-1", {
       name: "Biology review",
       scope: { type: "all" },
       targetCards: 10,
@@ -245,7 +245,7 @@ describe("today plan", () => {
       progress: { cardsCompleted: 3, correctAnswers: 3, totalAnswers: 4 },
       status: "active",
       createdAt: 1,
-    };
+    });
     const plan = buildTodayPlan({
       ...basePlanInput(),
       notebooks: [],
@@ -260,8 +260,7 @@ describe("today plan", () => {
   });
 
   it("surfaces a near-deadline goal before notebook continuity", () => {
-    const goal: Goal = {
-      id: "goal-urgent",
+    const goal = normalizeGoal("goal-urgent", {
       name: "Finish biology",
       scope: { type: "deck", id: "deck-a", label: "Biology deck" },
       targetCards: 10,
@@ -270,7 +269,7 @@ describe("today plan", () => {
       progress: { cardsCompleted: 3, correctAnswers: 3, totalAnswers: 3 },
       status: "active",
       createdAt: 1,
-    };
+    });
     const plan = buildTodayPlan({
       ...basePlanInput(),
       notebooks: [notebook],
@@ -280,6 +279,33 @@ describe("today plan", () => {
 
     expect(plan.nextAction.type).toBe("continue_goal");
     expect(plan.goalSummary?.isAtRisk).toBe(true);
+    expect(plan.nextAction.description).toBe("Finish biology: 3 of 10 cards. 7 to go today.");
+  });
+
+  it("leads its goal list with the one at risk, wherever its deadline sits", () => {
+    const calm = normalizeGoal("calm", {
+      schemaVersion: 2,
+      measure: "cards",
+      cadence: "total",
+      target: 10,
+      deadline: NOW + 30 * 60 * 1000,
+      progress: { count: 10 },
+      status: "active",
+      createdAt: 1,
+    });
+    const slipping = normalizeGoal("slipping", {
+      schemaVersion: 2,
+      measure: "questions",
+      cadence: "total",
+      target: 20,
+      deadline: NOW + 40 * 60 * 1000,
+      progress: { count: 2 },
+      status: "active",
+      createdAt: 1,
+    });
+    const plan = buildTodayPlan({ ...basePlanInput(), notebooks: [notebook], topics: [], activeGoals: [calm, slipping] });
+    expect(plan.goals.map((goal) => goal.goalId)).toEqual(["slipping", "calm"]);
+    expect(plan.goals[0]).toMatchObject({ measure: "questions", headline: "2 of 20 questions", tone: "due_today" });
   });
 
   it("falls back to deck setup after the folder/workspace path exists", () => {

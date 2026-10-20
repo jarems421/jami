@@ -58,8 +58,8 @@ const PLAIN_EXPLANATION: Partial<Record<TodayNextActionType, string[]>> = {
     "Finishing it means the cards you already answered are not scheduled a second time.",
   ],
   continue_goal: [
-    "This is the goal with the nearest deadline.",
-    "Jami is counting cards completed against it, and nothing else.",
+    "This is the goal that most needs you today: due soonest, or slipping behind the pace it needs.",
+    "Jami counts only work it can see towards it: cards you review, answers it marks, and what your results say about a topic.",
   ],
 };
 

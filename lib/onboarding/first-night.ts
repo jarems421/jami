@@ -712,7 +712,7 @@ export function planFirstNightGuide({ state, pathname, isPhone, pointing, presen
   if (pathname.startsWith("/dashboard/goals")) {
     if (!needs("goal")) return null;
     if (present(T.createGoal)) {
-      return note("goal-create", T.createGoal, "Pick how many cards to review and by when, then press Create goal. Finish it and it earns a star.");
+      return note("goal-create", T.createGoal, "Pick what to aim at, adjust it if you like, then press Create goal. Finish it and it earns a star.");
     }
     if (present(T.newGoal)) {
       return note("goal-new", T.newGoal, "Goals give your studying a target, and every goal you finish adds a star to your sky. Make your first one.");

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const firestore = vi.hoisted(() => ({
   addDoc: vi.fn(),
+  deleteField: vi.fn(() => "__delete__"),
   collection: vi.fn(
     (_db: unknown, ...segments: string[]) => ({
       kind: "collection",
@@ -44,9 +45,8 @@ vi.mock("@/services/firebase/firestore", () => ({
 vi.mock("@/services/dashboard/cache", () => ({
   invalidateDashboardData: vi.fn(),
 }));
-vi.mock("@/services/constellation/stars", () => ({
-  createStarForGoalIfMissing: vi.fn(),
-}));
+const stars = vi.hoisted(() => ({ createStarForGoalIfMissing: vi.fn() }));
+vi.mock("@/services/constellation/stars", () => stars);
 
 function goalDocument(
   id: string,
@@ -152,14 +152,16 @@ describe("dashboard goal summary", () => {
       return snapshot([]);
     });
 
-    const { getDashboardGoalSummary, updateGoal } = await import(
+    const { getDashboardGoalSummary, endGoal } = await import(
       "@/services/study/goals"
     );
     await getDashboardGoalSummary("dashboard-goals-write-user", 1_000);
-    await updateGoal("dashboard-goals-write-user", "goal-1", {
-      status: "completed",
-    });
+    await endGoal("dashboard-goals-write-user", "goal-1");
     await getDashboardGoalSummary("dashboard-goals-write-user", 1_000);
+    expect(firestore.updateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "users/dashboard-goals-write-user/goals/goal-1" }),
+      { status: "cancelled" }
+    );
 
     // A write has to drop the cached summary, or Today keeps showing a goal
     // the student has just finished.
@@ -240,6 +242,87 @@ describe("dashboard goal summary", () => {
         },
         status: "completed",
       })
+    );
+  });
+});
+
+function queryValue(target: unknown, field: string) {
+  if (!target || typeof target !== "object" || !("constraints" in target)) return undefined;
+  const match = (target as { constraints: unknown[] }).constraints.find(
+    (constraint) =>
+      constraint &&
+      typeof constraint === "object" &&
+      (constraint as { kind?: unknown }).kind === "where" &&
+      (constraint as { field?: unknown }).field === field
+  ) as { value?: unknown } | undefined;
+  return match?.value;
+}
+
+describe("making and finishing goals", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    firestore.updateDoc.mockResolvedValue(undefined);
+  });
+
+  it("writes a new goal with everything it needs, guarded against older copies of the app", async () => {
+    firestore.addDoc.mockResolvedValue({ id: "new-goal" });
+    const { createGoal } = await import("@/services/study/goals");
+    const goal = await createGoal(
+      "goal-maker",
+      {
+        name: "",
+        measure: "questions",
+        cadence: "total",
+        target: 12,
+        days: 0,
+        scope: { type: "folder", id: "chem", label: "Chemistry" },
+        deadline: 0,
+      },
+      1_000
+    );
+    expect(goal).toMatchObject({ id: "new-goal", schemaVersion: 2, measure: "questions", target: 12, status: "active" });
+    expect(firestore.addDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "users/goal-maker/goals" }),
+      expect.objectContaining({ schemaVersion: 2, targetCards: 12, targetAccuracy: 2, createdAt: 1_000 })
+    );
+  });
+
+  it("lights the stars of goals that finished elsewhere, then stops waiting for them", async () => {
+    const star = { id: "server-goal", goalId: "server-goal", constellationId: "c", size: 1, glow: 0.85, position: { x: 1, y: 1 }, createdAt: 2 };
+    stars.createStarForGoalIfMissing.mockResolvedValue(star);
+    firestore.getDocs.mockImplementation(async (target: unknown) =>
+      queryValue(target, "rewardPending") === true
+        ? snapshot([
+            {
+              id: "server-goal",
+              ref: { path: "users/claimer/goals/server-goal" },
+              data: () => ({ schemaVersion: 2, measure: "questions", target: 5, status: "completed", rewardPending: true }),
+            } as ReturnType<typeof goalDocument>,
+          ])
+        : snapshot([])
+    );
+    const { claimGoalRewards } = await import("@/services/study/goals");
+    const rewards = await claimGoalRewards("claimer");
+    expect(rewards).toEqual([{ star, goalName: "Answer 5 practice questions" }]);
+    expect(firestore.updateDoc).toHaveBeenCalledWith({ path: "users/claimer/goals/server-goal" }, { rewardPending: "__delete__" });
+  });
+
+  it("finishes a goal there and then when an edit brings its target within reach", async () => {
+    stars.createStarForGoalIfMissing.mockResolvedValue(null);
+    firestore.getDocs.mockResolvedValue(snapshot([]));
+    const { editGoal } = await import("@/services/study/goals");
+    const { goalFromDraft } = await import("@/lib/goals/model");
+    const running = goalFromDraft(
+      "edited",
+      { name: "", measure: "cards", cadence: "total", target: 50, days: 0, scope: { type: "all" }, deadline: 0 },
+      1_000
+    );
+    const counted = { ...running, progress: { ...running.progress, count: 30, answered: 30 } };
+    const saved = await editGoal("editor", counted, { name: "", target: 25, days: 0, deadline: 0 }, 2_000);
+    expect(saved.goal).toMatchObject({ status: "completed", completedAt: 2_000, target: 25 });
+    expect(firestore.updateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "users/editor/goals/edited" }),
+      expect.objectContaining({ target: 25, status: "completed", rewardPending: true })
     );
   });
 });

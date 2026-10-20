@@ -16,9 +16,15 @@ by domain services.
   existence). On a cold compatibility cache, a short-lived full pass is still
   required to discover early documents missing lifecycle fields; modern
   records use the bounded indexed path and warm navigation repeats no reads.
-- Today reads only active goals plus a one-document completed-goal existence
-  check. The Goals page also uses an aggregate completed count; its completed,
-  failed and cancelled history is cursor-paged 30 records at a time.
+- Today reads only active goals plus a one-document star existence check.
+  The Goals page reads active goals, any goals whose star is still waiting
+  (`rewardPending`, at most ten), the active revision plan for exam deadlines,
+  and -- only for folders with a running topic goal, at most three -- that
+  folder's topic standings from `/api/learning/topic-standing`. Its completed,
+  failed and cancelled history is cursor-paged 30 records at a time and read
+  only when opened.
+- A marked practice answer reads the student's active goals once, and opens a
+  transaction only when one of them counts practice questions.
 - Dashboard activity is cursor-paged 32 days at a time and stops at the first
   missing study day. An uninterrupted streak of any length remains exact.
 - Practice cursor-pages folders and limits its recent-notebook query to three.
