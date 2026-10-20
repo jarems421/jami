@@ -67,6 +67,8 @@ export type ResolvedJamiAssistantContext = {
    * recent chats. Undefined when memory is off or could not load in time.
    */
   memoryContext?: string;
+  /** The student's running goals, in markers. Undefined when they have none or they could not load in time. */
+  goalsContext?: string;
   /** Short references in `memoryContext` (`m1`...) to memory ids, for updates. */
   memoryRefs?: ReadonlyMap<string, string>;
   /** Whether Tutor may propose memory changes on this turn. */

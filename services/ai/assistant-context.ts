@@ -40,6 +40,8 @@ import {
   selectTutorMemoriesForPrompt,
 } from "@/lib/ai/tutor-memory";
 import { loadRecentTutorActivity, loadTutorMemory } from "@/services/ai/tutor-memory.server";
+import { normalizeGoal } from "@/lib/goals/model";
+import { buildTutorGoalsInstruction } from "@/lib/goals/tutor-context";
 import { resolveNotebookContext } from "@/services/ai/assistant-notebook-context.server";
 import {
   loadTutorLearningContext,
@@ -58,6 +60,8 @@ const LEARN_RELATED_CARD_SCAN_LIMIT = 20;
 const LEARN_MAX_RELATED_CARDS = 6;
 /** Memory is two small reads; past this the answer goes ahead without it. */
 const TUTOR_MEMORY_BUDGET_MS = 1_500;
+/** Goals are one small query; past this the answer goes ahead without them. */
+const TUTOR_GOALS_BUDGET_MS = 1_200;
 
 const log = createLogger({ module: "ai.assistant.context" });
 
@@ -250,6 +254,33 @@ async function loadTutorMemoryContext(input: {
   }
 }
 
+
+/**
+ * The student's running goals, as the block Tutor reads.
+ *
+ * An enrichment like memory: a failed or slow read leaves the answer as it was.
+ */
+async function loadTutorGoalsContext(input: { db: AdminDb; uid: string }): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const loading = input.db.collection("users").doc(input.uid).collection("goals").where("status", "==", "active").get();
+    loading.catch(() => undefined);
+    const settled = await Promise.race([
+      loading,
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), TUTOR_GOALS_BUDGET_MS);
+      }),
+    ]);
+    if (settled === "timeout") return "";
+    const goals = settled.docs.map((document) => normalizeGoal(document.id, document.data() as Record<string, unknown>));
+    return buildTutorGoalsInstruction(goals, Date.now(), randomUUID());
+  } catch (error) {
+    log.warn("tutor_goals.failed", { error });
+    return "";
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /**
  * Nearby cards from the same deck, so the tutor can spot the mix-ups and
@@ -657,7 +688,7 @@ export async function resolveJamiAssistantContext(input: {
         ...(deckId ? { deckId } : {}),
         ...("specificationIds" in resolved ? { specificationIds: resolved.specificationIds } : {}),
       });
-  const [sources, preferences, learning, course, neighbourParts, memory] = await Promise.all([
+  const [sources, preferences, learning, course, neighbourParts, memory, goalsContext] = await Promise.all([
     selectSources({
       db,
       uid,
@@ -685,6 +716,7 @@ export async function resolveJamiAssistantContext(input: {
       ...(input.threadId ? { currentThreadId: input.threadId } : {}),
       firstTurn: input.firstTurn ?? true,
     }),
+    loadTutorGoalsContext({ db, uid }),
   ]);
   // After the current page's own parts, so the page asked about is read first.
   const currentParts = [...resolved.currentParts, ...neighbourParts];
@@ -744,6 +776,7 @@ export async function resolveJamiAssistantContext(input: {
           memoryWritable: memory.memoryWritable,
         }
       : {}),
+    ...(goalsContext ? { goalsContext } : {}),
     reasoningEffort: preferences.reasoningEffort,
     ...("deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
       ? { deckId: resolved.deckId }

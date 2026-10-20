@@ -121,6 +121,18 @@ none of them computes mastery or chooses a plan. The product rules are in
 `AGENTS.md`, and production checks in
 [`learning-engine-verification.md`](learning-engine-verification.md).
 
+Goals (`lib/goals/`) are consumers too, and only consumers. A topic goal reads
+its topic's demonstration and the engine's study action for it through
+`/api/learning/topic-standing`; goal suggestions take the engine's topic
+recommendations in its own order. Nothing about a goal is learner evidence or
+ever reaches a profile. Goal progress is counted by one rule,
+`applyGoalEvent`, run where the work is recorded: on the device as a
+flashcard answer saves, and on the server as a practice answer is marked
+(`services/study/goal-progress.server.ts`, keyed by a receipt so a marking
+counts once). A goal finished away from a screen is left `rewardPending`, and
+the next screen to load lights its star. Tutor reads the running goals as a
+marked, read-only block (`lib/goals/tutor-context.ts`), agreed 20 Oct 2026.
+
 ## Sources
 
 Sources is a reference workspace. Its page should orchestrate selection, loading,

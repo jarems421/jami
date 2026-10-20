@@ -158,6 +158,7 @@ export type TutorSystemInstructionInput = {
     | "personalisationContext"
     | "learningContext"
     | "memoryContext"
+    | "goalsContext"
     | "memoryWritable"
   >;
   /** Whether web research ran and verified something, was needed, or was out of searches. */
@@ -210,6 +211,7 @@ Work in a notebook often runs across a page break. If the working you have been 
 ${input.movedChat ? `${describeMovedChat(input.movedChat.from, input.movedChat.to)}\n` : ""}${input.attachmentInstruction ? `${input.attachmentInstruction}
 ` : ""}${input.recall ? `${buildTutorRecallInstruction("R1", input.recall.found > 0)}\n` : ""}${input.independentWorking ? `${TUTOR_AGENT_WORKING_INSTRUCTION}\n` : ""}${input.materialNotFound ? `${TUTOR_AGENT_NO_MATERIAL_INSTRUCTION}\n` : ""}${input.workingCheck ? `${WORKING_CHECK_INSTRUCTION}\n` : ""}${context.learningContext ? `${context.learningContext}
 ` : ""}${context.memoryContext ? `${context.memoryContext}
+` : ""}${context.goalsContext ? `${context.goalsContext}
 ` : ""}Return JSON only with exactly these fields:
 {${context.memoryWritable === true ? `"memory":[],` : ""}"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"diagrams":[],"studyMaterial":"none","studyMaterialFocus":"","suggestions":[]}
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
