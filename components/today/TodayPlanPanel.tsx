@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import PlanActivityEditor, { type PlanEditorTopic } from "@/components/planning/PlanActivityEditor";
 import { PlanActivityRow } from "@/components/planning/PlanActivityItem";
+import PlanJamiNote from "@/components/planning/PlanJamiNote";
 import { Button, JamiTutorIcon } from "@/components/ui";
 import { JAMI_FILL_LABEL } from "@/hooks/usePlanAutoFill";
 import { usePlanEdits } from "@/hooks/usePlanEdits";
@@ -10,7 +11,7 @@ import type { RevisionPlanTodayState } from "@/hooks/useRevisionPlanToday";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getGoalDisplayName, type Goal } from "@/lib/goals/model";
 import { planScopeColor } from "@/lib/planning/plan-colors";
-import { planRefreshSuggestions } from "@/lib/planning/plan-drafting";
+import { planFillNotice, planRefreshSuggestions } from "@/lib/planning/plan-drafting";
 import { formatPlanMinutes } from "@/lib/planning/plan-format";
 import { planActivityGoal } from "@/lib/planning/plan-goals";
 import { timetableUpNext, type TimetableActivity, type TimetableDay } from "@/lib/planning/timetable";
@@ -27,6 +28,7 @@ import { planScopeKey, type RevisionPlan } from "@/lib/planning/types";
  */
 
 type Props = {
+  uid: string;
   planToday: RevisionPlanTodayState;
   folders: readonly { id: string; name: string; topicIds?: readonly string[] }[];
   topics: readonly { id: string; name: string }[];
@@ -41,10 +43,17 @@ function summary(day: TimetableDay) {
   return `${day.taskCount} ${day.taskCount === 1 ? "task" : "tasks"} · about ${formatPlanMinutes(day.minutes)}`;
 }
 
-function TodayPlanDay({ planToday, folders, topics, goals = [], plan, day }: Props & { plan: RevisionPlan; day: TimetableDay }) {
+function TodayPlanDay({ uid, planToday, folders, topics, goals = [], plan, day }: Props & { plan: RevisionPlan; day: TimetableDay }) {
   const { scopeNames, timetable, drafting, todayDayKey } = planToday;
   const edits = usePlanEdits({ plan, timetable, days: [day], drafting, todayDayKey, changePlan: planToday.changePlan });
   const [editing, setEditing] = useState<{ activity?: TimetableActivity } | null>(null);
+  const [pickNote, setPickNote] = useState<string | null>(null);
+  const pick = (activity: TimetableActivity) => {
+    setPickNote(null);
+    void edits.ops
+      .fill([day.dayKey], { only: [activity.id] })
+      .then((outcome) => setPickNote(planFillNotice(outcome, (scopeKey) => scopeNames.get(scopeKey) ?? "that subject")));
+  };
   const upNext = timetableUpNext(day);
   const suggestions = useMemo(
     () =>
@@ -110,13 +119,19 @@ function TodayPlanDay({ planToday, folders, topics, goals = [], plan, day }: Pro
                 {...(suggestion ? { suggestion, onAcceptSuggestion: () => edits.ops.acceptSuggestion(suggestion) } : {})}
                 onOpen={() => setEditing({ activity })}
                 onToggle={(done) => edits.ops.toggleDone(day, activity.id, done)}
-                onFill={() => edits.ops.fill([day.dayKey])}
+                onFill={() => pick(activity)}
                 onKeep={() => edits.ops.setMode(day.dayKey, activity.id, "fixed")}
               />
             );
           })}
         </ol>
       )}
+
+      {pickNote ? (
+        <PlanJamiNote className="mt-3" onDismiss={() => setPickNote(null)}>
+          {pickNote}
+        </PlanJamiNote>
+      ) : null}
 
       {timetable.undoLabel === JAMI_FILL_LABEL ? (
         // Said, not done quietly: the student sees that Jami put these here.
@@ -145,6 +160,7 @@ function TodayPlanDay({ planToday, folders, topics, goals = [], plan, day }: Pro
       {editing ? (
         <PlanActivityEditor
           key={editing.activity?.id ?? "new"}
+          uid={uid}
           dayKey={day.dayKey}
           {...(editing.activity ? { activity: editing.activity } : {})}
           todayDayKey={todayDayKey}
@@ -152,11 +168,10 @@ function TodayPlanDay({ planToday, folders, topics, goals = [], plan, day }: Pro
           topics={editorTopics}
           revisionSessions={featureFlags.enableRevisionSessions}
           onClose={() => setEditing(null)}
-          onAdd={(dayKey, activity) => edits.ops.add(dayKey, activity)}
+          onAdd={edits.ops.add}
           onSave={(dayKey, activity, patch) => edits.ops.update(dayKey, activity, patch)}
           onDuplicate={(dayKey, activity, toDayKey) => edits.ops.duplicate(dayKey, activity.id, toDayKey)}
           onRemove={(dayKey, activity) => edits.ops.remove(dayKey, activity.id)}
-          onFill={(dayKey) => edits.ops.fill([dayKey])}
         />
       ) : null}
     </section>

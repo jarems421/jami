@@ -7,6 +7,7 @@ import {
   goalPaceHint,
   goalPlanSentence,
   repeatGoalDraft,
+  sameGoalDraft,
   withCadence,
   withMeasure,
 } from "@/lib/goals/drafts";
@@ -15,6 +16,8 @@ import { goalFromDraft, type Goal } from "@/lib/goals/model";
 import {
   engineTopicsFromActions,
   examGoalDraft,
+  goalIdeas,
+  goalIdeaTiming,
   suggestGoals,
   upcomingPlanExams,
   type GoalSuggestionExam,
@@ -97,6 +100,63 @@ describe("goal suggestions", () => {
   it("skip an exam that is today or too far off to plan for", () => {
     expect(suggestGoals({ now: NOW, activeGoals: [], nextExam: { ...exam, dayKey: TODAY } })[0]?.id).toBe("habit");
     expect(suggestGoals({ now: NOW, activeGoals: [], nextExam: { ...exam, dayKey: shiftStudyDayKey(TODAY, 200) } })[0]?.id).toBe("habit");
+  });
+});
+
+describe("quick starts", () => {
+  it("give a student with no history more than one place to start", () => {
+    const ideas = goalIdeas({ now: NOW, activeGoals: [] });
+    expect(ideas.map((idea) => idea.id)).toEqual([
+      "habit",
+      "starter:today",
+      "starter:week-cards",
+      "starter:week-questions",
+      "starter:question-habit",
+    ]);
+    expect(ideas.map((idea) => idea.title)).toEqual([
+      "20 cards a day",
+      "Review 20 cards",
+      "Review 100 cards",
+      "Answer 10 practice questions",
+      "3 practice questions a day",
+    ]);
+    expect(ideas[1]?.draft.deadline).toBe(endOfStudyDay(TODAY));
+    expect(goalDeadlineDayKey(ideas[2]!.draft.deadline)).toBe(shiftStudyDayKey(TODAY, 6));
+    expect(ideas[4]?.draft).toMatchObject({ measure: "questions", cadence: "daily", target: 3, days: 5 });
+  });
+
+  it("keep the suggestions first and stop at two rows", () => {
+    const ideas = goalIdeas({
+      now: NOW,
+      activeGoals: [],
+      nextExam: { ...exam, folderId: undefined },
+      engineTopics: [{ folderId: "bio", topicKey: "topic:enzymes", label: "Enzymes" }],
+      dueCardCount: 34,
+    });
+    expect(ideas).toHaveLength(6);
+    expect(ideas.slice(0, 3).map((idea) => idea.id)).toEqual(["exam-questions:chem-1", "topic:bio:topic:enzymes", "due-today"]);
+    // Cards waiting today already make "a session today": it is not offered twice.
+    expect(ideas.some((idea) => idea.id === "starter:today")).toBe(false);
+  });
+
+  it("leave out one a running goal already is", () => {
+    const running = goalFromDraft("today", { ...blankGoalDraft("cards", NOW), target: 35, deadline: endOfStudyDay(TODAY) }, NOW);
+    const ideas = goalIdeas({ now: NOW, activeGoals: [running] });
+    expect(ideas.some((idea) => idea.id === "starter:today")).toBe(false);
+    expect(ideas.some((idea) => idea.id === "starter:week-cards")).toBe(true);
+  });
+
+  it("say when each is due in a few words", () => {
+    const [habit, today, week] = goalIdeas({ now: NOW, activeGoals: [] });
+    expect(goalIdeaTiming(habit!.draft, NOW)).toBe("On 5 days");
+    expect(goalIdeaTiming(today!.draft, NOW)).toBe("Due today");
+    expect(goalIdeaTiming(week!.draft, NOW)).toMatch(/^Due /);
+  });
+
+  it("know which one the composer is showing, whatever it is called", () => {
+    const [, today] = goalIdeas({ now: NOW, activeGoals: [] });
+    expect(sameGoalDraft({ ...today!.draft, name: "Quick one" }, today!.draft)).toBe(true);
+    expect(sameGoalDraft({ ...today!.draft, target: 25 }, today!.draft)).toBe(false);
   });
 });
 

@@ -2,7 +2,14 @@ import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/
 import { expect, test, type Page } from "@playwright/test";
 import { deleteDoc, doc, setDoc } from "firebase/firestore";
 import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
-import { E2E_FOLDER_ID, E2E_PROJECT_ID, E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./fixtures";
+import {
+  E2E_FOLDER_ID,
+  E2E_NOTEBOOK_ID,
+  E2E_PAGE_IDS,
+  E2E_PROJECT_ID,
+  E2E_USER_EMAIL,
+  E2E_USER_PASSWORD,
+} from "./fixtures";
 
 /**
  * The revision plan, on Home and in the planner, at the three widths students
@@ -14,7 +21,8 @@ import { E2E_FOLDER_ID, E2E_PROJECT_ID, E2E_USER_EMAIL, E2E_USER_PASSWORD } from
  * activities -- so the walkthrough also checks that one reads forward: its
  * usual week shows as sessions, Jami fills them as it always did, and nothing
  * anywhere promises that Jami will decide on the day. The student adds their
- * own task to today and it is there on Home and in the planner alike.
+ * own task to today and it is there on Home and in the planner alike, and adds
+ * notebook work that then waits in the folder's notebook to be started there.
  */
 
 const PLAN_ID = "e2e-plan";
@@ -108,10 +116,16 @@ test("the plan leads Home and the planner at every width", async ({ page }) => {
 
   // The student's own task, added to today in the same editor the planner uses.
   await page.getByRole("button", { name: "Add to today" }).click();
-  await page.getByLabel("What you'll do").fill(TASK);
   await page.getByRole("radio", { name: "Your own task" }).click();
+  await page.getByLabel("What you'll do").fill(TASK);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(TASK).first()).toBeVisible();
+
+  // Notebook work, with nothing said but its kind: named for it, and waiting in the folder's notebooks.
+  await page.getByRole("button", { name: "Add to today" }).click();
+  await page.getByRole("radio", { name: "Notebook work" }).click();
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /^Add to / })).toHaveCount(0);
   await expectNoHorizontalOverflow(page, 1440);
   await page.screenshot({ path: "test-results/plan-home-desktop.png", fullPage: true, animations: "disabled" });
 
@@ -146,6 +160,18 @@ test("the plan leads Home and the planner at every width", async ({ page }) => {
   if (studyWeekday() !== 0) {
     await expect(page.getByLabel("Your week")).toContainText("10:00");
   }
+
+  // The notebook work waits in the notebook: started, timed, and finished into a tick on the plan.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`/dashboard/notebooks/${E2E_NOTEBOOK_ID}?page=${E2E_PAGE_IDS[0]}`);
+  const planned = page.getByRole("button", { name: /^Planned today: Notebook work/ });
+  await expect(planned).toBeVisible({ timeout: 60_000 });
+  await planned.click();
+  await page.getByRole("button", { name: /^Start · \d+ min$/ }).click();
+  await expect(page.getByRole("timer")).toBeVisible();
+  await page.screenshot({ path: "test-results/plan-notebook-session.png", animations: "disabled" });
+  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await expect(page.getByText(/^Done · \d+ min$/)).toBeVisible();
 
   expect(errors, errors.join("\n")).toEqual([]);
 });

@@ -4,7 +4,8 @@ import { useId } from "react";
 import { GoalMeasureBadge } from "@/components/goals/GoalIcons";
 import type { GoalMeasure } from "@/lib/goals/model";
 
-const KINDS: readonly { measure: GoalMeasure; title: string; detail: string }[] = [
+/** The three kinds of goal, as the composer and the goals page's welcome both name them. */
+export const GOAL_KINDS: readonly { measure: GoalMeasure; title: string; detail: string }[] = [
   { measure: "cards", title: "Flashcards", detail: "Review a number of cards" },
   { measure: "questions", title: "Practice questions", detail: "Answer exam questions Jami marks" },
   { measure: "topic", title: "A topic", detail: "Get one topic to strong" },
@@ -25,7 +26,7 @@ export default function GoalKindPicker({
         What do you want to aim at?
       </legend>
       <div role="radiogroup" aria-labelledby={labelId} className="grid gap-2 sm:grid-cols-3">
-        {KINDS.map((kind) => {
+        {GOAL_KINDS.map((kind) => {
           const selected = kind.measure === value;
           return (
             <button

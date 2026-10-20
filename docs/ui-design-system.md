@@ -46,6 +46,7 @@ Do not rewrite:
 - Use rounded corners consistently.
 - Use soft shadows and restrained depth.
 - Use subtle gradients or glass effects only where they clarify hierarchy or reinforce the Jami atmosphere.
+- No unplaced glow. Buttons, icons and panels are lifted with the neutral elevation scale, never a coloured shadow, and a panel never carries a wash or blurred blob of colour across its top or corner. Light belongs to things that give it off -- stars, the sky, a celestial body on Plans -- and a focus ring is a ring, not a halo.
 - Avoid cluttered dashboards.
 - Avoid random colors and one-off palettes.
 - Avoid excessive animation.
@@ -158,11 +159,13 @@ something, not like filling in a form or auditing a counter.
   never a prediction. Topic goals have no pace.
 - Every running goal opens the work that moves it: a session over its cards,
   Practice for its folder, or the engine's current step for its topic.
-- The composer starts filled in, so a goal takes two taps. Suggestions (the
-  next exam in the revision plan, a topic the engine recommends, cards due
-  today, a week-long habit) only fill the composer in; nothing is created until
-  the student presses Create. The live star preview stays beside the composer
-  and grows with the goal.
+- The composer starts filled in, so a goal takes two taps. Its quick starts --
+  suggestions first (the next exam in the revision plan, a topic the engine
+  recommends, cards due today, a week-long habit), then a few plain ready-made
+  goals (a session today, a week of cards, a week of practice, a practice
+  habit) -- only fill the composer in; nothing is created until the student
+  presses Create. The live star preview stays beside the composer and grows
+  with the goal; no other decorative stars sit on the page.
 - Once a goal has started, what it counts and where from are fixed; how much,
   by when and its name can change.
 - Deadlines are study days, not clock times, and a goal set for an exam is due

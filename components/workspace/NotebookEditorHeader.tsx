@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import PracticePaperAttemptBar from "@/components/practice/PracticePaperAttemptBar";
+import NotebookPlanSession from "@/components/workspace/NotebookPlanSession";
 import NotebookSaveIndicator from "@/components/workspace/NotebookSaveIndicator";
 import {
   NotebookSheetsButton,
@@ -40,7 +41,8 @@ type NotebookEditorHeaderProps = {
 
 /**
  * The notebook editor's top bar: back, title and save state, the drawing
- * tools when they are docked here, and the panels it opens.
+ * tools when they are docked here, today's planned work for this notebook
+ * when the revision plan has some, and the panels it opens.
  *
  * The tools sit in the middle of the bar, in the room a short title leaves,
  * so nothing covers the page. On a phone-sized screen, too narrow for all three
@@ -97,6 +99,10 @@ export default function NotebookEditorHeader({
             tools ? "md:col-start-3" : ""
           }`}
         >
+          {/* An exam in progress has its own clock, and nothing else on the bar. */}
+          {!tutorLocked && userId ? (
+            <NotebookPlanSession uid={userId} notebook={{ id: notebook.id, folderId: notebook.folderId }} />
+          ) : null}
           <ToolbarIconButton
             label="Pages"
             icon="pages"

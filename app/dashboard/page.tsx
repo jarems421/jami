@@ -721,7 +721,7 @@ export default function DashboardHome() {
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_17rem] lg:gap-8">
           <div className="min-w-0 space-y-5">
             {planLed ? (
-              <TodayPlanPanel planToday={revisionPlan} folders={studyFolders} topics={topics} goals={activeGoals} />
+              <TodayPlanPanel uid={user.uid} planToday={revisionPlan} folders={studyFolders} topics={topics} goals={activeGoals} />
             ) : null}
 
             <section aria-labelledby="today-suggest-title" className="app-panel rounded-3xl p-4 sm:p-5">

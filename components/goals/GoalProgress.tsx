@@ -74,7 +74,7 @@ export function GoalDayDots({ days }: { days: NonNullable<GoalStanding["days"]> 
         return (
           <li key={index} className="grid h-4 w-4 place-items-center">
             {hit ? (
-              <span className="h-3.5 w-3.5 rounded-full bg-gradient-to-br from-warm-accent to-success shadow-warm" />
+              <span className="h-3.5 w-3.5 rounded-full bg-gradient-to-br from-warm-accent to-success" />
             ) : isToday ? (
               <span className="text-warm-accent">
                 <TodayRing percent={days.todayPercent} />

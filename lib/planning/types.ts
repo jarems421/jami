@@ -258,21 +258,33 @@ export type PlanActivity = {
   writtenOnStart?: boolean;
   /** The usual-week sitting it came from, if any. */
   routineId?: string;
+  /**
+   * The notebook it is done in, when the student chose one. That notebook then
+   * offers the session to start, time and finish (`lib/planning/plan-notebook.ts`).
+   * Only on notebook work.
+   */
+  notebookId?: string;
 };
 
 /**
  * That an activity was done, and how Jami knows.
  *
  * `manual`: the student ticked it. `activity`: Jami saw the work -- the session
- * opened from it was finished, or enough of its own cards were reviewed -- and
- * wrote that down the day it saw it, so the record does not fade when the same
- * cards are reviewed again tomorrow.
+ * opened from it was finished, enough of its own cards were reviewed, or it was
+ * started and finished in its notebook -- and wrote that down the day it saw
+ * it, so the record does not fade when the same cards are reviewed again
+ * tomorrow.
  *
  * Kept beside the day's activities rather than inside them, one key per
  * activity, so a tick merges into the day without rewriting it: two devices
  * ticking different things never lose either, and a tick made offline is kept.
  */
-export type PlanActivityDone = { by: "manual" | "activity"; at: number };
+export type PlanActivityDone = {
+  by: "manual" | "activity";
+  at: number;
+  /** How long it took, where it was timed: a session run in its notebook. */
+  minutes?: number;
+};
 
 /**
  * A task pinned to a day by a version 2 plan, read so it is not lost.

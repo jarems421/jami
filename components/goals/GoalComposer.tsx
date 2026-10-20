@@ -5,6 +5,7 @@ import GoalAmountField from "@/components/goals/GoalAmountField";
 import GoalDeadlineField from "@/components/goals/GoalDeadlineField";
 import { GoalMeasureBadge } from "@/components/goals/GoalIcons";
 import GoalKindPicker from "@/components/goals/GoalKindPicker";
+import GoalQuickStarts from "@/components/goals/GoalQuickStarts";
 import GoalScopeField, { type GoalScopeOption } from "@/components/goals/GoalScopeField";
 import GoalStarPreview from "@/components/goals/GoalStarPreview";
 import GoalTopicPicker from "@/components/goals/GoalTopicPicker";
@@ -68,7 +69,7 @@ export default function GoalComposer({
   editing,
   initialDraft,
   options,
-  suggestions = [],
+  ideas = [],
   saving,
   onCancel,
   onCreate,
@@ -77,7 +78,8 @@ export default function GoalComposer({
   editing?: Goal;
   initialDraft: GoalDraft;
   options: GoalComposerOptions;
-  suggestions?: readonly GoalSuggestion[];
+  /** Suggestions and ready-made goals, offered across the top of a new goal. */
+  ideas?: readonly GoalSuggestion[];
   saving: boolean;
   onCancel: () => void;
   onCreate: (draft: GoalDraft) => void;
@@ -135,22 +137,9 @@ export default function GoalComposer({
         </Button>
       </div>
 
-      {!editing && suggestions.length > 0 ? (
-        <div className="mt-4">
-          <p className="mb-2 text-xs font-semibold text-text-muted">Start from an idea</p>
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((suggestion) => (
-              <button
-                key={suggestion.id}
-                type="button"
-                onClick={() => setDraft(suggestion.draft)}
-                className="inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] py-1.5 pl-1.5 pr-3.5 text-left text-sm transition duration-fast hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-              >
-                <GoalMeasureBadge measure={suggestion.draft.measure} size="sm" />
-                <span className="min-w-0 truncate font-semibold text-text-primary">{suggestion.title}</span>
-              </button>
-            ))}
-          </div>
+      {!editing && ideas.length > 0 ? (
+        <div className="mt-5 border-b border-[var(--color-border)] pb-5">
+          <GoalQuickStarts ideas={ideas} draft={draft} now={now} onPick={setDraft} />
         </div>
       ) : null}
 

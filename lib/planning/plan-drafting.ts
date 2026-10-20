@@ -2,6 +2,7 @@ import {
   getCustomStudyHref,
   getDeckHref,
   getFolderHref,
+  getNotebookHref,
   getQuestionPracticeSetupHref,
   getRevisionStartHref,
   getTopicHref,
@@ -148,15 +149,16 @@ export function fallbackPlanTask(support: PlanSubjectSupport | undefined, turn: 
 /**
  * Where a task the student set up goes when they start it.
  *
- * Built from what they chose -- the method, the subject, a topic -- onto pages
- * that exist: a session over their own cards, the question bank, a Revision
- * Session, the folder. A task like "finish my homework" has nowhere to go and
- * says so by having no link.
+ * Built from what they chose -- the method, the subject, a topic, a notebook --
+ * onto pages that exist: a session over their own cards, the question bank, a
+ * Revision Session, the notebook, the folder. A task like "finish my homework"
+ * has nowhere to go and says so by having no link.
  */
 export function studentTaskHref(input: {
   method: PlanActivityMethod;
   scopeKey?: string;
   topic?: PlanActivityTopic;
+  notebookId?: string;
   support: ReadonlyMap<string, PlanSubjectSupport>;
 }): string | undefined {
   const scope = input.scopeKey ? planScopeFromKey(input.scopeKey) : null;
@@ -175,6 +177,7 @@ export function studentTaskHref(input: {
     case "revision":
       return getRevisionStartHref(scope?.folderId ? { folderId: scope.folderId } : {});
     case "notebook":
+      if (input.notebookId) return getNotebookHref(input.notebookId);
       return scope?.folderId ? getFolderHref(scope.folderId) : undefined;
     case "notes":
       if (topic?.kind === "topic") return getTopicHref(topic.id);
@@ -224,12 +227,15 @@ export function plannedActionIds(days: readonly { activities: readonly Pick<Plan
  * sessions -- and returns the new list for every day that changed. Activities
  * that already have a task are left exactly where they are; only open time is
  * filled, and only open time with a subject, because choosing the subject is
- * the student's (or their plan's weighting), not this function's.
+ * the student's (or their plan's weighting), not this function's. `only`
+ * narrows it to particular free sessions: "Let Jami pick" on one of them fills
+ * that one, not the rest of its day.
  */
 export function fillFreeSessions(input: {
   days: readonly { dayKey: string; activities: readonly PlanActivity[] }[];
   context: PlanDraftingContext;
   alreadyPlanned?: ReadonlySet<string>;
+  only?: ReadonlySet<string>;
 }): Map<string, PlanActivity[]> {
   const deal = taskDealer(input.context, input.alreadyPlanned ?? new Set());
   const random = input.context.random ?? Math.random;
@@ -240,7 +246,7 @@ export function fillFreeSessions(input: {
     let touched = false;
     const next: PlanActivity[] = [];
     for (const activity of sortPlanActivities(day.activities)) {
-      if (!activity.open || !activity.scopeKey) {
+      if (!activity.open || !activity.scopeKey || (input.only && !input.only.has(activity.id))) {
         next.push(activity);
         continue;
       }
@@ -296,23 +302,82 @@ export function planAutoFillWindow(todayDayKey: string) {
   return { fromDayKey: todayDayKey, toDayKey: shiftStudyDayKey(planWeekStartDayKey(todayDayKey), 13) };
 }
 
+export type PlanFillOutcome = {
+  ops: TimetableOp[];
+  /** How many tasks Jami put in. */
+  added: number;
+  /**
+   * Subjects with free time Jami could find nothing for: no recommendation
+   * left, no cards, no exam questions. Said to the student, so a fill that
+   * leaves time free never looks like a button that did nothing.
+   */
+  unfilledScopeKeys: string[];
+};
+
 /**
  * A fill, as ops: each changed day set whole, but only if it still holds what
- * the fill was worked out from. Shared by the Fill button, by Jami keeping the
+ * the fill was worked out from. Shared by the Fill buttons, by Jami keeping the
  * coming days filled, and by a fill Jami proposed in conversation.
  */
+export function planFill(
+  days: readonly { dayKey: string; activities: readonly PlanActivity[] }[],
+  context: PlanDraftingContext,
+  options: { alreadyPlanned?: ReadonlySet<string>; only?: ReadonlySet<string> } = {}
+): PlanFillOutcome {
+  const filled = fillFreeSessions({
+    days,
+    context,
+    alreadyPlanned: options.alreadyPlanned ?? plannedActionIds(days),
+    ...(options.only ? { only: options.only } : {}),
+  });
+  let added = 0;
+  const unfilled = new Set<string>();
+  for (const day of days) {
+    const before = new Set(day.activities.map((activity) => activity.id));
+    const after = filled.get(day.dayKey) ?? day.activities;
+    added += after.filter((activity) => !activity.open && !before.has(activity.id)).length;
+    for (const activity of day.activities) {
+      if (!activity.open || !activity.scopeKey || (options.only && !options.only.has(activity.id))) continue;
+      // A free session left whole keeps its id; one Jami filled even partly does not.
+      if (after.some((item) => item.id === activity.id)) unfilled.add(activity.scopeKey);
+    }
+  }
+  return {
+    ops: [...filled].map(([dayKey, activities]) => ({
+      type: "setDay" as const,
+      dayKey,
+      activities,
+      ifIds: (days.find((day) => day.dayKey === dayKey)?.activities ?? []).map((activity) => activity.id),
+    })),
+    added,
+    unfilledScopeKeys: [...unfilled],
+  };
+}
+
+/**
+ * What the student is told when Jami was asked to pick and some of that time
+ * is still free: which subjects it had nothing for. Null when it filled
+ * everything it was asked to.
+ */
+export function planFillNotice(
+  outcome: { picked: number; unfilledScopeKeys: readonly string[] },
+  scopeName: (scopeKey: string) => string
+) {
+  if (outcome.unfilledScopeKeys.length === 0) return null;
+  const names = outcome.unfilledScopeKeys.map(scopeName);
+  const list = names.length === 1 ? (names[0] as string) : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return outcome.picked > 0
+    ? `Jami filled what it could. There's nothing more to pick from in ${list} yet, so the rest stays free time.`
+    : `Jami has nothing to pick from in ${list} yet: no cards, exam questions or marked work there. Choose the task yourself instead.`;
+}
+
+/** The ops of a fill, for the callers that need nothing else from it. */
 export function planFillOps(
   days: readonly { dayKey: string; activities: readonly PlanActivity[] }[],
   context: PlanDraftingContext,
   alreadyPlanned: ReadonlySet<string> = plannedActionIds(days)
 ): TimetableOp[] {
-  const filled = fillFreeSessions({ days, context, alreadyPlanned });
-  return [...filled].map(([dayKey, activities]) => ({
-    type: "setDay" as const,
-    dayKey,
-    activities,
-    ifIds: (days.find((day) => day.dayKey === dayKey)?.activities ?? []).map((activity) => activity.id),
-  }));
+  return planFill(days, context, { alreadyPlanned }).ops;
 }
 
 /**

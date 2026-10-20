@@ -57,14 +57,14 @@ function StepProgress({ step, onJumpTo }: { step: PlanInterviewStep; onJumpTo: (
   const reviewing = step === "review";
   const position = PLAN_QUESTION_STEPS.indexOf(step as (typeof PLAN_QUESTION_STEPS)[number]);
   return (
-    <div className="space-y-2.5">
-      <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+    <div className="space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
         {reviewing ? "Last check" : `Step ${position + 1} of ${PLAN_QUESTION_STEPS.length} · ${PLAN_STEP_TITLES[step]}`}
       </p>
       <ol className="grid grid-cols-4 gap-1.5">
         {PLAN_QUESTION_STEPS.map((entry) => {
           const status = planStepStatus(entry, step);
-          const bar = `block h-1 w-full rounded-full transition-colors duration-slow ${
+          const bar = `block h-1.5 w-full rounded-full transition-colors duration-slow ${
             status === "done"
               ? "bg-[var(--color-accent)]"
               : status === "current"
@@ -120,13 +120,19 @@ function Turn({
     <li className="flex animate-slide-up items-start gap-3">
       <span
         aria-hidden="true"
-        className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-warm-border bg-warm-glow text-warm-accent"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-warm-border bg-warm-glow text-warm-accent"
       >
-        <JamiTutorIcon className="h-3.5 w-3.5" />
+        <JamiTutorIcon className="h-4 w-4" />
       </span>
-      <div className="min-w-0 flex-1 space-y-2.5">
+      <div className="min-w-0 flex-1 space-y-3">
         {turn.text ? (
-          <p className={`pt-0.5 text-sm leading-6 ${turn.question ? "font-medium text-text-primary" : "text-text-secondary"}`}>
+          <p
+            className={
+              turn.question
+                ? "pt-0.5 text-base font-medium leading-7 text-text-primary"
+                : "pt-1 text-sm leading-6 text-text-secondary"
+            }
+          >
             {turn.text}
           </p>
         ) : null}
@@ -198,10 +204,10 @@ export default function PlanWithJami({
   const studentHasSpoken = turns.some((turn) => turn.role === "student");
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {building ? <StepProgress step={step} onJumpTo={interview.jumpTo} /> : null}
 
-      <ol aria-label="Planning with Jami" aria-live="polite" className="space-y-4">
+      <ol aria-label="Planning with Jami" aria-live="polite" className="space-y-5">
         {turns.map((turn, index) => (
           <Turn
             key={`${turn.role}-${index}`}
@@ -222,12 +228,13 @@ export default function PlanWithJami({
       </ol>
 
       {thinking ? (
-        <p className="flex items-center gap-2 pl-10 text-xs text-text-muted" role="status">
+        <p className="flex items-center gap-2 pl-11 text-xs text-text-muted" role="status">
           <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--color-accent)]" />
           <span>Jami is reading that…</span>
         </p>
       ) : building ? (
-        <div className="pl-0 sm:pl-10">
+        // The panel's whole width: indented under Jami's mark, an exam's date and subject got about eight rem each.
+        <div data-plan-answers className="plan-answers">
           <PlanStepAnswers
             key={questionIndex}
             step={step}
@@ -245,13 +252,13 @@ export default function PlanWithJami({
           />
         </div>
       ) : !studentHasSpoken ? (
-        <div className="flex flex-wrap gap-1.5 pl-0 sm:pl-10">
+        <div className="flex flex-wrap gap-2">
           {CHANGE_STARTERS.map((starter) => (
             <button
               key={starter}
               type="button"
               onClick={() => submit(starter)}
-              className="app-chip rounded-full px-3 py-1.5 text-xs font-medium transition hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+              className="app-chip rounded-full px-3.5 py-2 text-sm font-medium transition hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
             >
               {starter}
             </button>
@@ -261,7 +268,7 @@ export default function PlanWithJami({
 
       {/* The Tutor drawer's composer, so a conversation with Jami looks the
           same wherever it happens. */}
-      <div className="app-field rounded-2xl transition duration-normal focus-within:shadow-accent">
+      <div className="app-field rounded-2xl transition duration-normal">
         <textarea
           ref={boxRef}
           rows={2}

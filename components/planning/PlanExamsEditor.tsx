@@ -24,8 +24,9 @@ export default function PlanExamsEditor({
   onChange: (exams: RevisionPlanExam[]) => void;
   /**
    * `row` puts an exam's four controls side by side, for the full builder.
-   * `stacked` gives the name its own line, for the narrower column of Jami's
-   * questions, where four across cut every field off after a few letters.
+   * `stacked` gives each field the card's width, for the column of Jami's
+   * questions: date and subject share a line only where the card has room
+   * for both (`.plan-dates-grid`), which beside the timetable it does not.
    */
   layout?: "row" | "stacked";
 }) {
@@ -34,15 +35,14 @@ export default function PlanExamsEditor({
   const stacked = layout === "stacked";
 
   return (
-    <div className="space-y-3">
+    <div className={stacked ? "space-y-4" : "space-y-3"}>
       {exams.map((exam, index) => {
         const name = (
           <Input
-            label="Exam"
+            label={stacked ? "Name" : "Exam"}
             value={exam.label}
             maxLength={MAX_PLAN_EXAM_LABEL_LENGTH}
             placeholder="Chemistry Paper 1"
-            containerClassName={stacked ? "min-w-0 flex-1" : ""}
             onChange={(event) => update(index, { label: event.target.value })}
           />
         );
@@ -86,15 +86,29 @@ export default function PlanExamsEditor({
         return stacked ? (
           <div
             key={exam.id}
-            className="space-y-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3"
+            className="space-y-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4"
           >
-            <div className="flex items-end gap-2">
-              {name}
-              {remove}
+            <div className="-my-1 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                {exams.length > 1 ? `Exam ${index + 1}` : "Your exam"}
+              </p>
+              <button
+                type="button"
+                aria-label={`Remove ${exam.label || "this exam"}`}
+                onClick={() => onChange(exams.filter((_, position) => position !== index))}
+                className="-mr-1.5 grid h-8 w-8 place-items-center rounded-full text-text-muted transition hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+              >
+                <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+                  <path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {date}
-              {subject}
+            {name}
+            <div className="plan-dates-layout">
+              <div className="plan-dates-grid grid gap-4">
+                {date}
+                {subject}
+              </div>
             </div>
           </div>
         ) : (
@@ -110,15 +124,28 @@ export default function PlanExamsEditor({
         );
       })}
       {exams.length < MAX_PLAN_EXAMS ? (
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() =>
-            onChange([...exams, { id: unusedPlanExamId(exams), label: "", dayKey: defaultDayKey }])
-          }
-        >
-          Add an exam
-        </Button>
+        stacked ? (
+          <button
+            type="button"
+            onClick={() => onChange([...exams, { id: unusedPlanExamId(exams), label: "", dayKey: defaultDayKey }])}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--color-border-strong)] text-sm font-semibold text-text-secondary transition hover:border-solid hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+          >
+            <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+              <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            {exams.length > 0 ? "Add another exam" : "Add an exam"}
+          </button>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              onChange([...exams, { id: unusedPlanExamId(exams), label: "", dayKey: defaultDayKey }])
+            }
+          >
+            Add an exam
+          </Button>
+        )
       ) : null}
     </div>
   );

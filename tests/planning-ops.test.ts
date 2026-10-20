@@ -80,6 +80,19 @@ describe("editing", () => {
     expect(touched.get(MONDAY)?.[0]?.targetItems).toBeUndefined();
   });
 
+  it("counts a new notebook as a change to what the work is, and a suggestion as leaving it", () => {
+    const notebookWork = planActivity({ id: "nb", title: "Cell biology", method: "notebook", notebookId: "nb-1", href: "/dashboard/notebooks/nb-1" });
+    const moved = apply({ [MONDAY]: [notebookWork] }, [
+      { type: "update", dayKey: MONDAY, activityId: "nb", patch: { notebookId: "nb-2", href: "/dashboard/notebooks/nb-2" } },
+    ]).touched.get(MONDAY)?.[0];
+    expect(moved).toMatchObject({ notebookId: "nb-2", href: "/dashboard/notebooks/nb-2", mode: "fixed", origin: "student" });
+
+    const swapped = apply({ [MONDAY]: [{ ...notebookWork, mode: "adaptive", origin: "jami" }] }, [
+      { type: "update", dayKey: MONDAY, activityId: "nb", patch: { task: { title: "Enzymes", method: "flashcards", origin: "jami" } } },
+    ]).touched.get(MONDAY)?.[0];
+    expect(swapped?.notebookId).toBeUndefined();
+  });
+
   it("fixes and frees a task", () => {
     const { touched } = apply({ [MONDAY]: [jamiPick] }, [
       { type: "update", dayKey: MONDAY, activityId: "pick", patch: { mode: "fixed" } },

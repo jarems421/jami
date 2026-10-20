@@ -4,6 +4,8 @@ import {
   fallbackPlanTask,
   fillFreeSessions,
   isUntouchedDraftDay,
+  planFill,
+  planFillNotice,
   planRefreshSuggestions,
   splitSessionMinutes,
   studentTaskHref,
@@ -151,6 +153,46 @@ describe("what a subject falls back on", () => {
       studentTaskHref({ method: "flashcards", scopeKey: "folder:biology", topic: { kind: "topic", id: "t1", label: "Osmosis" }, support })
     ).toContain("topics=t1");
     expect(studentTaskHref({ method: "other", scopeKey: "folder:biology", support })).toBeUndefined();
+    // Notebook work opens its notebook when it has one, the subject's folder when it does not.
+    expect(studentTaskHref({ method: "notebook", scopeKey: "folder:biology", notebookId: "nb-1", support })).toBe("/dashboard/notebooks/nb-1");
+    expect(studentTaskHref({ method: "notebook", scopeKey: "folder:biology", support })).toBe("/dashboard/folders/biology");
+  });
+});
+
+describe("what a fill did, said", () => {
+  it("fills only the free sessions it was asked to, and counts what it put in", () => {
+    const monday = {
+      dayKey: MONDAY,
+      activities: [
+        planActivity({ id: "early", title: "", open: true, minutes: 30, startTime: "16:00", mode: "adaptive" }),
+        planActivity({ id: "late", title: "", open: true, minutes: 30, startTime: "19:00", mode: "adaptive" }),
+      ],
+    };
+    const outcome = planFill([monday], context(), { only: new Set(["late"]) });
+    expect(outcome.added).toBe(1);
+    expect(outcome.unfilledScopeKeys).toEqual([]);
+    const [op] = outcome.ops;
+    expect(op).toMatchObject({ type: "setDay", dayKey: MONDAY, ifIds: ["early", "late"] });
+    // The session it was not asked about is still free, where it was.
+    expect(op?.type === "setDay" ? op.activities?.map((activity) => [activity.id === "early", activity.open ?? false]) : []).toEqual([
+      [true, true],
+      [false, false],
+    ]);
+  });
+
+  it("names the subjects it had nothing for, so a fill is never a button that did nothing", () => {
+    const chemistryOnly = revisionPlan({ sessions: [{ id: "wed", weekday: 3, minutes: 30, scopeKey: "folder:chemistry" }] });
+    const outcome = planFill([freeDays(chemistryOnly)[2]!], context({ actionsByScope: new Map() }));
+    expect(outcome).toEqual({ ops: [], added: 0, unfilledScopeKeys: ["folder:chemistry"] });
+
+    const names = (scopeKey: string) => (scopeKey === "folder:chemistry" ? "Chemistry" : "Physics");
+    expect(planFillNotice({ picked: 0, unfilledScopeKeys: ["folder:chemistry"] }, names)).toBe(
+      "Jami has nothing to pick from in Chemistry yet: no cards, exam questions or marked work there. Choose the task yourself instead."
+    );
+    expect(planFillNotice({ picked: 3, unfilledScopeKeys: ["folder:chemistry", "folder:physics"] }, names)).toContain(
+      "nothing more to pick from in Chemistry and Physics yet"
+    );
+    expect(planFillNotice({ picked: 3, unfilledScopeKeys: [] }, names)).toBeNull();
   });
 });
 

@@ -220,7 +220,11 @@ export function PlanActivityRow({
             </p>
           ) : null}
           {activity.completion?.by === "activity" ? (
-            <p className="mt-1 text-xs font-semibold text-[var(--color-success)]">Done · Jami saw this</p>
+            <p className="mt-1 text-xs font-semibold text-[var(--color-success)]">
+              {activity.completion.minutes ? `Done · ${activity.completion.minutes} min in your notebook` : "Done · Jami saw this"}
+            </p>
+          ) : activity.method === "notebook" && (activity.notebookId || activity.scopeKey?.startsWith("folder:")) && upNext && !done ? (
+            <p className="mt-1 text-xs text-text-muted">Open the notebook to start it there: it times the session and ticks it off.</p>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">

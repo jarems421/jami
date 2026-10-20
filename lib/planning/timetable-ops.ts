@@ -36,6 +36,7 @@ export type PlanActivityPatch = {
   method?: PlanActivityMethod;
   topic?: PlanActivityTopic | null;
   href?: string | null;
+  notebookId?: string | null;
   minutes?: number;
   startTime?: string | null;
   scopeKey?: string | null;
@@ -102,14 +103,21 @@ function applyPatch(activity: PlanActivity, patch: PlanActivityPatch): PlanActiv
       mode: origin === "jami" ? "adaptive" : "fixed",
       open: undefined,
     };
-  } else if (patch.title !== undefined || patch.method !== undefined || patch.topic !== undefined) {
+  } else if (
+    patch.title !== undefined ||
+    patch.method !== undefined ||
+    patch.topic !== undefined ||
+    patch.notebookId !== undefined
+  ) {
     const topic = patch.topic === undefined ? activity.topic : (patch.topic ?? undefined);
+    const notebookId = patch.notebookId === undefined ? activity.notebookId : (patch.notebookId ?? undefined);
     next = {
       ...next,
       ...CLEARED_PLAN_ACTIVITY_TASK,
       title: patch.title ?? next.title,
       method: patch.method ?? next.method,
       ...(topic ? { topic } : {}),
+      ...(notebookId ? { notebookId } : {}),
       ...(patch.href ? { href: patch.href } : {}),
       origin: "student",
       mode: "fixed",

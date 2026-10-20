@@ -78,7 +78,7 @@ export default function PlanDayView({ day, handlers }: { day: TimetableDay; hand
                 {...(goal ? { goal } : {})}
                 onOpen={() => handlers.onOpenActivity(day.dayKey, activity)}
                 onToggle={(done) => handlers.onToggle(day, activity, done)}
-                onFill={() => handlers.onFillDay(day.dayKey)}
+                onFill={() => handlers.onPick(day.dayKey, activity)}
                 {...(suggestion ? { onAcceptSuggestion: () => handlers.onAcceptSuggestion(suggestion) } : {})}
                 onKeep={() => handlers.onKeep(day.dayKey, activity.id)}
               />

@@ -181,11 +181,14 @@ module.exports = {
         e1: "var(--elevation-1)",
         e2: "var(--elevation-2)",
         e3: "var(--elevation-3)",
-        /* Not heights: a glow says what something is, a ring says it is chosen. */
+        /* Not a height: a ring says it is chosen. */
+        ring: "var(--ring-selected)",
+        /*
+         * Names kept for what they describe; each resolves to a level above.
+         * `accent` and `warm` were coloured glows and are a lift now too.
+         */
         accent: "var(--shadow-accent)",
         warm: "var(--shadow-warm)",
-        ring: "var(--ring-selected)",
-        /* Names kept for what they describe; each resolves to a level above. */
         glass: "var(--shadow-glass)",
         card: "var(--shadow-card)",
         shell: "var(--shadow-shell)",
@@ -218,16 +221,6 @@ module.exports = {
           from: { opacity: "0", transform: "translateY(12px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
-        "reward-pulse": {
-          "0%": { boxShadow: "0 0 0 0 rgba(183, 124, 255, 0.52)" },
-          "70%": { boxShadow: "0 0 0 12px rgba(183, 124, 255, 0)" },
-          "100%": { boxShadow: "0 0 0 0 rgba(183, 124, 255, 0)" },
-        },
-        "warm-glow-pulse": {
-          "0%": { boxShadow: "0 0 0 0 rgba(255, 214, 246, 0.38)" },
-          "70%": { boxShadow: "0 0 22px 8px rgba(255, 214, 246, 0)" },
-          "100%": { boxShadow: "0 0 0 0 rgba(255, 214, 246, 0)" },
-        },
       },
       animation: {
         "fade-in": "fade-in var(--duration-normal) var(--ease-standard) both",
@@ -236,8 +229,6 @@ module.exports = {
         // inside it (a card's actions, opened upward) went behind the sticky
         // search bar above it. The last frame is the element's own style anyway.
         "slide-up": "slide-up var(--duration-slow) var(--ease-standard) backwards",
-        "reward-pulse": "reward-pulse 1.5s ease infinite",
-        "warm-glow-pulse": "warm-glow-pulse 2s ease infinite",
       },
 
     },

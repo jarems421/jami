@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_PLAN_SESSION_MINUTES,
+  defaultPlanActivityTitle,
   methodForDestination,
   normalizePlanActivities,
   normalizePlanActivity,
@@ -53,6 +55,39 @@ describe("an activity, as stored", () => {
       a: { by: "activity", at: 5 },
       b: { by: "manual", at: 0 },
     });
+  });
+
+  it("keeps how long a timed session ran, within what a sitting could be", () => {
+    expect(
+      normalizePlanActivityDone({
+        timed: { by: "activity", at: 5, minutes: 28.4 },
+        overnight: { by: "activity", at: 5, minutes: 900 },
+        nonsense: { by: "manual", at: 5, minutes: -3 },
+      })
+    ).toEqual({
+      timed: { by: "activity", at: 5, minutes: 28 },
+      overnight: { by: "activity", at: 5, minutes: MAX_PLAN_SESSION_MINUTES },
+      nonsense: { by: "manual", at: 5 },
+    });
+  });
+
+  it("keeps the notebook notebook work is done in, and only there", () => {
+    expect(normalizePlanActivity({ id: "n", title: "Enzymes", method: "notebook", notebookId: " nb-1 " })?.notebookId).toBe("nb-1");
+    // Nothing else names a notebook, and nothing that is not an id gets through as one.
+    expect(normalizePlanActivity({ id: "p", title: "Enzymes", method: "practice", notebookId: "nb-1" })?.notebookId).toBeUndefined();
+    expect(normalizePlanActivity({ id: "x", title: "Enzymes", method: "notebook", notebookId: "../../users" })?.notebookId).toBeUndefined();
+    expect(normalizePlanActivity({ id: "f", open: true, method: "notebook", notebookId: "nb-1" })?.notebookId).toBeUndefined();
+  });
+});
+
+describe("an activity the student did not name", () => {
+  it("is called after its notebook, its topic, or how it is done", () => {
+    expect(defaultPlanActivityTitle({ method: "notebook", notebookTitle: "  Cell biology  " })).toBe("Cell biology");
+    expect(defaultPlanActivityTitle({ method: "practice", topic: { label: "Homeostasis" } })).toBe("Homeostasis");
+    expect(defaultPlanActivityTitle({ method: "notebook" })).toBe("Notebook work");
+    expect(defaultPlanActivityTitle({ method: "other" })).toBe("Study session");
+    // A name it is given is still a valid title: it passes the same gate as a typed one.
+    expect(normalizePlanActivity({ id: "a", title: defaultPlanActivityTitle({ method: "flashcards" }), method: "flashcards" })?.title).toBe("Flashcards");
   });
 });
 

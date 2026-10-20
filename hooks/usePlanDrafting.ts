@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { featureFlags } from "@/lib/app/feature-flags";
 import type { StudyAction } from "@/lib/learning/actions/study-actions";
 import { buildPlanSubjectSupport, type PlanDraftingContext } from "@/lib/planning/plan-drafting";
-import { planScopeKey, type RevisionPlanScope } from "@/lib/planning/types";
+import { planScopeFromKey, planScopeKey, type RevisionPlanScope } from "@/lib/planning/types";
 import { loadPlanStudyActions } from "@/services/learning/study-actions";
 
 /**
@@ -14,7 +14,10 @@ import { loadPlanStudyActions } from "@/services/learning/study-actions";
  *
  * Asked for only while something needs it -- a free session to fill, a task to
  * check is still current -- and kept per subject for the session, so moving
- * between weeks costs nothing.
+ * between weeks costs nothing. A subject the plan does not cover yet, or one
+ * still being read, is asked about when Jami is asked to pick for it
+ * (`forScopes`), so "Let Jami pick" waits for an answer rather than finding
+ * nothing because the answer had not come.
  */
 
 const NO_ACTIONS: ReadonlyMap<string, readonly StudyAction[]> = new Map();
@@ -29,6 +32,10 @@ export type PlanDrafting = {
   answered: ReadonlySet<string>;
   loading: boolean;
   refresh: () => Promise<void>;
+  /** The context as it stands, when it already covers these subjects; null when they must be asked about. */
+  readyFor: (scopeKeys: readonly string[]) => PlanDraftingContext | null;
+  /** A context covering these subjects, asking the engine about any it has not answered for. */
+  forScopes: (scopeKeys: readonly string[]) => Promise<PlanDraftingContext>;
 };
 
 export function usePlanDrafting(input: {
@@ -75,10 +82,10 @@ export function usePlanDrafting(input: {
     }
   }, [engineOn, key]);
 
-  const support = useMemo(
-    () =>
+  const supportFor = useCallback(
+    (scopes: readonly Pick<RevisionPlanScope, "folderId" | "deckId">[]) =>
       buildPlanSubjectSupport({
-        scopes: input.scopes,
+        scopes,
         decks: input.decks,
         cards: input.cards,
         questionPracticeFolderIds: new Set(
@@ -87,8 +94,9 @@ export function usePlanDrafting(input: {
             : []
         ),
       }),
-    [input.cards, input.decks, input.folders, input.scopes]
+    [input.cards, input.decks, input.folders]
   );
+  const support = useMemo(() => supportFor(input.scopes), [input.scopes, supportFor]);
 
   const current = answer?.key === key ? answer : null;
   // With the engine switched off there is nothing to wait for: the fallbacks are all there is.
@@ -98,11 +106,41 @@ export function usePlanDrafting(input: {
     [current?.actionsByScope, settled, support]
   );
 
+  const covered = useMemo(() => new Set(scopeKeys), [scopeKeys]);
+  const readyFor = useCallback(
+    (wanted: readonly string[]) =>
+      input.enabled && context && wanted.every((scopeKey) => covered.has(scopeKey)) ? context : null,
+    [context, covered, input.enabled]
+  );
+
+  const forScopes = useCallback(
+    async (wanted: readonly string[]): Promise<PlanDraftingContext> => {
+      const keys = [...new Set(wanted)].filter((scopeKey) => planScopeFromKey(scopeKey));
+      const extra = keys.flatMap((scopeKey) => {
+        const scope = covered.has(scopeKey) ? null : planScopeFromKey(scopeKey);
+        return scope ? [scope] : [];
+      });
+      const known = current?.actionsByScope ?? NO_ACTIONS;
+      const widened = extra.length > 0 ? supportFor([...input.scopes, ...extra]) : support;
+      if (!engineOn || keys.length === 0) return { actionsByScope: known, support: widened };
+      try {
+        // Cached per subject: the plan's own subjects cost nothing to ask about again.
+        const result = await loadPlanStudyActions(keys);
+        return { actionsByScope: new Map([...known, ...result.actionsByScope]), support: widened };
+      } catch {
+        return { actionsByScope: known, support: widened };
+      }
+    },
+    [covered, current?.actionsByScope, engineOn, input.scopes, support, supportFor]
+  );
+
   return {
     context: input.enabled ? context : null,
     support,
     answered: current?.answered ?? NO_SCOPES,
     loading: input.enabled && !settled,
     refresh,
+    readyFor,
+    forScopes,
   };
 }

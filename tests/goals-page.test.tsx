@@ -147,6 +147,25 @@ describe("the goals page", () => {
     expect(document.body.textContent).toContain("cards a day");
   });
 
+  it("opens the composer on the kind picked from the welcome, with quick starts that fill it in", async () => {
+    mocks.createGoal.mockImplementation(async (_uid: string, draft: GoalDraft) => goalFromDraft("made", draft, NOW));
+    await render();
+    await click([...document.querySelectorAll("button")].find((candidate) => candidate.textContent?.startsWith("Practice questions")));
+    expect(radio("Practice questions")?.getAttribute("aria-checked")).toBe("true");
+
+    const quick = (title: string) =>
+      [...document.querySelectorAll("button[aria-pressed]")].find((candidate) => candidate.textContent?.startsWith(title));
+    expect(quick("Review 100 cards")?.getAttribute("aria-pressed")).toBe("false");
+    await click(quick("Review 100 cards"));
+    expect(quick("Review 100 cards")?.getAttribute("aria-pressed")).toBe("true");
+    expect(radio("Flashcards")?.getAttribute("aria-checked")).toBe("true");
+    await click(button("Create goal"));
+    expect(mocks.createGoal).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ measure: "cards", cadence: "total", target: 100, scope: { type: "all" } })
+    );
+  });
+
   it("makes a goal from the composer, with the star it will earn beside it", async () => {
     mocks.createGoal.mockImplementation(async (_uid: string, draft: GoalDraft) => goalFromDraft("made", draft, NOW));
     await render();

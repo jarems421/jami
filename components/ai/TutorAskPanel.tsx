@@ -50,9 +50,8 @@ export default function TutorAskPanel({
       aria-labelledby="tutor-ask-title"
       className="app-panel relative overflow-hidden rounded-3xl px-5 py-8 sm:px-10 sm:py-10"
     >
-      <div aria-hidden="true" className="plan-aurora" />
       <div className="relative flex flex-col items-center gap-3 text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl border border-warm-border bg-warm-glow text-warm-accent shadow-warm">
+        <span className="grid h-14 w-14 place-items-center rounded-2xl border border-warm-border bg-warm-glow text-warm-accent">
           <JamiTutorIcon className="h-7 w-7" />
         </span>
         <h2 id="tutor-ask-title" className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
@@ -74,7 +73,7 @@ export default function TutorAskPanel({
         <>
           <form
             onSubmit={submit}
-            className="app-field relative mx-auto mt-6 max-w-3xl rounded-3xl transition duration-normal focus-within:shadow-accent"
+            className="app-field relative mx-auto mt-6 max-w-3xl rounded-3xl transition duration-normal"
           >
             <label htmlFor="tutor-ask-box" className="sr-only">
               Ask Jami

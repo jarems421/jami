@@ -81,7 +81,7 @@ export default function StudySessionComplete({
   const copy = NEXT_STEP_COPY[nextStep.message];
 
   return (
-    <SurfaceCard tone="warm" padding="lg" className="animate-warm-glow-pulse">
+    <SurfaceCard tone="warm" padding="lg">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>

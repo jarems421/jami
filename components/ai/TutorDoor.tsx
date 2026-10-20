@@ -26,7 +26,10 @@ export default function TutorDoor({
   | { href?: never; onOpen: () => void }
 ) & {
   icon: ReactNode;
-  /** Which of Jami's colours the door is washed in, so the three tell apart. */
+  /**
+   * Which of Jami's colours the door's mark is in, so the three tell apart. The
+   * mark only: a wash of the colour across the card's corner read as a glow.
+   */
   tone?: "accent" | "warm" | "success";
   title: string;
   description: string;
@@ -34,12 +37,6 @@ export default function TutorDoor({
   status?: ReactNode;
   action: string;
 }) {
-  const wash =
-    tone === "warm"
-      ? "bg-[radial-gradient(100%_80%_at_0%_0%,var(--color-warm-glow)_0%,transparent_60%)]"
-      : tone === "success"
-        ? "bg-[radial-gradient(100%_80%_at_0%_0%,var(--color-success-muted)_0%,transparent_60%)]"
-        : "bg-[radial-gradient(100%_80%_at_0%_0%,var(--color-accent-muted)_0%,transparent_60%)]";
   const mark =
     tone === "warm"
       ? "border-warm-border bg-warm-glow text-warm-accent"
@@ -47,7 +44,7 @@ export default function TutorDoor({
         ? "border-[var(--color-success)] bg-[var(--color-success-muted)] text-[var(--color-success)]"
         : "border-accent/40 bg-accent/15 text-[var(--color-accent)]";
 
-  const className = `app-panel group flex h-full flex-col gap-3 rounded-3xl p-5 text-left transition duration-fast ease-spring hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 sm:p-6 ${wash}`;
+  const className = `app-panel group flex h-full flex-col gap-3 rounded-3xl p-5 text-left transition duration-fast ease-spring hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 sm:p-6`;
   const body = (
     <>
       <span className={`grid h-11 w-11 place-items-center rounded-2xl border ${mark}`} aria-hidden="true">

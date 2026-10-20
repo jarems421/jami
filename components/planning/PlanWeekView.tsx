@@ -27,6 +27,8 @@ export type PlanCalendarHandlers = {
   onAdd: (dayKey: string) => void;
   onToggle: (day: TimetableDay, activity: TimetableActivity, done: boolean) => void;
   onFillDay: (dayKey: string) => void;
+  /** Jami picks for one free session. */
+  onPick: (dayKey: string, activity: TimetableActivity) => void;
 };
 
 function dayNumber(dayKey: string) {

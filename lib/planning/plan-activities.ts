@@ -94,6 +94,13 @@ function cleanTopic(value: unknown): PlanActivityTopic | undefined {
   return kind && id && label ? { kind, id, label } : undefined;
 }
 
+/** A document id, as a notebook's is written: no path, nothing that could address something else. */
+function cleanDocumentId(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const id = value.trim();
+  return id && id.length <= 128 && !id.includes("/") ? id : undefined;
+}
+
 function cleanScopeKey(value: unknown, allowed?: ReadonlySet<string>) {
   if (typeof value !== "string") return undefined;
   const key = value.trim().slice(0, 160);
@@ -125,6 +132,7 @@ export function normalizePlanActivity(
   const href = cleanHref(raw.href);
   const actionId = typeof raw.actionId === "string" ? raw.actionId.trim().slice(0, 200) : "";
   const routineId = typeof raw.routineId === "string" ? raw.routineId.trim().slice(0, 64) : "";
+  const notebookId = method === "notebook" && !open ? cleanDocumentId(raw.notebookId) : undefined;
   const targetItems = Number(raw.targetItems);
   return {
     id,
@@ -145,8 +153,12 @@ export function normalizePlanActivity(
       : {}),
     ...(raw.writtenOnStart === true && !open ? { writtenOnStart: true } : {}),
     ...(routineId ? { routineId } : {}),
+    ...(notebookId ? { notebookId } : {}),
   };
 }
+
+/** The longest a timed session is believed to have run: a notebook left open overnight did not take ten hours. */
+export const MAX_PLAN_SESSION_MINUTES = 6 * 60;
 
 /** A day's record of what was done, kept only where it reads as one. */
 export function normalizePlanActivityDone(input: unknown): Record<string, PlanActivityDone> {
@@ -156,12 +168,29 @@ export function normalizePlanActivityDone(input: unknown): Record<string, PlanAc
     if (!id || id.length > 64 || typeof raw !== "object" || raw === null) continue;
     const record = raw as Record<string, unknown>;
     const at = Number(record.at);
+    const minutes = Math.round(Number(record.minutes));
     done[id] = {
       by: record.by === "activity" ? "activity" : "manual",
       at: Number.isFinite(at) && at > 0 ? at : 0,
+      ...(Number.isFinite(minutes) && minutes >= 1 ? { minutes: Math.min(MAX_PLAN_SESSION_MINUTES, minutes) } : {}),
     };
   }
   return done;
+}
+
+/**
+ * What an activity is called when the student did not name it: the notebook
+ * it is done in, the topic it is about, or simply how it is done. A student
+ * who picks "Notebook work, 30 minutes" has said enough to plan it.
+ */
+export function defaultPlanActivityTitle(input: {
+  method: PlanActivityMethod;
+  topic?: Pick<PlanActivityTopic, "label">;
+  notebookTitle?: string;
+}) {
+  const named = cleanActivityTitle(input.notebookTitle) || cleanActivityTitle(input.topic?.label);
+  if (named) return named;
+  return input.method === "other" ? "Study session" : PLAN_ACTIVITY_METHOD_LABELS[input.method];
 }
 
 /** A day's activities, cleaned, de-duplicated by id, bounded and in the order the day runs. */
@@ -305,7 +334,8 @@ export function changesPlanActivityTask(patch: Partial<PlanActivity>) {
     patch.method !== undefined ||
     patch.topic !== undefined ||
     patch.href !== undefined ||
-    patch.actionId !== undefined
+    patch.actionId !== undefined ||
+    patch.notebookId !== undefined
   );
 }
 
@@ -316,4 +346,5 @@ export const CLEARED_PLAN_ACTIVITY_TASK = {
   actionId: undefined,
   targetItems: undefined,
   writtenOnStart: undefined,
+  notebookId: undefined,
 } as const satisfies Partial<PlanActivity>;

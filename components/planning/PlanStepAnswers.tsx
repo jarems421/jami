@@ -54,7 +54,7 @@ type StepAnswersProps = {
 };
 
 function ActionRow({ children }: { children: ReactNode }) {
-  return <div className="flex flex-wrap items-center justify-end gap-2 pt-1">{children}</div>;
+  return <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">{children}</div>;
 }
 
 /**
@@ -81,7 +81,7 @@ function GoalAnswers({ draft, options, onDraft, onAnswer }: StepAnswersProps) {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <PlanExamsEditor
         layout="stacked"
         exams={exams}
@@ -146,7 +146,7 @@ function PriorityControl({
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(priority)}
-            className={`min-h-9 rounded-xl px-2 text-xs font-semibold transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
+            className={`min-h-10 rounded-xl px-2 text-sm font-semibold transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
               selected
                 ? priority === 0
                   ? "bg-[var(--color-surface-panel-strong)] text-text-primary shadow-e1"
@@ -167,23 +167,22 @@ function PriorityControl({
  *
  * What the Learning Engine has noticed about a subject is written under its
  * name, where it bears on the choice being made -- not above the conversation
- * as chips that looked like buttons and did nothing.
+ * as chips that looked like buttons and did nothing. The name sits above its
+ * control in Jami's column, and beside it only where the answers have room
+ * (`.plan-subject-row`): side by side in the panel, the name got two rem.
  */
 function SubjectAnswers({ draft, options, notices, scopeNames, onDraft, onAnswer }: StepAnswersProps) {
   const weights = new Map(draft.scopes.map((scope) => [planScopeKey(scope), scope.weight]));
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <ul className="divide-y divide-[var(--color-border)] overflow-hidden rounded-2xl border border-[var(--color-border)]">
         {options.map((option) => {
           const weight = Math.min(3, Math.max(0, weights.get(option.key) ?? 0)) as 0 | 1 | 2 | 3;
           const notice = notices.find((candidate) => candidate.scopeKey === option.key);
           return (
-            <li
-              key={option.key}
-              className="grid gap-2.5 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_17rem] sm:items-center"
-            >
+            <li key={option.key} className="plan-subject-row grid gap-3 px-4 py-4">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-text-primary">{option.label}</p>
+                <p className="break-words text-sm font-semibold leading-6 text-text-primary">{option.label}</p>
                 {notice ? (
                   <p className="mt-0.5 text-xs leading-5 text-text-muted">{notice.detail}</p>
                 ) : null}
@@ -223,16 +222,16 @@ function WeekAnswers({ draft, onDraft, onAnswer }: StepAnswersProps) {
   const [length, setLength] = useState(() => planUsualMinutes(draft));
   const days = planStudyDays(draft);
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <WeekdayToggles
         active={days}
         onToggle={(weekday) => onDraft(planWithDayToggled(draft, weekday, length))}
       />
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span id={lengthLabel} className="mr-1 text-xs font-medium text-text-muted">
+      <div className="space-y-2.5">
+        <span id={lengthLabel} className="block text-sm font-medium text-text-secondary">
           Each sitting
         </span>
-        <div role="radiogroup" aria-labelledby={lengthLabel} className="flex flex-wrap gap-1.5">
+        <div role="radiogroup" aria-labelledby={lengthLabel} className="flex flex-wrap gap-2">
           {PLAN_SESSION_LENGTHS.map((minutes) => (
             <button
               key={minutes}
@@ -243,7 +242,7 @@ function WeekAnswers({ draft, onDraft, onAnswer }: StepAnswersProps) {
                 setLength(minutes);
                 onDraft(planWithSessionLength(draft, minutes));
               }}
-              className={`min-h-9 rounded-xl border px-3 text-xs font-semibold transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
+              className={`min-h-10 rounded-xl border px-3.5 text-sm font-semibold transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
                 length === minutes
                   ? "app-selected"
                   : "border-[var(--color-border)] text-text-secondary hover:border-[var(--color-border-strong)]"

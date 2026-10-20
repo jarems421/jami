@@ -1,4 +1,4 @@
-import { endOfStudyDay, examDeadline } from "@/lib/goals/deadlines";
+import { describeGoalDeadline, endOfStudyDay, examDeadline, goalDeadlineDayKey } from "@/lib/goals/deadlines";
 import { defaultGoalName, type Goal, type GoalDraft } from "@/lib/goals/model";
 import type { StudyAction } from "@/lib/learning/actions/study-actions";
 import type { LearningRecommendationReason } from "@/lib/learning/types";
@@ -13,7 +13,9 @@ import { getStudyDayKey, shiftStudyDayKey, studyDaysBetween } from "@/lib/study/
  * the next exam in their revision plan, a topic the Learning Engine is already
  * recommending, cards waiting today, or how much they have actually been
  * reviewing. Nothing is created until the student picks one and confirms it;
- * a suggestion only fills the form in.
+ * a suggestion only fills the form in. A few ready-made goals follow them
+ * (`goalIdeas`), so a student with little history still has more than one
+ * place to start.
  *
  * The engine's topics are passed in as it ranked them and are not re-ranked
  * here: a goal suggestion is another place to act on its advice, never a
@@ -128,8 +130,10 @@ export function upcomingPlanExams(
 
 const EXAM_WINDOW_DAYS = 120;
 const HABIT_DAYS = 5;
-const HABIT_SPAN_DAYS = 7;
+const WEEK_SPAN_DAYS = 7;
 const MIN_DUE_FOR_SUGGESTION = 10;
+/** Suggestions and quick starts together, at most: two rows of three on a wide screen. */
+const MAX_IDEAS = 6;
 
 function roundToFive(value: number) {
   return Math.max(5, Math.round(value / 5) * 5);
@@ -249,11 +253,92 @@ export function suggestGoals(input: GoalSuggestionInput): GoalSuggestion[] {
       target: clamp(roundToFive(usual), 10, 50),
       days: HABIT_DAYS,
       scope: { type: "all" },
-      deadline: endOfStudyDay(shiftStudyDayKey(todayKey, HABIT_SPAN_DAYS - 1)),
+      deadline: endOfStudyDay(shiftStudyDayKey(todayKey, WEEK_SPAN_DAYS - 1)),
     })
   );
 
   return candidates
     .filter((candidate) => !input.activeGoals.some((goal) => goal.status === "active" && sameShape(goal, candidate.draft)))
     .slice(0, input.limit ?? 3);
+}
+
+/** The same kind of work, from the same place, due the same day: whatever the amount, one is the other. */
+function sameAim(goal: Pick<GoalDraft, "measure" | "cadence" | "scope" | "deadline">, draft: GoalDraft) {
+  const day = (deadline: number) => (deadline > 0 ? goalDeadlineDayKey(deadline) : "");
+  return (
+    goal.measure === draft.measure &&
+    goal.cadence === draft.cadence &&
+    goal.scope.type === draft.scope.type &&
+    (goal.scope.id ?? "") === (draft.scope.id ?? "") &&
+    day(goal.deadline) === day(draft.deadline)
+  );
+}
+
+/**
+ * Ready-made goals, for the times Jami has little of the student's own to go
+ * on: a session's worth of cards today, a week of reviewing, a week of
+ * practice, and a few practice questions a day.
+ *
+ * Unlike the suggestions these come from nothing the student has done, and
+ * they say so by being plain round amounts the composer can adjust. They sit
+ * after the suggestions, and one is left out when a suggestion or a running
+ * goal is already the same aim -- cards waiting today make "a session today"
+ * say the same thing twice.
+ */
+function goalStarters(todayKey: string, taken: readonly Pick<GoalDraft, "measure" | "cadence" | "scope" | "deadline">[]) {
+  const weekEnd = endOfStudyDay(shiftStudyDayKey(todayKey, WEEK_SPAN_DAYS - 1));
+  const all: GoalDraft["scope"] = { type: "all" };
+  const starters = [
+    suggestion("starter:today", "A session today", {
+      measure: "cards",
+      cadence: "total",
+      target: 20,
+      days: 0,
+      scope: all,
+      deadline: endOfStudyDay(todayKey),
+    }),
+    suggestion("starter:week-cards", "A week of reviewing", {
+      measure: "cards",
+      cadence: "total",
+      target: 100,
+      days: 0,
+      scope: all,
+      deadline: weekEnd,
+    }),
+    suggestion("starter:week-questions", "A week of practice", {
+      measure: "questions",
+      cadence: "total",
+      target: 10,
+      days: 0,
+      scope: all,
+      deadline: weekEnd,
+    }),
+    suggestion("starter:question-habit", "A practice habit", {
+      measure: "questions",
+      cadence: "daily",
+      target: 3,
+      days: HABIT_DAYS,
+      scope: all,
+      deadline: weekEnd,
+    }),
+  ];
+  return starters.filter((starter) => !taken.some((other) => sameAim(other, starter.draft)));
+}
+
+/**
+ * Everything the goals page offers to start from: the suggestions first, as
+ * Jami ranked them, then the ready-made goals to fill the rest. Each only
+ * fills the composer in.
+ */
+export function goalIdeas(input: GoalSuggestionInput): GoalSuggestion[] {
+  const suggested = suggestGoals({ ...input, limit: Math.min(input.limit ?? 3, MAX_IDEAS) });
+  const running = input.activeGoals.filter((goal) => goal.status === "active");
+  const starters = goalStarters(getStudyDayKey(input.now), [...suggested.map((idea) => idea.draft), ...running]);
+  return [...suggested, ...starters].slice(0, MAX_IDEAS);
+}
+
+/** When an idea is due, in a few words: "Due today", "On 5 days". */
+export function goalIdeaTiming(draft: GoalDraft, now: number): string {
+  if (draft.measure !== "topic" && draft.cadence === "daily") return `On ${draft.days} ${draft.days === 1 ? "day" : "days"}`;
+  return describeGoalDeadline(draft.deadline, now).label;
 }

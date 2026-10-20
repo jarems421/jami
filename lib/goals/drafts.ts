@@ -65,6 +65,21 @@ export function withMeasure(draft: GoalDraft, measure: GoalMeasure, now: number)
   };
 }
 
+/** Whether two drafts set the same goal, whatever they are called: how the composer knows which idea it is showing. */
+export function sameGoalDraft(left: GoalDraft, right: GoalDraft): boolean {
+  return (
+    left.measure === right.measure &&
+    left.cadence === right.cadence &&
+    left.target === right.target &&
+    left.days === right.days &&
+    left.deadline === right.deadline &&
+    left.scope.type === right.scope.type &&
+    (left.scope.id ?? "") === (right.scope.id ?? "") &&
+    (left.topic?.key ?? "") === (right.topic?.key ?? "") &&
+    (left.exam?.examId ?? "") === (right.exam?.examId ?? "")
+  );
+}
+
 /** The draft after choosing a total or a daily amount. */
 export function withCadence(draft: GoalDraft, cadence: GoalCadence): GoalDraft {
   if (draft.measure === "topic" || draft.cadence === cadence) return draft;

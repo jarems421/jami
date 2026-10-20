@@ -59,7 +59,16 @@ function state(overrides: Partial<RevisionPlanTodayState> = {}) {
       ["folder:chemistry", "Chemistry"],
     ]),
     timetable,
-    drafting: { context: null, support: new Map(), answered: new Set<string>(), loading: false, refresh: vi.fn(async () => undefined) },
+    drafting: {
+      context: null,
+      support: new Map(),
+      answered: new Set<string>(),
+      loading: false,
+      refresh: vi.fn(async () => undefined),
+      readyFor: () => null,
+      // Chemistry has nothing in it for Jami to pick from.
+      forScopes: vi.fn(async () => ({ actionsByScope: new Map(), support: new Map() })),
+    },
     changePlan: vi.fn(async () => true),
     refresh: vi.fn(async () => undefined),
     ...overrides,
@@ -79,7 +88,7 @@ afterEach(() => {
 });
 
 function render(planToday: RevisionPlanTodayState) {
-  act(() => root.render(<TodayPlanPanel planToday={planToday} folders={[]} topics={[]} />));
+  act(() => root.render(<TodayPlanPanel uid="user-1" planToday={planToday} folders={[]} topics={[]} />));
 }
 
 describe("today's plan", () => {
@@ -106,6 +115,15 @@ describe("today's plan", () => {
     render(state());
     act(() => ([...container.querySelectorAll("button")].find((button) => button.textContent === "Add to today") as HTMLButtonElement).click());
     expect(document.body.textContent).toContain("Add to Tuesday 20 October");
+  });
+
+  it("says so when Jami has nothing to pick for a free session, rather than doing nothing", async () => {
+    const planToday = state();
+    render(planToday);
+    await act(async () => ([...container.querySelectorAll("button")].find((button) => button.textContent === "Let Jami pick") as HTMLButtonElement).click());
+    expect(planToday.drafting.forScopes).toHaveBeenCalledWith(["folder:chemistry"]);
+    expect(planToday.timetable.apply).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Jami has nothing to pick from in Chemistry yet");
   });
 
   it("draws nothing without a plan", () => {

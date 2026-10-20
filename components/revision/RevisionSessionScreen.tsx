@@ -117,24 +117,6 @@ function RevisionCanvas({
 }) {
   return (
     <div className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[var(--app-background)] text-text-primary">
-      {/* Two washes of colour, as on Today's mission card: atmosphere, not decoration. */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div
-          className="absolute -right-32 -top-40 h-[32rem] w-[32rem] rounded-full opacity-60 blur-3xl"
-          style={{
-            background:
-              "radial-gradient(circle, color-mix(in srgb, var(--color-accent) 18%, transparent) 0%, transparent 68%)",
-          }}
-        />
-        <div
-          className="absolute -bottom-48 -left-32 h-[28rem] w-[28rem] rounded-full opacity-50 blur-3xl"
-          style={{
-            background:
-              "radial-gradient(circle, color-mix(in srgb, var(--color-warm-accent) 12%, transparent) 0%, transparent 70%)",
-          }}
-        />
-      </div>
-
       <header className="relative flex items-center gap-4 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-8">
         <span className="min-w-0 flex-1 truncate text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">
           {session?.conceptLabel ?? "Revision session"}

@@ -88,7 +88,7 @@ export default function MomentumStrip({
                   aria-hidden="true"
                   className={`h-2 w-2 rounded-full transition duration-normal ${
                     day.reviews > 0
-                      ? "bg-warm-accent shadow-warm"
+                      ? "bg-warm-accent"
                       : "border border-[var(--color-border-strong)]"
                   } ${day.isToday && day.reviews === 0 ? "border-[var(--color-accent)]" : ""}`}
                 />

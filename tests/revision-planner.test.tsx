@@ -34,6 +34,12 @@ vi.mock("@/services/learning/study-actions", () => ({ loadPlanStudyActions: serv
 vi.mock("@/services/learning/study-action-events", () => ({ loadCompletedStudyActions: async () => new Map() }));
 vi.mock("@/services/planning/plan-draft", () => ({ draftPlanWithJami: vi.fn(), PlanDraftError: class extends Error {} }));
 vi.mock("@/services/study/goals", () => ({ getActiveGoalsWithCurrentStatuses: async () => [] }));
+vi.mock("@/services/study/notebooks", () => ({
+  getActiveNotebooks: async () => [
+    { id: "nb-1", title: "Cell biology", folderId: "bio" },
+    { id: "nb-2", title: "Bonding", folderId: "chem" },
+  ],
+}));
 
 const { default: RevisionPlanner } = await import("@/components/planning/RevisionPlanner");
 
@@ -161,8 +167,24 @@ function setField(element: HTMLInputElement, value: string) {
   });
 }
 
+function choose(label: string, value: string) {
+  const field = [...document.querySelectorAll("label")].find((element) => element.textContent === label);
+  const select = document.getElementById(field?.htmlFor ?? "") as HTMLSelectElement | null;
+  if (!select) throw new Error(`No field ${label}`);
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 function week() {
   return document.querySelector('[aria-label="Your week"]')?.textContent ?? "";
+}
+
+function addedActivities() {
+  return (services.applyRevisionPlanOps.mock.calls.at(-1)?.[2] ?? []).flatMap((op: { type: string; activity?: object }) =>
+    op.type === "add" && op.activity ? [op.activity] : []
+  );
 }
 
 describe("a running plan's week", () => {
@@ -193,8 +215,8 @@ describe("a running plan's week", () => {
   it("adds the student's own task to any day, and undoes it", async () => {
     await render(livePlan());
     await click(byLabel("Add to Thursday 22"));
-    setField(document.querySelector('input[placeholder^="e.g. 10 algebra"]') as HTMLInputElement, "Finish my homework");
     await click(byLabel("Your own task"));
+    setField(document.querySelector('input[placeholder="e.g. Finish my homework"]') as HTMLInputElement, "Finish my homework");
     await click(byLabel("Add"));
     expect(week()).toContain("Finish my homework");
     expect(services.applyRevisionPlanOps.mock.calls[0]?.[2]).toEqual([
@@ -209,12 +231,65 @@ describe("a running plan's week", () => {
     expect(week()).not.toContain("Finish my homework");
   });
 
+  it("adds notebook work with nothing more than its kind and its length", async () => {
+    await render(livePlan());
+    await click(byLabel("Add to Thursday 22"));
+    await click(byLabel("Notebook work"));
+    await click(byLabel("45 min"));
+    await click(byLabel("Add"));
+    expect(week()).toContain("Notebook work");
+    expect(addedActivities()).toEqual([
+      expect.objectContaining({ title: "Notebook work", method: "notebook", minutes: 45, href: "/dashboard/folders/bio" }),
+    ]);
+  });
+
+  it("plans notebook work in one notebook, named after it and opening it", async () => {
+    await render(livePlan());
+    await click(byLabel("Add to Thursday 22"));
+    await click(byLabel("Notebook work"));
+    // The student's notebooks are read the first time notebook work is chosen.
+    await act(async () => undefined);
+    choose("Which notebook", "nb-1");
+    await click(byLabel("Add"));
+    expect(addedActivities()).toEqual([
+      expect.objectContaining({ title: "Cell biology", notebookId: "nb-1", href: "/dashboard/notebooks/nb-1", scopeKey: "folder:bio" }),
+    ]);
+  });
+
+  it("adds a session Jami picks from the subject's own work", async () => {
+    await render(livePlan());
+    await click(byLabel("Add to Thursday 22"));
+    // Jami's pick is the first choice, in the plan's first subject.
+    await click(byLabel("Add Jami's pick"));
+    expect(week()).toContain("Enzymes");
+    expect(addedActivities()).toEqual([expect.objectContaining({ title: "Enzymes", origin: "jami", mode: "adaptive", scopeKey: "folder:bio" })]);
+  });
+
+  it("says when Jami has nothing to pick from, and keeps the time free if asked", async () => {
+    await render(livePlan());
+    await click(byLabel("Add to Thursday 22"));
+    choose("Subject", "folder:chem");
+    await click(byLabel("Add Jami's pick"));
+    expect(document.body.textContent).toContain("Jami has nothing to pick from in Chemistry yet");
+    expect(services.applyRevisionPlanOps).not.toHaveBeenCalled();
+
+    await click(byLabel("Keep it as free time"));
+    expect(week()).toContain("Free · Chemistry");
+  });
+
   it("fills a free session with Jami's pick from the student's own work, when asked", async () => {
     await render(livePlan());
     await click(byLabel("Let Jami fill the free sessions on Friday 23"));
     expect(week()).toContain("Enzymes");
     const [op] = services.applyRevisionPlanOps.mock.calls[0]?.[2] ?? [];
     expect(op).toMatchObject({ type: "setDay", dayKey: "2026-10-23", ifIds: ["routine-fri"] });
+  });
+
+  it("says which subject Jami had nothing for, instead of a fill that does nothing", async () => {
+    await render(livePlan({ sessions: [{ id: "fri", weekday: 5, minutes: 45, startTime: "17:00", scopeKey: "folder:chem" }] }));
+    await click(byLabel("Let Jami fill the free sessions on Friday 23"));
+    expect(services.applyRevisionPlanOps).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Jami has nothing to pick from in Chemistry yet");
   });
 
   it("reads a day in full and the month at a glance", async () => {
@@ -235,7 +310,8 @@ describe("a plan built by hand", () => {
     expect(byLabel("Save plan").disabled).toBe(true);
 
     await click(byLabel("Add a study session"));
-    setField(document.querySelector('input[placeholder^="e.g. 10 algebra"]') as HTMLInputElement, "10 algebra questions");
+    await click(byLabel("Your own task"));
+    setField(document.querySelector('input[placeholder="e.g. Finish my homework"]') as HTMLInputElement, "10 algebra questions");
     await click(byLabel("Add"));
     expect(week()).toContain("10 algebra questions");
     // Nothing is written until the plan is saved.
@@ -247,5 +323,11 @@ describe("a plan built by hand", () => {
     expect(draft.scopes).toEqual([{ folderId: "bio", weight: 1 }]);
     expect([...days.values()][0]).toEqual([expect.objectContaining({ title: "10 algebra questions", origin: "student" })]);
     expect(onPlanSaved).toHaveBeenCalled();
+  });
+
+  it("takes the student straight to Jami's first question when they ask to plan with Jami", async () => {
+    await render(null);
+    await click(byLabel("Plan with Jami"));
+    expect(document.activeElement?.getAttribute("placeholder")).toBe("Chemistry Paper 1");
   });
 });

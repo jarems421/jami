@@ -130,8 +130,15 @@
     --button-primary-border: rgba(255, 255, 255, 0.18);
     --button-primary-border-hover: rgba(255, 255, 255, 0.24);
     --button-primary-text: #ffffff;
-    --button-primary-shadow: 0 14px 26px rgba(143, 125, 232, 0.22);
-    --button-primary-shadow-hover: 0 18px 32px rgba(143, 125, 232, 0.28);
+    /*
+     * A button is lifted, never lit. These were the accent and blush at a
+     * quarter strength, which drew a coloured haze under every button -- on a
+     * photo with a red accent, a red smudge -- so each theme's own elevation
+     * stands in. Declared on the root element, which carries the theme class
+     * too, so they follow the theme's shadow colour without repeating here.
+     */
+    --button-primary-shadow: var(--elevation-1);
+    --button-primary-shadow-hover: var(--elevation-2);
     --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.1));
     --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.13));
     --button-secondary-border: rgba(255, 255, 255, 0.24);
@@ -153,8 +160,8 @@
     --button-warm-border: rgba(255, 255, 255, 0.24);
     --button-warm-border-hover: rgba(255, 255, 255, 0.32);
     --button-warm-text: #080519;
-    --button-warm-shadow: 0 12px 24px rgba(255, 214, 246, 0.18);
-    --button-warm-shadow-hover: 0 16px 30px rgba(255, 214, 246, 0.24);
+    --button-warm-shadow: var(--elevation-1);
+    --button-warm-shadow-hover: var(--elevation-2);
     --button-ghost-bg-hover: rgba(255, 255, 255, 0.08);
 
     /*
@@ -198,8 +205,10 @@
  *
  * The second level keeps the weight the interface was built around; the
      * other two are the same colour lifted less and more. Everything below is
-     * a name for one of these, or a coloured glow, which is a different thing
-     * -- it says "this is warm" or "this is active", not "this is above you".
+     * a name for one of these. `accent` and `warm` were coloured glows once,
+     * meant to say "this is warm" or "this is active"; what they drew was a
+     * haze of colour around buttons and icons that nobody had placed, so they
+     * are a level like the rest. Colour belongs on the thing itself.
      */
     --elevation-0: 0 2px 6px rgba(5, 2, 20, 0.182);
     --elevation-1: 0 10px 20px rgba(5, 2, 20, 0.13);
@@ -211,9 +220,8 @@
     --shadow-shell: var(--elevation-2);
     --shadow-bubble: var(--elevation-2);
     --shadow-button-3d: var(--elevation-1);
-
-    --shadow-accent: 0 16px 28px rgba(157, 99, 223, 0.18);
-    --shadow-warm: 0 14px 28px rgba(255, 214, 246, 0.16);
+    --shadow-accent: var(--elevation-1);
+    --shadow-warm: var(--elevation-1);
     /* The ring on a selected swatch, page or option. Not a height. */
     --ring-selected: 0 0 0 3px var(--color-accent-muted);
 
@@ -424,8 +432,6 @@
     --button-primary-bg: linear-gradient(180deg, #9f82f2 0%, #7562d9 100%);
     --button-primary-bg-hover: linear-gradient(180deg, #b295ff 0%, #8370e7 100%);
     --button-primary-text: #ffffff;
-    --button-primary-shadow: 0 14px 26px rgba(117, 98, 217, 0.26);
-    --button-primary-shadow-hover: 0 18px 32px rgba(117, 98, 217, 0.34);
     --button-secondary-bg: linear-gradient(180deg, rgba(238, 225, 255, 0.18), rgba(238, 225, 255, 0.1));
     --button-secondary-bg-hover: linear-gradient(180deg, rgba(238, 225, 255, 0.26), rgba(238, 225, 255, 0.13));
     --button-secondary-border: rgba(238, 225, 255, 0.24);
@@ -518,8 +524,6 @@
     --button-primary-bg: linear-gradient(180deg, #e5399f 0%, #d0288d 100%);
     --button-primary-bg-hover: linear-gradient(180deg, #ff5fb8 0%, #dd329a 100%);
     --button-primary-text: #ffffff;
-    --button-primary-shadow: 0 14px 26px rgba(208, 40, 141, 0.24);
-    --button-primary-shadow-hover: 0 18px 32px rgba(208, 40, 141, 0.32);
     --button-secondary-bg: linear-gradient(180deg, rgba(122, 20, 74, 0.12), rgba(122, 20, 74, 0.07));
     --button-secondary-bg-hover: linear-gradient(180deg, rgba(122, 20, 74, 0.17), rgba(122, 20, 74, 0.1));
     --button-secondary-border: rgba(122, 20, 74, 0.26);
@@ -1646,17 +1650,17 @@
   }
 
   /*
-   * The focus glow is concentric with the border. The resting shadow is offset
+   * The focus ring is concentric with the border. The resting shadow is offset
    * 10px down, which is right for lifting a card off the page but reads as a
    * misaligned second outline once a bright ring is drawn around the same
-   * shape, so focus replaces it with a symmetric halo instead of stacking on it.
+   * shape, so focus replaces it with the ring instead of stacking on it. A
+   * ring and no blur: a soft halo of accent around a field is a glow, and it
+   * says nothing the ring does not.
    */
   .app-field:focus,
   .app-field:focus-within {
     border-color: color-mix(in srgb, var(--color-warm-accent) 78%, transparent);
-    box-shadow:
-      0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent),
-      0 0 20px color-mix(in srgb, var(--color-accent) 14%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent);
     outline: none;
   }
 
@@ -1678,6 +1682,30 @@
   @container plan-dates (min-width: 26rem) {
     .plan-dates-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  /*
+   * Jami's answers, by the width of the column they are in.
+   *
+   * The interview runs beside the timetable, in a drawer on a tablet and the
+   * whole width of a phone, and a viewport breakpoint called all three wide:
+   * a subject's name was set beside a 17rem control in a column hardly wider,
+   * and kept about two rem. The name goes above its control until the answers
+   * have room for both on a line.
+   */
+  .plan-answers {
+    container: plan-answers / inline-size;
+  }
+
+  .plan-subject-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container plan-answers (min-width: 34rem) {
+    .plan-subject-row {
+      grid-template-columns: minmax(0, 1fr) 16rem;
+      align-items: center;
     }
   }
 
@@ -1768,34 +1796,17 @@
    * evening, to decide something -- so it is allowed to feel like more than a
    * form. What it is not allowed to do is mint stars: a star means a goal was
    * earned, and scattering decorative ones here would make every earned star
-   * worth less. So the feeling comes from light and from motion -- a slow wash
-   * that drifts, a line that carries light down it, a node that breathes --
-   * and never from drawing another star.
+   * worth less. So the feeling comes from motion -- a line that carries light
+   * down it, a list that rises in -- and never from drawing another star.
+   *
+   * Nor from a wash of colour across the top of a panel. One drifted over the
+   * planner and the Tutor front door, and it read as a stain of light nobody
+   * had placed rather than as atmosphere, so it has gone.
    *
    * Cheap on purpose. Today already carries up to sixty stars behind it, so
    * everything here animates `transform` and `opacity` only, adds at most one
    * element per panel, and carries no blend mode or `will-change`.
    */
-  .plan-aurora {
-    position: absolute;
-    inset-inline: 0;
-    top: 0;
-    block-size: 8rem;
-    pointer-events: none;
-    opacity: 0.7;
-    background:
-      radial-gradient(60% 100% at 30% 0%, var(--color-accent-muted) 0%, transparent 68%),
-      radial-gradient(52% 96% at 78% 6%, var(--color-warm-glow) 0%, transparent 72%);
-  }
-
-  /* A second, fainter layer so the drift never reveals a hard edge. */
-  .plan-aurora::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    opacity: 0.55;
-    background: radial-gradient(46% 90% at 55% 0%, var(--color-accent-muted) 0%, transparent 70%);
-  }
 
   /* The line a day is read down, and the light that travels it. */
   .plan-spine {
@@ -1851,14 +1862,6 @@
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .plan-aurora {
-      animation: plan-aurora-drift 34s var(--ease-standard) infinite alternate;
-    }
-
-    .plan-aurora::after {
-      animation: plan-aurora-drift 27s var(--ease-standard) infinite alternate-reverse;
-    }
-
     .plan-spine::after {
       animation: plan-spine-travel 7s var(--ease-standard) infinite;
     }
@@ -3096,8 +3099,8 @@ body.photo-background-enabled {
   --shadow-bubble: var(--elevation-2);
   --shadow-glass: var(--elevation-3);
   --shadow-button-3d: var(--elevation-1);
-  --shadow-accent: 0 16px 28px rgb(var(--photo-accent-rgb) / 0.22);
-  --shadow-warm: 0 14px 28px rgb(var(--photo-shadow-rgb) / 0.26);
+  --shadow-accent: var(--elevation-1);
+  --shadow-warm: var(--elevation-1);
 }
 
 /* Status colours keep their meaning, in the set each scheme was drawn for. */
@@ -3445,28 +3448,6 @@ html.panels-solid body.constellation-background-enabled .app-nav {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
   }
-}
-
-/*
- * The light behind Jami's mark, breathing.
- *
- * One element, opacity only, on one page. It is the whole of the "mystical"
- * budget on the Tutor front door, and it is deliberately not the two 288px
- * blurred discs that used to float behind the headline there: those decorated
- * the page, this one says where Jami is.
- */
-@keyframes jami-mark-glow {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 0.85;
-  }
-}
-
-.jami-mark-glow {
-  animation: jami-mark-glow 6s ease-in-out infinite;
 }
 
 .constellation-star-enter {
@@ -4440,15 +4421,6 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 
 /* Planning atmosphere. Declared at top level, like every other animation in
  * this file, so nothing depends on how a layer is processed. */
-@keyframes plan-aurora-drift {
-  from {
-    transform: translate3d(-3%, -2%, 0) scale(1.04);
-  }
-  to {
-    transform: translate3d(3%, 2%, 0) scale(1.1);
-  }
-}
-
 @keyframes plan-spine-travel {
   0% {
     top: -28%;

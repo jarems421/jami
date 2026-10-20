@@ -230,6 +230,19 @@ it can be judged from a screenshot taken at the right moment.
    - Edit an activity's time, length, subject and method; move it by changing its
      date; copy it; remove it. Navigate six weeks ahead and add to a day there;
      reload and it is still there.
+   - Add "Notebook work", 30 minutes, without typing a name: it is added as
+     "Notebook work". Add another naming a notebook: it takes the notebook's
+     name and its Open link goes to that notebook.
+   - "Jami picks" in a subject with recent work adds a real task. In a subject
+     with no cards, exam questions or marked work, Jami says so in the editor and
+     offers to keep the time free; a day's Fill there says the same beside the
+     timetable rather than doing nothing.
+   - Open the notebook planned for today: its bar shows the session. Start it,
+     reload (the clock keeps running), Finish: the planner and Today show it done
+     with its minutes. Stop instead leaves it unticked.
+   - Building with Jami on a laptop: the exam, subject and week answers read
+     comfortably in the column beside the timetable, with nothing cut off; "Plan
+     with Jami" on the empty timetable puts the cursor in the exam's name.
    - Reviewing cards in a subject never ticks that subject's practice task.
    - Between midnight and 4am, the planner says it is still yesterday's plan.
    - At phone width the timetable comes first and Jami opens in a drawer.

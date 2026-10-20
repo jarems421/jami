@@ -620,16 +620,6 @@ function PlanCard({
             }`
       }`}
     >
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute inset-0 ${
-          !paid
-            ? "bg-[radial-gradient(120%_60%_at_0%_0%,var(--color-glass-medium)_0%,transparent_60%)]"
-            : warm
-              ? "bg-[radial-gradient(130%_70%_at_100%_0%,var(--color-warm-glow)_0%,transparent_62%)]"
-              : "bg-[radial-gradient(130%_70%_at_50%_0%,var(--color-accent-muted)_0%,transparent_65%)]"
-        }`}
-      />
       <div className="relative flex flex-1 flex-col">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">

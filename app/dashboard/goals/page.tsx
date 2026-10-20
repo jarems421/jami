@@ -9,7 +9,8 @@ import StarRewardOverlay from "@/components/constellation/StarRewardOverlay";
 import GoalCard from "@/components/goals/GoalCard";
 import GoalComposer, { type GoalComposerOptions } from "@/components/goals/GoalComposer";
 import GoalHistory from "@/components/goals/GoalHistory";
-import { GoalStarTrio } from "@/components/goals/GoalStarPreview";
+import { GoalMeasureBadge } from "@/components/goals/GoalIcons";
+import { GOAL_KINDS } from "@/components/goals/GoalKindPicker";
 import GoalSuggestions from "@/components/goals/GoalSuggestions";
 import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Skeleton } from "@/components/ui";
 import { useFeedback } from "@/hooks/useFeedback";
@@ -18,10 +19,20 @@ import { useGoalHistory } from "@/hooks/useGoalHistory";
 import { useGoalsWorkspace } from "@/hooks/useGoalsWorkspace";
 import { blankGoalDraft, repeatGoalDraft } from "@/lib/goals/drafts";
 import { draftForIntent, GOALS_PATH, readGoalIntent } from "@/lib/goals/intent";
-import { getGoalDisplayName, goalToDraft, type Goal, type GoalDraft, type GoalEdit } from "@/lib/goals/model";
+import {
+  getGoalDisplayName,
+  goalToDraft,
+  type Goal,
+  type GoalDraft,
+  type GoalEdit,
+  type GoalMeasure,
+} from "@/lib/goals/model";
 import { goalNextStep } from "@/lib/goals/next-step";
 import { goalStanding, sortGoalsForDisplay } from "@/lib/goals/standing";
-import { suggestGoals, type GoalSuggestion } from "@/lib/goals/suggestions";
+import { goalIdeas, type GoalSuggestion } from "@/lib/goals/suggestions";
+
+/** Ideas shown under goals already running: a row, not a second page of them. */
+const RUNNING_IDEAS = 3;
 
 type ComposerState =
   | { mode: "closed" }
@@ -34,11 +45,14 @@ function scrollToComposer() {
   });
 }
 
-/** The first visit, with nothing running: what a goal is for, and where to start. */
-function GoalsWelcome({ onNew }: { onNew: () => void }) {
+/**
+ * The first visit, with nothing running: what a goal is for, and the three
+ * kinds there are, each a way straight into the composer set up for it.
+ */
+function GoalsWelcome({ onNew }: { onNew: (measure: GoalMeasure) => void }) {
   return (
     <section aria-labelledby="goals-welcome-title" className="app-panel p-5 sm:p-7">
-      <div className="grid items-center gap-6 sm:grid-cols-[minmax(0,1fr)_13rem]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:items-center lg:gap-10">
         <div className="space-y-3">
           <h2 id="goals-welcome-title" className="text-2xl font-bold tracking-tight text-text-primary">
             Give your revision something to aim at
@@ -47,11 +61,36 @@ function GoalsWelcome({ onNew }: { onNew: () => void }) {
             A goal counts real work: cards you review, answers Jami marks, or a topic your results show is strong.
             It keeps you on pace, and when you finish it, it becomes a star in your sky.
           </p>
-          <Button type="button" variant="warm" data-tutorial-target="new-goal" onClick={onNew}>
+          <Button type="button" variant="warm" data-tutorial-target="new-goal" onClick={() => onNew("cards")}>
             Make a goal
           </Button>
         </div>
-        <GoalStarTrio className="hidden h-36 sm:block" />
+        <div className="min-w-0">
+          <p className="mb-2.5 text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">Aim at</p>
+          <ul className="grid gap-2">
+            {GOAL_KINDS.map((kind) => (
+              <li key={kind.measure}>
+                <button
+                  type="button"
+                  onClick={() => onNew(kind.measure)}
+                  className="group flex w-full items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-2.5 text-left transition duration-fast ease-spring hover:-translate-y-px hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                >
+                  <GoalMeasureBadge measure={kind.measure} size="sm" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-text-primary">{kind.title}</span>
+                    <span className="block truncate text-xs text-text-muted">{kind.detail}</span>
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="text-text-muted transition duration-fast group-hover:translate-x-0.5 group-hover:text-text-primary"
+                  >
+                    →
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );
@@ -85,9 +124,9 @@ function GoalsWorkspace() {
 
   const goals = useMemo(() => sortGoalsForDisplay(workspace.goals), [workspace.goals]);
 
-  const suggestions = useMemo(
+  const ideas = useMemo(
     () =>
-      suggestGoals({
+      goalIdeas({
         now: workspace.now,
         activeGoals: workspace.goals,
         dueCardCount: context.dueCardCount,
@@ -227,7 +266,7 @@ function GoalsWorkspace() {
             {...(composer.mode === "edit" ? { editing: composer.goal } : {})}
             initialDraft={composer.mode === "edit" ? goalToDraft(composer.goal) : composer.draft}
             options={composerOptions}
-            suggestions={composer.mode === "create" ? suggestions : []}
+            ideas={composer.mode === "create" ? ideas : []}
             saving={saving}
             onCancel={() => setComposer({ mode: "closed" })}
             onCreate={(draft) => void handleCreate(draft)}
@@ -255,9 +294,9 @@ function GoalsWorkspace() {
         ) : goals.length === 0 ? (
           composerOpen ? null : (
             <div className="space-y-6">
-              <GoalsWelcome onNew={() => openComposer()} />
+              <GoalsWelcome onNew={(measure) => openComposer(blankGoalDraft(measure, Date.now()))} />
               <GoalSuggestions
-                suggestions={suggestions}
+                suggestions={ideas}
                 now={workspace.now}
                 title="Or start from one of these"
                 onPick={pickSuggestion}
@@ -296,7 +335,7 @@ function GoalsWorkspace() {
         )}
 
         {!composerOpen && goals.length > 0 && !workspace.loading ? (
-          <GoalSuggestions suggestions={suggestions} now={workspace.now} onPick={pickSuggestion} />
+          <GoalSuggestions suggestions={ideas.slice(0, RUNNING_IDEAS)} now={workspace.now} onPick={pickSuggestion} />
         ) : null}
 
         <GoalHistory

@@ -6,6 +6,7 @@ import PlanActivityEditor, { type PlanEditorSubject, type PlanEditorTopic } from
 import PlanDayView, { type PlanDayHandlers } from "@/components/planning/PlanDayView";
 import PlanGoals from "@/components/planning/PlanGoals";
 import PlanHeader from "@/components/planning/PlanHeader";
+import PlanJamiNote from "@/components/planning/PlanJamiNote";
 import PlanMonthView from "@/components/planning/PlanMonthView";
 import PlanSettingsDialog from "@/components/planning/PlanSettingsDialog";
 import PlanSummaryBar from "@/components/planning/PlanSummaryBar";
@@ -13,6 +14,7 @@ import PlanWeekView from "@/components/planning/PlanWeekView";
 import PlanWithJami from "@/components/planning/PlanWithJami";
 import type { PlanScopeOption } from "@/components/planning/RevisionPlanBuilder";
 import { JAMI_FILL_LABEL } from "@/hooks/usePlanAutoFill";
+import type { PlanEditOutcome } from "@/hooks/usePlanEdits";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { usePlanInterview, type PlanAssistantProposal } from "@/hooks/usePlanInterview";
 import { useRevisionPlanner } from "@/hooks/useRevisionPlanner";
@@ -22,6 +24,7 @@ import { getGoalDisplayName, type Goal } from "@/lib/goals/model";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
 import { planScopeColor } from "@/lib/planning/plan-colors";
 import { planCountdown, planWeekOfPlan } from "@/lib/planning/plan-countdown";
+import { planFillNotice } from "@/lib/planning/plan-drafting";
 import { planActivityGoal } from "@/lib/planning/plan-goals";
 import { describePlanShapeChanges } from "@/lib/planning/plan-interview";
 import { MAX_PLAN_FILL_DAYS, summarizePlanProposal } from "@/lib/planning/plan-proposal";
@@ -138,16 +141,42 @@ export default function RevisionPlanner({
   const wide = useMediaQuery(WIDE_LAYOUT_QUERY);
   const asideRef = useRef<HTMLElement | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantCued, setAssistantCued] = useState(false);
+  /*
+   * Beside the timetable Jami is already open, so asking for it shows where:
+   * the panel is brought into view, lit for a moment, and its first answer
+   * (or the box to type in) takes the focus.
+   */
   const openAssistant = () => {
-    if (wide) asideRef.current?.querySelector("textarea")?.focus();
-    else setAssistantOpen(true);
+    if (!wide) {
+      setAssistantOpen(true);
+      return;
+    }
+    const aside = asideRef.current;
+    aside?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    const first = ["[data-plan-answers] input", "[data-plan-answers] button", "textarea"]
+      .map((selector) => aside?.querySelector<HTMLElement>(selector))
+      .find(Boolean);
+    first?.focus({ preventScroll: true });
+    setAssistantCued(true);
+    window.setTimeout(() => setAssistantCued(false), 1600);
   };
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [fillNote, setFillNote] = useState<string | null>(null);
   const { plan, view, anchor, days, todayDayKey, ops } = planner;
   const building = planner.mode === "draft";
 
   const scopeName = useCallback((scopeKey?: string) => (scopeKey ? scopeNames.get(scopeKey) : undefined), [scopeNames]);
+  /** A fill that left time free says which subjects Jami had nothing for, instead of looking like a dead button. */
+  const report = useCallback(
+    (outcome: PlanEditOutcome) => setFillNote(planFillNotice(outcome, (scopeKey) => scopeNames.get(scopeKey) ?? "that subject")),
+    [scopeNames]
+  );
+  const fill = (dayKeys: readonly string[], only?: readonly string[]) => {
+    setFillNote(null);
+    void ops.fill(dayKeys, only ? { only } : {}).then(report);
+  };
   const scopeColor = useCallback(
     (scopeKey?: string) => (scopeKey ? planScopeColor(plan, scopeKey) : "var(--color-text-muted)"),
     [plan]
@@ -183,7 +212,8 @@ export default function RevisionPlanner({
     onOpenActivity: (dayKey, activity) => setEditor({ dayKey, activity }),
     onAdd: (dayKey) => setEditor({ dayKey }),
     onToggle: (day, activity, done) => ops.toggleDone(day, activity.id, done),
-    onFillDay: (dayKey) => ops.fill([dayKey]),
+    onFillDay: (dayKey) => fill([dayKey]),
+    onPick: (dayKey, activity) => fill([dayKey], [activity.id]),
     onAcceptSuggestion: (suggestion) => ops.acceptSuggestion(suggestion),
     onKeep: (dayKey, activityId) => ops.setMode(dayKey, activityId, "fixed"),
     onClearDay: ops.clearDay,
@@ -280,10 +310,10 @@ export default function RevisionPlanner({
 
       {planner.problem ? <FeedbackBanner type="error" message={planner.problem} onDismiss={planner.clearProblem} /> : null}
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_23rem]">
+      {/* Building, Jami's questions get the room their answers need; running, the timetable gets it back. */}
+      <div className={`grid items-start gap-6 ${building ? "xl:grid-cols-[minmax(0,1fr)_27rem]" : "xl:grid-cols-[minmax(0,1fr)_23rem]"}`}>
         <div className="min-w-0 space-y-5">
           <section aria-label="Your timetable" className="app-panel relative p-2.5 sm:p-4">
-            <div aria-hidden="true" className="plan-aurora" />
             <div className="relative space-y-4">
               {empty ? (
                 <div className="space-y-3 rounded-2xl border border-dashed border-[var(--color-border-strong)] px-5 py-6 text-center">
@@ -315,7 +345,7 @@ export default function RevisionPlanner({
                   </p>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {freeInView > 0 ? (
-                      <Button type="button" size="sm" variant="secondary" onClick={() => ops.fill(fillable.map((day) => day.dayKey))}>
+                      <Button type="button" size="sm" variant="secondary" onClick={() => fill(fillable.map((day) => day.dayKey))}>
                         <JamiTutorIcon className="mr-1.5 h-3.5 w-3.5 text-warm-accent" />
                         Let Jami fill them
                       </Button>
@@ -325,7 +355,7 @@ export default function RevisionPlanner({
                         type="button"
                         size="sm"
                         variant="ghost"
-                        onClick={() => ops.fill(planDayKeysBetween(restFrom, restTo, MAX_PLAN_FILL_DAYS))}
+                        onClick={() => fill(planDayKeysBetween(restFrom, restTo, MAX_PLAN_FILL_DAYS))}
                       >
                         {restIsWholePlan ? "Fill the rest of the plan" : "Fill the next six weeks"}
                       </Button>
@@ -333,6 +363,7 @@ export default function RevisionPlanner({
                   </div>
                 </div>
               ) : null}
+              {fillNote ? <PlanJamiNote onDismiss={() => setFillNote(null)}>{fillNote}</PlanJamiNote> : null}
               {planner.loading ? (
                 <Skeleton className="h-72 w-full rounded-2xl" />
               ) : view === "week" ? (
@@ -376,8 +407,12 @@ export default function RevisionPlanner({
 
         {wide ? (
           <aside ref={asideRef} aria-label="Plan with Jami" className="xl:sticky xl:top-4">
-            <section className="app-panel space-y-4 px-5 py-5">
-              <h2 className="flex items-center gap-2 text-base font-bold text-text-primary">
+            <section
+              className={`app-panel space-y-5 px-6 py-6 transition-shadow duration-slow ${
+                assistantCued ? "ring-2 ring-[var(--color-warm-accent)]" : ""
+              }`}
+            >
+              <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight text-text-primary">
                 <JamiTutorIcon className="h-4 w-4 text-warm-accent" />
                 Plan with Jami
               </h2>
@@ -403,7 +438,7 @@ export default function RevisionPlanner({
       {!wide && assistantOpen ? (
         <Dialog open className="fixed inset-0 flex items-end justify-center md:justify-end" onDismiss={() => setAssistantOpen(false)}>
           <DialogBackdrop className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" />
-          <DialogPanel className="app-panel relative max-h-[88dvh] w-full overflow-y-auto rounded-b-none px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 md:h-full md:max-h-none md:w-[26rem] md:rounded-none">
+          <DialogPanel className="app-panel relative max-h-[88dvh] w-full overflow-y-auto rounded-b-none px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 md:h-full md:max-h-none md:w-[28rem] md:rounded-none md:px-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <DialogTitle className="flex items-center gap-2 text-base font-bold text-text-primary">
                 <JamiTutorIcon className="h-4 w-4 text-warm-accent" />
@@ -421,6 +456,7 @@ export default function RevisionPlanner({
       {editor ? (
         <PlanActivityEditor
           key={`${editor.dayKey}|${editor.activity?.id ?? "new"}`}
+          uid={uid}
           dayKey={editor.dayKey}
           {...(editor.activity ? { activity: editor.activity } : {})}
           todayDayKey={todayDayKey}
@@ -428,11 +464,10 @@ export default function RevisionPlanner({
           topics={editorTopics}
           revisionSessions={featureFlags.enableRevisionSessions}
           onClose={() => setEditor(null)}
-          onAdd={(dayKey, activity) => ops.add(dayKey, activity)}
+          onAdd={ops.add}
           onSave={(dayKey, activity, patch) => ops.update(dayKey, activity, patch)}
           onDuplicate={(dayKey, activity, toDayKey) => ops.duplicate(dayKey, activity.id, toDayKey)}
           onRemove={(dayKey, activity) => ops.remove(dayKey, activity.id)}
-          onFill={(dayKey) => ops.fill([dayKey])}
         />
       ) : null}
 

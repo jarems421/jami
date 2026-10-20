@@ -34,8 +34,10 @@ at `.../entries/{dayKey}`.
 - **A day's timetable** (`entries/{dayKey}.activities`): the activities on that
   date, each with a title, method (practice, flashcards, revision session,
   notebook, notes, or the student's own task), length, optional time, subject and
-  topic, and a link that starts it. `done` beside them records what was done, one
-  key per activity, so ticks merge without rewriting the day (offline too).
+  topic, and a link that starts it. Notebook work may name its notebook
+  (`notebookId`), and then links to it. `done` beside them records what was
+  done, one key per activity, so ticks merge without rewriting the day (offline
+  too); a session timed in its notebook keeps how long it ran (`minutes`).
 - **A day without a timetable** shows the usual week's sittings as **free
   sessions**: time set aside, honestly empty, with the subject the week's
   rotation gives it (`planFreeSessionsOn`). A subject drops out of the rotation
@@ -54,15 +56,28 @@ read as the usual week.
 ## What fills a day
 
 - **The student**, in the activity editor (`PlanActivityEditor`), from the
-  planner or from Today: their own task, or "Let Jami pick" for a subject.
-- **Jami, when asked** -- a day's Fill button, "Let Jami fill the free time", a
-  proposal in conversation, or "Let Jami fill my free sessions" in plan settings.
+  planner or from Today. It asks in the order a student thinks: the kind of work
+  (one tap, "Jami picks" among them), what it is about, when and for how long.
+  Nothing else is required: an activity left unnamed is called after its
+  notebook, its topic or its kind (`defaultPlanActivityTitle`), so "Notebook
+  work, 30 minutes" is a whole plan. Notebook work can name the notebook it is
+  done in (read the first time notebook work is chosen,
+  `hooks/usePlanNotebookOptions.ts`).
+- **Jami, when asked** -- "Jami picks" in the editor, "Let Jami pick" on a free
+  session, a day's Fill button, "Let Jami fill them", a proposal in
+  conversation, or "Let Jami fill my free sessions" in plan settings.
   `fillFreeSessions` splits each free session by length (45 minutes is 30 and
   15), and gives each piece the Learning Engine's next action for that subject,
   in the engine's order, each used once per fill. When the engine has nothing
   more, the task falls back to what the subject certainly has -- its due cards,
   its exam questions -- and with neither, the time stays a free session. No
   language model chooses what goes in a session.
+- A pick never quietly does nothing. A subject the plan does not cover yet, or
+  one the engine has not answered for, is asked about there and then
+  (`usePlanDrafting().forScopes`) and the pick waits for the answer. When there
+  is still nothing to pick from, Jami says which subject and why
+  (`planFillNotice`): the editor offers to keep the time free instead, and the
+  planner and Today show the same words beside the timetable.
 - **Automatically, for plans that ask for it** (`autoFill`): Jami keeps this week
   and next filled (`planAutoFillWindow`), on Today and in the planner, each day
   once a visit. On by default for plans built with Jami and for version 2 plans;
@@ -98,6 +113,13 @@ is evidence of:
   deck's or the subject's -- shared out, never counted twice, and read only for
   today (a card keeps only its latest review). Work seen today is written down
   today (`by: "activity"`).
+- Notebook work completes in its notebook. A notebook offers today's planned
+  notebook work that belongs to it -- set in that notebook, then set for any
+  notebook in its folder -- as a pill in its bar (`NotebookPlanSession`,
+  `lib/planning/plan-notebook.ts`). Start runs a clock (kept on the device, so
+  a reload keeps it); Finish ticks the activity `by: "activity"` with the
+  minutes it ran; Stop leaves it unticked. It is a clock and a tick: nothing on
+  the page is read for it, and it is hidden while an exam is in progress.
 - Everything else, practice questions included, is the student's tick. Reviewing
   Biology cards no longer ticks "10 homeostasis exam questions".
 
@@ -118,7 +140,11 @@ can be undone.
 ## Jami beside the timetable
 
 `components/planning/PlanWithJami.tsx`, beside the timetable on wide screens and
-in a drawer below 1280px.
+in a drawer below 1280px. Building, the column is wider (27rem) and the answers
+take its whole width; their rows lay out by the column's own width
+(`.plan-answers`, `.plan-dates-grid` in `app/globals.css`), never the screen's.
+Asking for Jami when it is already beside the timetable lights the panel and
+puts the focus on its first answer.
 
 - **Building**: the four questions of `lib/planning/plan-interview.ts` (working
   towards, subjects, the week, anything else), answered by tapping or typing,
@@ -155,4 +181,5 @@ told only "2026-10-20", a model put "next Thursday" a day out.
 | Changes | `lib/planning/timetable-ops.ts`, `hooks/usePlanEdits.ts`, `hooks/usePlanTimetable.ts` |
 | Jami | `lib/planning/plan-interview.ts`, `plan-proposal.ts`, `plan-timetable-prompt.ts`, `services/ai/plan-draft.server.ts`, `app/api/ai/plan-draft/route.ts` |
 | Screens | `components/planning/RevisionPlanner.tsx` and its views, `components/today/TodayPlanPanel.tsx`, `TodayWeekList.tsx` |
+| In a notebook | `lib/planning/plan-notebook.ts`, `hooks/useNotebookPlanSession.ts`, `components/workspace/NotebookPlanSession.tsx` |
 | Storage | `services/planning/revision-plans.ts` |

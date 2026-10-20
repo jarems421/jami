@@ -47,7 +47,7 @@ function noPreferenceBlocks(css: string) {
 const gated = noPreferenceBlocks(globals).join("\n");
 
 /** The looping ones. A one-shot entrance is not what reduced motion is about. */
-const LOOPING_ANIMATIONS = ["plan-aurora-drift", "plan-spine-travel"];
+const LOOPING_ANIMATIONS = ["plan-spine-travel"];
 const ONE_SHOT_ANIMATIONS = [
   "app-rise-in",
   "plan-sweep-in",
@@ -139,17 +139,18 @@ describe("atmosphere never means minting a star", () => {
     }
   });
 
-  it("lights the planning surfaces with washes and lines, not drawn shapes", () => {
+  it("lights the planning surfaces with lines, not drawn shapes or washes", () => {
     /*
-     * "Light has no edge": a glow is a shadow or a gradient wash, never a disc
-     * drawn behind something to stand in for its light. The agenda carried a
-     * small glowing circle per sitting and it has been removed -- it read as a
-     * second bullet beside every tick -- so what is left must stay gradient and
-     * line.
+     * "Light has no edge": a glow is never a disc drawn behind something to
+     * stand in for its light. The agenda carried a small glowing circle per
+     * sitting and it has been removed -- it read as a second bullet beside
+     * every tick -- and the drifting wash across the top of the planner and the
+     * Tutor front door read as a stain of light nobody had placed. What is
+     * left is line.
      */
-    expect(globals).toMatch(/\.plan-aurora\s*\{[^}]*radial-gradient/);
     expect(globals).toMatch(/\.plan-spine\s*\{[^}]*linear-gradient/);
     expect(globals).not.toContain("plan-node");
+    expect(globals).not.toContain("plan-aurora");
   });
 });
 
