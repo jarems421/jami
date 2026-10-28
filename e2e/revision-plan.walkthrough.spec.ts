@@ -140,7 +140,7 @@ test("the plan leads Home and the planner at every width", async ({ page }) => {
   // The planner: the timetable, with the task where it was put and the exam counted down to.
   for (const [width, height, name] of [[1440, 1000, "desktop"], [820, 1180, "tablet"], [390, 844, "phone"]] as const) {
     await page.setViewportSize({ width, height });
-    await page.goto("/dashboard/tutor/plan");
+    await page.goto("/dashboard/planner");
     await expect(page.getByRole("heading", { name: "Mocks in November" })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByLabel("Counting down")).toContainText("Chemistry Paper 1");
     await expect(page.getByLabel("Your week")).toContainText(TASK);

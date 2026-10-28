@@ -199,7 +199,7 @@ test("Decks lists the seeded deck", async ({ page }) => {
 
 test("Goals lists an active goal", async ({ page }) => {
   await signIn(page);
-  const errors = await openScreen(page, "/dashboard/goals", "Goals");
+  const errors = await openScreen(page, "/dashboard/goals", "Plan");
 
   await expect(page.getByText(E2E_GOAL.name).first()).toBeVisible({
     timeout: 45_000,

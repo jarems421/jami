@@ -30,7 +30,7 @@ test("Jami's questions have room to be answered", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await signIn(page);
-  await page.goto("/dashboard/tutor/plan");
+  await page.goto("/dashboard/planner");
   await expect(page.getByText("Your timetable starts here")).toBeVisible({ timeout: 45_000 });
 
   // Asking for Jami when it is already beside the timetable puts the cursor in the first answer.

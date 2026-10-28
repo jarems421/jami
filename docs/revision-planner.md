@@ -2,7 +2,7 @@
 
 Your plan. Built your way. Improved by Jami.
 
-The planner (`/dashboard/tutor/plan`) is a calendar of study activities that
+The planner (`/dashboard/planner`, the first tab of Plan in the sidebar, beside Goals) is a calendar of study activities that
 belongs to the student. A student who knows exactly what they want lays it out
 themselves; one who would rather not tells Jami about their exams and their week
 and watches it build one. Both arrive at the same editable timetable, and either

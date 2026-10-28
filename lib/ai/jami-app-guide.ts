@@ -36,7 +36,7 @@ const STATIC_DESTINATIONS: readonly JamiDestination[] = [
   { key: "practice_paper", label: "Build a practice paper", href: "/dashboard/practice/new" },
   { key: "sources", label: "Sources", href: "/dashboard/library" },
   { key: "jami", label: "Jami", href: "/dashboard/tutor" },
-  { key: "revision_plan", label: "Revision plan", href: "/dashboard/tutor/plan" },
+  { key: "revision_plan", label: "Revision plan", href: "/dashboard/planner" },
   { key: "revision_session", label: "Start a revision session", href: "/dashboard/revision/start" },
   { key: "personalise_jami", label: "Your Jami", href: "/dashboard/tutor/personalise" },
   { key: "topics", label: "Topics", href: "/dashboard/topics" },
@@ -91,7 +91,7 @@ export function jamiDestinations(scope: JamiAppScope = {}): JamiDestination[] {
  * looking for. Kept short: it rides on every Tutor request.
  */
 export const JAMI_APP_GUIDE = `HOW JAMI WORKS (the app you are part of; use it when the student asks how to do something in Jami, or where something is)
-Sidebar: Study -- Today, Learn, Practice, Jami. Workspace -- Flashcards, Topics, Goals, Stars, Progress, Account.
+Sidebar: Study -- Today, Learn, Practice, Jami. Workspace -- Flashcards, Topics, Plan, Stars, Progress, Account.
 - Today: what to do now. "Jami suggests" gives one main next step (start review, continue a notebook, review drafts, set a goal...), plus "Any time today".
 - Learn: review flashcards. "Start Daily Review" for what is due; "Focused Review" ("Choose decks or Topics", then "Start Focused Review"); "Simple Study" for one quick pass. "How to study" picks Classic, Smart Mix, Type Answer, Gap Fill or Multiple Choice. During a card, the "Jami" button asks about it.
 - Flashcards: "Decks" and "All cards". Make a deck: "New deck", type a name, "Create deck". Add cards on a deck's page or All cards under "Add cards": "Single card" (Front, Back, "Add card"), "Diagram" (cover the labels on a picture), "From notes or file" and "From video" (Jami drafts cards to review, then "Add selected cards"). "Import cards" brings in an Anki deck. Each deck has "Study", "Add card" and "Edit".
@@ -99,9 +99,10 @@ Sidebar: Study -- Today, Learn, Practice, Jami. Workspace -- Flashcards, Topics,
 - A folder page has tabs "Notebooks", "Practice", "Decks", "Sources"; "Create notebook" makes a notebook (blank, or from a PDF or image); "Edit folder" sets the level and exam course.
 - Notebook: write by pen or text. Toolbar: Pen, Highlighter, Eraser, Text box, Add image, Add graph, Undo, Redo. "New page" (+) at the bottom right on the last page, or in "Pages" (top), which also has "Import PDF or image" and page deletion. "Ask Jami" opens this chat; "Check my working" finds the first step that goes wrong; "Mark my work" gets feedback; answers and graphs can be put on the page with "Add to page".
 - Sources (in Jami): "Add source" (text, link or upload: PDF, image, Word, PowerPoint). Select one for "Ask Jami about this" or "Create from this" (flashcards, or a practice set saved to Practice).
-- Jami page: ask about your material, drafts "Waiting for your OK", "Revision plan" (Jami plans revision around exam dates), and "Your Jami", a tab of its own (first what Jami remembers, as a galaxy per subject -- memory can be corrected, forgotten or switched off; then what you study, how Jami teaches, and notes for every subject).
+- Jami page: ask about your material, drafts "Waiting for your OK"; then the tabs "Your Jami" (first what Jami remembers, as a galaxy per subject -- memory can be corrected, forgotten or switched off; then what you study, how Jami teaches, and notes for every subject) and "Sources".
+- Plan: opens on "Revision plan" (your timetable of dated activities; build it yourself or ask Jami beside it to plan around your exams), with "Goals" as the second tab.
 - Revision sessions: Jami teaches one topic step by step, with short exercises. Start from Today, a topic page, or "Revision session" in a folder.
-- Topics: concepts that connect cards, notebooks and sources. Goals: "New goal" -- review flashcards, answer practice questions Jami marks, or get a topic to strong; as a total or a daily amount, optionally by a date or before an exam in the plan, with suggested goals to start from. Stars: finishing goals earns stars in your sky. Progress: what needs attention, deck health, practice results.
+- Topics: concepts that connect cards, notebooks and sources. Goals (in Plan): "New goal" -- review flashcards, answer practice questions Jami marks, or get a topic to strong; as a total or a daily amount, optionally by a date or before an exam in the plan, with suggested goals to start from. Stars: finishing goals earns stars in your sky. Progress: what needs attention, deck health, practice results.
 - Account: name, reminders, sign-in and data. "Personalise" (appearance): colour theme, background photo, typeface.
 In this chat you can also make flashcards and practice sets from the conversation (see the study-material instruction).`;
 

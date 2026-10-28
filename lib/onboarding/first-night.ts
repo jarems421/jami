@@ -1,6 +1,7 @@
 import type { OnboardingActionId } from "@/lib/onboarding/tutorial";
 import type { ExamCourseSelection } from "@/lib/practice/exam-questions";
 import type { StudyLevel } from "@/lib/profile/study-level";
+import { PLANNER_PATH } from "@/lib/app/plan-views";
 
 /**
  * "First night": the sign-up walkthrough.
@@ -121,8 +122,9 @@ export const FIRST_NIGHT_DISCOVERIES: readonly FirstNightDiscovery[] = [
   {
     id: "goal",
     title: "Set your first goal",
-    where: "Goals",
-    navLabel: "Goals",
+    // Goals are the second tab of Plan, which opens on the revision plan.
+    where: "Plan",
+    navLabel: "Plan",
     href: "/dashboard/goals",
     minutes: 1,
     promise: "A small target, like ten cards by Friday.",
@@ -169,8 +171,8 @@ export const SECOND_NIGHT_STARS: readonly SecondNightStar[] = [
   {
     id: "plan",
     title: "Plan your week with Jami",
-    navLabel: "Jami",
-    href: "/dashboard/tutor/plan",
+    navLabel: "Plan",
+    href: PLANNER_PATH,
     minutes: 2,
     promise: "Say when you can study, and Jami fills each day with what matters most.",
     unlocked: "Your week has a plan. Today shows each day's part of it.",
@@ -267,6 +269,7 @@ export const FIRST_NIGHT_TARGETS = {
   markAnswer: '[data-tutorial-target="mark-answer"]',
   newGoal: '[data-tutorial-target="new-goal"]',
   createGoal: '[data-tutorial-target="create-goal"]',
+  goalsTab: '[data-view-tab="Goals"]',
 } as const;
 
 /** The page controls whose presence decides which note applies. */
@@ -287,6 +290,7 @@ export const FIRST_NIGHT_PAGE_TARGETS: readonly string[] = [
   FIRST_NIGHT_TARGETS.markAnswer,
   FIRST_NIGHT_TARGETS.newGoal,
   FIRST_NIGHT_TARGETS.createGoal,
+  FIRST_NIGHT_TARGETS.goalsTab,
 ];
 
 export function navTarget(label: string) {
@@ -466,7 +470,8 @@ export function isOnDiscoveryRoute(pathname: string, discovery: FirstNightDiscov
     case "exam":
       return pathname.startsWith("/dashboard/practice");
     case "goal":
-      return pathname.startsWith("/dashboard/goals");
+      // The Plan entry opens on the revision plan; the guide points on to Goals from there.
+      return pathname.startsWith("/dashboard/goals") || pathname.startsWith(PLANNER_PATH);
   }
 }
 
@@ -707,6 +712,12 @@ export function planFirstNightGuide({ state, pathname, isPhone, pointing, presen
       };
     }
     return null;
+  }
+
+  // Plan opens on the revision plan; goals are its second tab.
+  if (pathname.startsWith(PLANNER_PATH)) {
+    if (!needs("goal") || !present(T.goalsTab)) return null;
+    return note("goal-tab", T.goalsTab, "Goals live here in Plan, beside your revision plan. Tap Goals to set your first one.");
   }
 
   if (pathname.startsWith("/dashboard/goals")) {

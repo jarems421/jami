@@ -13,7 +13,7 @@ Primary destinations:
 - /dashboard/decks - Flashcard decks
 - /dashboard/cards - All flashcards
 - /dashboard/topics - Concepts and subtopics linking material across folders
-- /dashboard/goals - Goals: flashcard, practice-question and topic targets, paced, each earning a star
+- /dashboard/goals - Goals (a tab of Plan): flashcard, practice-question and topic targets, paced, each earning a star
 - /dashboard/constellation - Stars and constellation rewards
 - /dashboard/progress - Progress and weak areas
 - /dashboard/profile - Account and settings
@@ -26,7 +26,7 @@ Additional routes:
 - /dashboard/practice/new - Generate a practice paper
 - /dashboard/practice/history - Practice history
 - /dashboard/revision/start - Start a Revision Session
-- /dashboard/tutor/plan - Revision planner: your timetable of study activities, with Jami beside it
+- /dashboard/planner - Plan: the revision planner, your timetable of study activities, with Jami beside it
 - /dashboard/tutor/personalise - Your Jami: what the tutor remembers, and how it teaches you
 - /dashboard/decks/[id] - Deck detail and card management
 - /dashboard/decks/[id]/study - Deck study session

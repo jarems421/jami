@@ -69,7 +69,7 @@ describe("the phone navigation bar", () => {
       "Jami",
       "Cards",
       "Topics",
-      "Goals",
+      "Plan",
       "Stars",
       "Progress",
       "Account",
@@ -83,7 +83,7 @@ describe("the phone navigation bar", () => {
     await render();
 
     const current = bar()?.querySelector("[aria-current='page']");
-    expect(current?.textContent).toContain("Goals");
+    expect(current?.textContent).toContain("Plan");
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
 });

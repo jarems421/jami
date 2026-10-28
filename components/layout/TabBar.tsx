@@ -8,6 +8,7 @@ import { type TouchEvent, useEffect, useRef } from "react";
 import { BrandMark, IconBubble } from "@/components/ui";
 import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
 import { FirstNightNavStar } from "@/components/onboarding/FirstNightSky";
+import { PLAN_HOME, PLANNER_PATH } from "@/lib/app/plan-views";
 
 type TabGroup = "loop" | "support";
 
@@ -70,9 +71,7 @@ const tabs: Tab[] = [
   },
   {
     href: "/dashboard/tutor",
-    // The plan is made by talking to Jami, so the Jami entry stays lit while a
-    // student is in it rather than the sidebar growing a second home for it.
-    owns: ["/dashboard/library", "/dashboard/tutor/plan"],
+    owns: ["/dashboard/library"],
     iconComponent: JamiTutorIcon,
     label: "Jami",
     description: "Ask Jami, review drafts",
@@ -96,12 +95,14 @@ const tabs: Tab[] = [
     icon: "M12 2.25c4.83 0 8.75 3.92 8.75 8.75S16.83 19.75 12 19.75c-.36 0-.72-.02-1.08-.07l-3.31 2.76a.75.75 0 01-1.23-.58v-3.1A8.72 8.72 0 013.25 11c0-4.83 3.92-8.75 8.75-8.75zm-3.5 6.1a.75.75 0 01.75-.75h5.5a.75.75 0 010 1.5h-5.5a.75.75 0 01-.75-.75zm0 4a.75.75 0 01.75-.75h4a.75.75 0 010 1.5h-4a.75.75 0 01-.75-.75z",
   },
   {
-    href: "/dashboard/goals",
-    label: "Goals",
-    description: "Study targets",
+    // The revision plan and goals, one entry: it opens on the plan.
+    href: PLAN_HOME,
+    owns: [PLANNER_PATH, "/dashboard/goals"],
+    label: "Plan",
+    description: "Timetable and goals",
     group: "support",
     iconMode: "stroke",
-    icon: "M18.5 13.5a8 8 0 11-8-8M15.5 13.5a5 5 0 11-5-5M12.5 13.5a2 2 0 11-2-2M10.5 13.5l8-8M18.5 2.5v3h3M18.5 5.5l3-3",
+    icon: "M7.5 3v3M16.5 3v3M3.75 9h16.5M5.25 5.25h13.5a1.5 1.5 0 011.5 1.5v12a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-12a1.5 1.5 0 011.5-1.5zM7.5 12.75h3M7.5 16.5h6",
   },
   {
     href: "/dashboard/constellation",
@@ -151,7 +152,7 @@ const navGroups: { id: TabGroup; label: string; helper: string }[] = [
   {
     id: "support",
     label: "Workspace",
-    helper: "Material, goals, rewards, progress",
+    helper: "Material, plan, rewards, progress",
   },
 ];
 

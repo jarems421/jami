@@ -7,6 +7,7 @@ import {
   TUTOR_TITLE,
   TUTOR_VIEWS,
 } from "@/lib/app/tutor-views";
+import { PLAN_HOME, PLAN_TITLE, PLAN_VIEWS, PLANNER_PATH } from "@/lib/app/plan-views";
 import {
   describeDraftCounts,
   describeDraftGroupOrigin,
@@ -93,15 +94,28 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
   });
 
   it("stays lit wherever the tutor's own surfaces are", () => {
-    // Sources, and now planning: both are things a student does with Jami, so
-    // neither grows a second home in the sidebar while they are in it.
+    // Sources is a thing a student does with Jami, so it grows no second home
+    // in the sidebar while they are in it.
     // The Tutor entry's own list, not whichever tab declares `owns` first.
     const owns =
       [...tabBar.matchAll(/owns: \[([^\]]*)\]/g)]
         .map((match) => match[1] ?? "")
         .find((entry) => entry.includes("/dashboard/library")) ?? "";
     expect(owns).toContain('"/dashboard/library"');
-    expect(owns).toContain('"/dashboard/tutor/plan"');
+  });
+
+  it("hands the revision plan to Plan, beside goals", () => {
+    expect(TUTOR_VIEWS.map((view) => view.href)).not.toContain(PLANNER_PATH);
+    expect(PLAN_VIEWS.map((view) => view.label)).toEqual(["Revision plan", "Goals"]);
+    expect(PLAN_HOME).toBe(PLANNER_PATH);
+    expect(PLAN_TITLE).toBe("Plan");
+    expect(tabBar).toContain('label: "Plan"');
+    expect(tabBar).toContain('owns: [PLANNER_PATH, "/dashboard/goals"]');
+    // Old links to the plan still land on it.
+    expect(read("app/dashboard/tutor/plan/page.tsx")).toContain("redirect(PLANNER_PATH)");
+    for (const page of ["app/dashboard/planner/page.tsx", "app/dashboard/goals/page.tsx"]) {
+      expect(read(page)).toContain("views={PLAN_VIEWS}");
+    }
   });
 
   it("keeps the sources address working", () => {

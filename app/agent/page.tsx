@@ -49,9 +49,14 @@ const dashboardRoutes = [
     purpose: "Understand deck/card-set organisation.",
   },
   {
+    href: "/dashboard/planner",
+    label: "Plan",
+    purpose: "Build and keep a revision timetable; Goals is the second tab.",
+  },
+  {
     href: "/dashboard/goals",
     label: "Goals",
-    purpose: "Manage study targets and deadlines.",
+    purpose: "Manage study targets and deadlines (a tab of Plan).",
   },
   {
     href: "/dashboard/constellation",

@@ -95,7 +95,7 @@ test("Release 1 navigation and study workspace stay usable across sizes", async 
   await page.screenshot({ path: "test-results/release-one-today-phone.png", fullPage: true });
 
   // The workspace entries live in the same row, reached by scrolling it.
-  for (const label of ["Topics", "Goals", "Stars", "Progress", "Account"]) {
+  for (const label of ["Topics", "Plan", "Stars", "Progress", "Account"]) {
     const entry = mobileNav.getByText(label, { exact: true });
     await expect(entry).toHaveCount(1);
     await entry.scrollIntoViewIfNeeded();

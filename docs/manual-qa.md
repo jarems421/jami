@@ -216,7 +216,7 @@ it can be judged from a screenshot taken at the right moment.
 5. In Your Jami (`/dashboard/tutor/personalise`), the memory map is at the top.
    Correct a note, delete one, then turn memory off and confirm Tutor stops
    using it.
-6. Revision planner (`/dashboard/tutor/plan`, design in
+6. Revision planner (`/dashboard/planner`, Plan in the sidebar; design in
    [`revision-planner.md`](revision-planner.md)):
    - Build one by hand: add "20 minutes of homeostasis practice" to Monday at
      17:00 and flashcards after it, then Save plan. Today leads with them on

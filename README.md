@@ -77,7 +77,7 @@ The sidebar has ten destinations in two groups.
 | --- | --- | --- |
 | Flashcards | `/dashboard/decks` | Decks, with every card at `/dashboard/cards` |
 | Topics | `/dashboard/topics` | Concepts and subtopics linking material across folders |
-| Goals | `/dashboard/goals` | Flashcard, practice-question and topic targets, as totals or daily habits, paced to a date or a plan's exam; each finished goal earns a star |
+| Plan | `/dashboard/planner`, `/dashboard/goals` | Opens on the revision plan (your timetable, with Jami beside it); Goals is its second tab: flashcard, practice-question and topic targets, as totals or daily habits, paced to a date or a plan's exam; each finished goal earns a star |
 | Stars | `/dashboard/constellation` | Earned constellation rewards |
 | Progress | `/dashboard/progress` | Weak topics, recent activity and review history |
 | Account | `/dashboard/profile` | Profile, authentication and account deletion |
@@ -93,7 +93,7 @@ Other surfaces sit under those entries rather than having their own:
 | Generate a paper, and its print view | `/dashboard/practice/new`, `/dashboard/practice/papers/[notebookId]/print` |
 | Practice history | `/dashboard/practice/history` |
 | Revision Session | `/dashboard/revision/start`, `/dashboard/revision/[sessionId]` |
-| Revision plan and tutor personalisation (including memory) | `/dashboard/tutor/plan`, `/dashboard/tutor/personalise` |
+| Your Jami: tutor personalisation (including memory) | `/dashboard/tutor/personalise` |
 | Appearance and AI usage | `/dashboard/profile/personalise`, `/dashboard/profile/usage` |
 | Plans (behind `enableBilling`, off) | `/dashboard/plans` |
 | Owner workspace: paper quality and exam corpus | `/dashboard/internal/paper-quality`, `/dashboard/internal/exam-corpus` |

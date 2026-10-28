@@ -1,3 +1,5 @@
+import { PLANNER_PATH } from "@/lib/app/plan-views";
+
 export function getDeckHref(deckId: string) {
   return `/dashboard/decks/${encodeURIComponent(deckId)}`;
 }
@@ -178,5 +180,5 @@ export function getDeckStudyHref(deckId: string, topicId?: string) {
 
 /** The student's revision plan: their own timetable, filled by the engine. */
 export function getRevisionPlanHref() {
-  return "/dashboard/tutor/plan";
+  return PLANNER_PATH;
 }

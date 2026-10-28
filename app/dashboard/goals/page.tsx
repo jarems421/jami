@@ -30,6 +30,7 @@ import {
 import { goalNextStep } from "@/lib/goals/next-step";
 import { goalStanding, sortGoalsForDisplay } from "@/lib/goals/standing";
 import { goalIdeas, type GoalSuggestion } from "@/lib/goals/suggestions";
+import { PLAN_TITLE, PLAN_VIEWS } from "@/lib/app/plan-views";
 
 /** Ideas shown under goals already running: a row, not a second page of them. */
 const RUNNING_IDEAS = 3;
@@ -237,7 +238,9 @@ function GoalsWorkspace() {
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
-        title="Goals"
+        title={PLAN_TITLE}
+        views={PLAN_VIEWS}
+        viewsLabel="Plan views"
         backHref="/dashboard"
         backLabel="Today"
         width="2xl"
@@ -377,7 +380,7 @@ export default function GoalsPage() {
   return (
     <Suspense
       fallback={
-        <AppPage title="Goals" backHref="/dashboard" backLabel="Today" width="2xl">
+        <AppPage title={PLAN_TITLE} views={PLAN_VIEWS} viewsLabel="Plan views" backHref="/dashboard" backLabel="Today" width="2xl">
           <Skeleton className="h-56 rounded-2xl" />
         </AppPage>
       }

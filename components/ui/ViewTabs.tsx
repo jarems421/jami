@@ -69,6 +69,8 @@ export default function ViewTabs({
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
+            // Lets a walkthrough point at one view, the way `data-agent-nav` names sidebar entries.
+            data-view-tab={item.label}
             className={`relative flex min-h-11 shrink-0 items-center rounded-t-md px-3 text-sm font-semibold transition duration-fast ${
               active
                 ? "text-text-primary"

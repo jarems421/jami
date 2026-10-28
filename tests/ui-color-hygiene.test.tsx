@@ -110,7 +110,7 @@ const auditedFiles = [
   "components/ai/TutorAskPanel.tsx",
   "components/ai/TutorDoor.tsx",
   "components/ai/TutorSourcePicker.tsx",
-  "app/dashboard/tutor/plan/page.tsx",
+  "app/dashboard/planner/page.tsx",
 ];
 
 const unsafePatterns = [

@@ -156,8 +156,8 @@ describe("which stars there are", () => {
   });
 
   it("marks the sidebar entries that still lead to a star, then Stars at the end", () => {
-    expect(pendingNavLabels(exploring({ lit: ["notebook", "tutor"] }))).toEqual(["Flashcards", "Learn", "Goals"]);
-    expect(pendingNavLabels(exploring({ examReady: true, lit: ["notebook", "tutor"] }))).toEqual(["Practice", "Flashcards", "Learn", "Goals"]);
+    expect(pendingNavLabels(exploring({ lit: ["notebook", "tutor"] }))).toEqual(["Flashcards", "Learn", "Plan"]);
+    expect(pendingNavLabels(exploring({ examReady: true, lit: ["notebook", "tutor"] }))).toEqual(["Practice", "Flashcards", "Learn", "Plan"]);
     expect(pendingNavLabels(exploring({ stage: "sky" }))).toEqual(["Stars"]);
     expect(pendingNavLabels(exploring({ stage: "finished" }))).toEqual([]);
   });
@@ -232,6 +232,17 @@ describe("which note shows", () => {
     const state = exploring();
     expect(run(state, "/dashboard/goals", T.newGoal)?.target).toBe(T.newGoal);
     expect(run(state, "/dashboard/goals", T.createGoal)?.target).toBe(T.createGoal);
+  });
+
+  it("finds goals through Plan, which opens on the revision plan", () => {
+    const state = exploring();
+    // From anywhere else the guide points at the Plan entry...
+    expect(planFirstNightGuide({ state, pathname: "/dashboard", isPhone: false, pointing: "goal", present: () => true })?.target).toBe(navTarget("Plan"));
+    // ...which lands on the revision plan, so it stops pointing there and shows the Goals tab instead.
+    expect(isOnDiscoveryRoute("/dashboard/planner", getFirstNightDiscovery("goal"))).toBe(true);
+    expect(run(state, "/dashboard/planner", T.goalsTab)).toMatchObject({ key: "goal-tab", target: T.goalsTab });
+    // Nothing to say on the plan once the goal star is lit.
+    expect(run(exploring({ lit: ["goal"] }), "/dashboard/planner", T.goalsTab)).toBeNull();
   });
 
   it("never lights a star from a note", () => {

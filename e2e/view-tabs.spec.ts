@@ -14,6 +14,9 @@ const surfaces = [
   { route: "/dashboard/cards", nav: "Flashcard views", active: "All cards", other: "Decks" },
   { route: "/dashboard/tutor", nav: "Jami views", active: "Ask Jami", other: "Sources" },
   { route: "/dashboard/library", nav: "Jami views", active: "Sources", other: "Ask Jami" },
+  { route: "/dashboard/tutor/personalise", nav: "Jami views", active: "Your Jami", other: "Ask Jami" },
+  { route: "/dashboard/planner", nav: "Plan views", active: "Revision plan", other: "Goals" },
+  { route: "/dashboard/goals", nav: "Plan views", active: "Goals", other: "Revision plan" },
 ] as const;
 
 const widths = [

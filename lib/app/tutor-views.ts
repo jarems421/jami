@@ -27,26 +27,9 @@ export const TUTOR_VIEWS: TutorView[] = [
     detail: "Questions and drafts to review",
   },
   /*
-   * Planning is Jami's, not Today's.
-   *
-   * A revision plan is made by talking to the tutor about what is coming up, so
-   * it belongs beside the other things a student asks Jami for rather than as
-   * an entry of its own in the sidebar. Today shows the day it produces; this
-   * is where the plan itself is decided.
-   */
-  ...(featureFlags.enableRevisionPlans
-    ? [
-        {
-          href: "/dashboard/tutor/plan",
-          label: "Revision plan",
-          detail: "Shape your week with Jami",
-        },
-      ]
-    : []),
-  /*
    * What Jami remembers about the student and how it teaches them, as a view
    * of its own rather than a settings button in the corner: the memory galaxy
-   * is the student's, and it should be as easy to find as asking.
+   * is the student's, and it sits right beside asking.
    */
   ...(featureFlags.enableTutorPersonalisation
     ? [
