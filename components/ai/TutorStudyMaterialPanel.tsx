@@ -355,7 +355,7 @@ function PracticeResult({
           state === "dismissed"
             ? "It will not appear in Practice."
             : state === "kept"
-              ? `${summary}. Saved in Practice under Ready to practise.`
+              ? `${summary}. Saved in Practice under Ready to practice.`
               : summary
         }
       />

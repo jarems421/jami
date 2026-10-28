@@ -195,13 +195,8 @@ export default function Home() {
         */}
       <section className="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-5 pb-16 pt-12 sm:px-8 sm:pt-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.02fr)] lg:gap-14 lg:pb-24 lg:pt-20">
         <div className="animate-slide-up">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] py-1 pl-2.5 pr-3 text-xs font-medium text-text-secondary">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-success-mark)] ring-4 ring-success-muted" />
-            GCSE and A-level revision
-          </div>
-
-          <h1 className="mt-6 max-w-xl text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-text-primary sm:text-5xl">
-            Practise like the exam.{" "}
+          <h1 className="max-w-xl text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-text-primary sm:text-5xl">
+            Practice like the exam.{" "}
             <span className="landing-accent block">Revise what it shows you.</span>
           </h1>
           <p className="mt-5 max-w-lg text-base leading-7 text-text-secondary sm:text-lg sm:leading-8">

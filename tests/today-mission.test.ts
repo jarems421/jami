@@ -92,7 +92,7 @@ describe("the mission Today leads with", () => {
 
     expect(mission.headline).toBe("Make completing the square exam-ready");
     expect(mission.summary).toBe("Your recall is strong, but application is weaker.");
-    expect(mission.actionLabel).toBe("Start practising");
+    expect(mission.actionLabel).toBe("Start practicing");
     expect(mission.effort).toEqual({ items: "5 questions", minutes: "about 15 min" });
   });
 
@@ -361,7 +361,7 @@ describe("the handoff between Today and the session it sent you on", () => {
     noteMissionFinished(
       {
         actionId: "folder:f1|low_mastery|topic:spec:quad-complete",
-        headline: "Practise completing the square",
+        headline: "Practice completing the square",
         conceptLabel: "Completing the square",
         targetItems: 3,
       },
@@ -378,7 +378,7 @@ describe("the handoff between Today and the session it sent you on", () => {
     noteMissionFinished(
       {
         actionId: "folder:f1|low_mastery|topic:spec:quad-complete",
-        headline: "Practise completing the square",
+        headline: "Practice completing the square",
         conceptLabel: "Completing the square",
       },
       0

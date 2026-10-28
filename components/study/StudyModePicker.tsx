@@ -44,7 +44,7 @@ const PREPARATION_NOTE =
 const SURFACE_NOTE: Record<StudyModeSurface, string | null> = {
   daily: null,
   // Focused Review has never moved a card's schedule, whichever way it asks.
-  focused: "Focused Review practises without moving your review dates.",
+  focused: "Focused Review practices without moving your review dates.",
   // Simple Study answers on two points, so a mode changes the question and
   // nothing else: there is no four-point rating for it to feed.
   simple: "Simple Study still answers Missed or Got it, so this changes the question, not your schedule.",

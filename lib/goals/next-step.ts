@@ -46,11 +46,11 @@ export function goalNextStep(goal: Goal, context: GoalNextStepContext): GoalNext
 
   if (goal.measure === "questions") {
     const folderId = goal.scope.type === "folder" ? goal.scope.id : undefined;
-    if (!folderId) return { label: "Practise", href: "/dashboard/practice" };
+    if (!folderId) return { label: "Practice", href: "/dashboard/practice" };
     const folder = context.folders.find((candidate) => candidate.id === folderId);
     return folder?.examCourse
-      ? { label: "Practise questions", href: getQuestionPracticeSetupHref({ folderId }) }
-      : { label: "Practise", href: getFolderHref(folderId, "practice") };
+      ? { label: "Practice questions", href: getQuestionPracticeSetupHref({ folderId }) }
+      : { label: "Practice", href: getFolderHref(folderId, "practice") };
   }
 
   if (context.topicAction) return context.topicAction;

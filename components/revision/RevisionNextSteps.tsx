@@ -21,7 +21,7 @@ const NOW_LABEL: Record<RevisionNextStepKind, string> = {
   flashcards: "Make the cards",
   "review-cards": "Review them now",
   practice: "Write the questions",
-  "exam-questions": "Start practising",
+  "exam-questions": "Start practicing",
   session: "Start the session",
 };
 

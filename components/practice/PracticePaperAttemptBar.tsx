@@ -53,7 +53,7 @@ function noteFinishedMission(userId: string, paper: PracticePaper) {
   noteMissionFinished(
     {
       actionId: finished.interventionId,
-      headline: `Practise ${finished.conceptLabel}`,
+      headline: `Practice ${finished.conceptLabel}`,
       conceptLabel: finished.conceptLabel,
       targetItems: finished.targetItems,
     },

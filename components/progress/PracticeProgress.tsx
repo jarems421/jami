@@ -139,7 +139,7 @@ function WeekCard({ week, trend }: { week: PracticeWeek | null; trend: SessionTr
           <h2 className="mt-1 text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
             {week.daysPractised === 0
               ? "No practice marked this week"
-              : `Practised on ${week.daysPractised} day${week.daysPractised === 1 ? "" : "s"}`}
+              : `Practiced on ${week.daysPractised} day${week.daysPractised === 1 ? "" : "s"}`}
           </h2>
           {/* Two zero tiles say less than one line about what fills them in. */}
           {week.daysPractised === 0 ? (

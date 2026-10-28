@@ -321,7 +321,7 @@ export default function FocusedReviewBuilder({
           <p className="mt-1 text-sm leading-6 text-text-muted">
             {selectionEmpty
               ? "Clear a filter or choose something different."
-              : "Focused Review practises without changing your review dates."}
+              : "Focused Review practices without changing your review dates."}
           </p>
         </div>
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">

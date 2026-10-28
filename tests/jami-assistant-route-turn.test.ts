@@ -1167,7 +1167,7 @@ describe("what a turn reads", () => {
 
   it("passes the engine's offers through when the turn reads as what next", async () => {
     const offer = { actionId: "a1", title: "Next", label: "Go", href: "/next" };
-    const practice = { actionId: "a2", title: "Practise", label: "Go", href: "/practise" };
+    const practice = { actionId: "a2", title: "Practice", label: "Go", href: "/practise" };
     mocks.resolveContext.mockResolvedValueOnce(
       resolved({ learningContext: "--- LEARNER PROFILE ---", nextStepOffer: offer, practiceOffer: practice })
     );

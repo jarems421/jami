@@ -322,7 +322,7 @@ export function describeStudyAction(action: StudyAction): Pick<TodayStudyAction,
       return {
         title: `Stop losing marks: ${lowerFirst(name)}`,
         description: `This has cost marks ${pluralize(action.evidence.count, "time")} in recent marked answers. A few questions on getting it right will help.`,
-        label: "Practise",
+        label: "Practice",
       };
     case "declining_mastery":
       return {
@@ -334,7 +334,7 @@ export function describeStudyAction(action: StudyAction): Pick<TodayStudyAction,
       return {
         title: `Refresh ${name}`,
         description: "You knew this well, but recent answers suggest it is fading.",
-        label: action.action === "retrieve" ? "Refresh" : "Practise",
+        label: action.action === "retrieve" ? "Refresh" : "Practice",
       };
     case "low_mastery":
       /*
@@ -346,7 +346,7 @@ export function describeStudyAction(action: StudyAction): Pick<TodayStudyAction,
         return {
           title: `Put ${name} into practice`,
           description: "Recall looks fine, but exam-style answers on this keep losing marks.",
-          label: "Practise",
+          label: "Practice",
         };
       }
       return {
@@ -364,7 +364,7 @@ export function describeStudyAction(action: StudyAction): Pick<TodayStudyAction,
         return {
           title: `Check ${name} in exam questions`,
           description: "Recall looks fine, but your first exam-style answers on this went wrong.",
-          label: "Practise",
+          label: "Practice",
         };
       }
       return {
@@ -383,12 +383,12 @@ export function describeStudyAction(action: StudyAction): Pick<TodayStudyAction,
         ? {
             title: `Keep it up: ${lowerFirst(name)}`,
             description: "Recent answers have got this right. A little more practice makes it stick.",
-            label: "Practise",
+            label: "Practice",
           }
         : {
             title: `Lock in ${name}`,
             description: "This is improving. A short session keeps the gain.",
-            label: "Practise",
+            label: "Practice",
           };
     case "untested_exposure":
       return {

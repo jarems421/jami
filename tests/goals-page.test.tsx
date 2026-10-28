@@ -266,7 +266,7 @@ describe("the goals page", () => {
     });
     mocks.getActiveGoalsWithCurrentStatuses.mockResolvedValue([topicGoal]);
     mocks.loadTopicStandings.mockResolvedValue([
-      { key: "topic:bonding", label: "Bonding", demonstration: "developing", action: { label: "Practise", href: "/dashboard/practice/questions/new?folderId=chem" } },
+      { key: "topic:bonding", label: "Bonding", demonstration: "developing", action: { label: "Practice", href: "/dashboard/practice/questions/new?folderId=chem" } },
     ]);
     mocks.recordTopicReadings.mockImplementation(async () => ({
       changed: [{ ...topicGoal, progress: { ...topicGoal.progress, demonstration: "developing" } }],
@@ -279,7 +279,7 @@ describe("the goals page", () => {
     expect(mocks.loadTopicStandings).toHaveBeenCalledWith("chem");
     expect(mocks.recordTopicReadings).toHaveBeenCalled();
     expect(document.body.textContent).toContain("Developing");
-    const next = [...document.querySelectorAll("a")].find((link) => link.textContent?.includes("Practise"));
+    const next = [...document.querySelectorAll("a")].find((link) => link.textContent?.includes("Practice"));
     expect(next?.getAttribute("href")).toBe("/dashboard/practice/questions/new?folderId=chem");
   });
 });

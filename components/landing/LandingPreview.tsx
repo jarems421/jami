@@ -58,7 +58,7 @@ export const LANDING_EXAMPLES: readonly LandingExample[] = [
     },
     topic: {
       name: "Enzymes",
-      before: "Last practised 9 days ago",
+      before: "Last practiced 9 days ago",
       after: "Lost the mark on complexes",
       tone: "warning",
     },
@@ -176,7 +176,7 @@ type Timeline = ReturnType<typeof landingTimelineFor>;
 
 const STEPS = [
   {
-    label: "Practise",
+    label: "Practice",
     detail: "Answer past-paper questions, typed or handwritten, in your own notebook.",
   },
   {
@@ -424,8 +424,6 @@ export function LandingDemoScene({ example, clock }: { example: LandingExample; 
 
   return (
     <>
-      <div className="landing-orbit landing-orbit-turning h-[26rem] w-[26rem] sm:h-[32rem] sm:w-[32rem]" />
-
       <div className="landing-lean">
         <div className="signed-out-panel landing-spotlight rounded-xl p-4 sm:rounded-2xl sm:p-6">
           <div className="flex items-center gap-2 pr-36 sm:pr-40">
@@ -712,7 +710,7 @@ export default function LandingPreview() {
         <LandingDemoScene example={example} clock={clock} />
       </div>
 
-      <ol className="relative z-10 mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <ol className="relative z-10 mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-1.5">
         {STEPS.map((step, index) => {
           const active = index === activeStep;
           const last = index === STEPS.length - 1;
@@ -729,7 +727,7 @@ export default function LandingPreview() {
                 type="button"
                 onClick={() => chooseStep(index)}
                 aria-current={active ? "step" : undefined}
-                className={`group relative flex w-full items-center gap-2 overflow-hidden rounded-lg border px-3 pb-3 pt-2.5 text-left transition duration-fast ${
+                className={`group relative flex w-full items-center gap-1.5 overflow-hidden rounded-lg border px-2.5 pb-3 pt-2.5 text-left transition duration-fast ${
                   active
                     ? "border-[var(--color-border-strong)] bg-[var(--color-glass-medium)]"
                     : "border-transparent hover:bg-[var(--button-ghost-bg-hover)]"
@@ -745,7 +743,7 @@ export default function LandingPreview() {
                   {index + 1}
                 </span>
                 <span
-                  className={`min-w-0 truncate text-xs font-semibold ${
+                  className={`whitespace-nowrap text-xs font-semibold ${
                     active ? "text-text-primary" : "text-text-secondary group-hover:text-text-primary"
                   }`}
                 >
@@ -753,10 +751,10 @@ export default function LandingPreview() {
                 </span>
                 {last ? (
                   <span
-                    className={`ml-auto shrink-0 ${active ? "text-accent" : "text-text-muted"}`}
+                    className={`shrink-0 ${active ? "text-accent" : "text-text-muted"}`}
                     title="Then round again"
                   >
-                    <LoopArrow />
+                    <LoopArrow className="h-3 w-3" />
                   </span>
                 ) : null}
                 <span

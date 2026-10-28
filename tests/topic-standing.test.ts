@@ -55,7 +55,7 @@ describe("topic standings for goals", () => {
       key: "topic:weak",
       label: "Bonding",
       demonstration: "weak",
-      action: { label: "Practise", href: "/dashboard/practice/questions/new?folderId=f" },
+      action: { label: "Practice", href: "/dashboard/practice/questions/new?folderId=f" },
     });
     expect(standings[1]?.action).toBeUndefined();
   });

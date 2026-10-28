@@ -83,7 +83,7 @@ export default function ExamCourseSetup({
 
       <div className="mt-5 flex justify-end">
         <Button disabled={!resolved.course || saving} onClick={() => void save()}>
-          {saving ? "Saving…" : "Save and start practising"}
+          {saving ? "Saving…" : "Save and start practicing"}
         </Button>
       </div>
     </Card>

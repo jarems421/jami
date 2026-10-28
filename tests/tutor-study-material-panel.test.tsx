@@ -211,6 +211,6 @@ describe("TutorStudyMaterialPanel", () => {
     });
     await settle();
     expect(mocks.updatePracticeSet).toHaveBeenCalledWith("session-1", "accept");
-    expect(container.textContent).toContain("Ready to practise");
+    expect(container.textContent).toContain("Ready to practice");
   });
 });

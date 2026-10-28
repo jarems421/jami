@@ -21,7 +21,7 @@ test("Release 1 landing stays clear at desktop and phone sizes", async ({ page }
   await page.goto("/");
   await expect(
     page.getByRole("heading", {
-      name: "Practise like the exam. Revise what it shows you.",
+      name: "Practice like the exam. Revise what it shows you.",
     })
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Get marked" })).toBeVisible();

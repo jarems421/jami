@@ -43,7 +43,7 @@ export const PLAN_ACTIVITY_METHOD_LABELS: Record<PlanActivityMethod, string> = {
 
 /** What the button that starts it says. */
 export const PLAN_ACTIVITY_START_LABELS: Record<PlanActivityMethod, string> = {
-  practice: "Practise",
+  practice: "Practice",
   flashcards: "Review",
   revision: "Start",
   notebook: "Open",

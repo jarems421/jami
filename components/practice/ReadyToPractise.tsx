@@ -102,7 +102,7 @@ export default function ReadyToPractise({ userId }: { userId: string }) {
       <div className="flex items-end justify-between gap-3">
         <div>
           <h3 id="ready-to-practise-heading" className="text-base font-medium tracking-tight text-text-primary sm:text-lg">
-            Ready to practise
+            Ready to practice
           </h3>
           <p className="mt-1 text-sm leading-6 text-text-muted">
             Question sets Jami has written for you, marked when you answer.

@@ -199,7 +199,7 @@ describe("recall holds, application does not", () => {
     expect(on(CTS)?.intervention?.because).toBe("recall_strong_application_weak");
     expect(mission.headline).toBe("Make completing the square exam-ready");
     expect(mission.summary).toBe("Your recall is strong, but application is weaker.");
-    expect(mission.actionLabel).toBe("Start practising");
+    expect(mission.actionLabel).toBe("Start practicing");
     expect(mission.href).toBe(QUESTIONS_ON_CTS);
   });
 

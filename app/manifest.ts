@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/",
     name: "Jami Flashcards",
     short_name: "Jami",
-    description: "Practise real GCSE and A-level exam questions, keep what you learn as flashcards, and know what to revise next.",
+    description: "Practice real GCSE and A-level exam questions, keep what you learn as flashcards, and know what to revise next.",
     start_url: "/",
     scope: "/",
     display: "standalone",

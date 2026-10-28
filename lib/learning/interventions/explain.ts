@@ -66,10 +66,10 @@ const ACTION_LABEL: Record<InterventionType, string> = {
   create_flashcards: "Make cards",
   create_practice: "Create practice",
   fill_specification_gap: "Create material",
-  past_paper: "Start practising",
+  past_paper: "Start practicing",
   retrieve: "Start review",
   teach: "Open material",
-  reinforce: "Start practising",
+  reinforce: "Start practicing",
   review_material: "Open material",
 };
 

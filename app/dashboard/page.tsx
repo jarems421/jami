@@ -627,7 +627,7 @@ export default function DashboardHome() {
           meta: [topic.subject, topic.reason].filter(Boolean).join(" · "),
           action: (
             <ButtonLink href={topic.href} variant="secondary" size="sm">
-              Practise
+              Practice
             </ButtonLink>
           ),
         });

@@ -91,7 +91,7 @@ describe("Today with study actions", () => {
       action: "practice",
       title: "Stop losing marks: missing or incorrect units",
       description: "This has cost marks 3 times in recent marked answers. A few questions on getting it right will help.",
-      label: "Practise",
+      label: "Practice",
       href: "/dashboard/practice/questions/new?folderId=folder-1",
       destinationKind: "question-practice",
       folderName: "Maths",

@@ -14,7 +14,7 @@ export const PRACTICE_TUTOR_QUICK_ACTIONS = [
   {
     label: "Why did I lose marks?",
     prompt:
-      "Go through the mark scheme for this question point by point. For each mark I didn't get, say what it was for, what in my answer or working fell short, and what would have earned it. Where my own notes cover something I missed, point me to it. End with the one thing to practise.",
+      "Go through the mark scheme for this question point by point. For each mark I didn't get, say what it was for, what in my answer or working fell short, and what would have earned it. Where my own notes cover something I missed, point me to it. End with the one thing to practice.",
   },
   {
     label: "Teach the missing idea",

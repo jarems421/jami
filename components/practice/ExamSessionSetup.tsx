@@ -293,7 +293,7 @@ export default function ExamSessionSetup({
   const handleFolderCreated = (folder: StudyFolder) => {
     if (!examBoardAppliesTo(folder.studyLevel)) {
       setNotice(
-        `“${folder.name}” was created. Set its level to School, GCSE or A level to practise it here.`
+        `“${folder.name}” was created. Set its level to School, GCSE or A level to practice it here.`
       );
       return;
     }
@@ -480,12 +480,12 @@ export default function ExamSessionSetup({
           </h3>
           <p className="mt-1 text-sm leading-5 text-text-muted">
             {showParts
-              ? `This course is sat as ${parts.join(", ").replace(/, ([^,]*)$/, " and $1")}. Practise one at a time, or draw from all of it.`
+              ? `This course is sat as ${parts.join(", ").replace(/, ([^,]*)$/, " and $1")}. Practice one at a time, or draw from all of it.`
               : showPapers
               ? calculatorFolderId === folderId
-                ? "Each paper examines a different part of the course and sets whether a calculator is allowed. Practise one, or draw from them all."
-                : "Each paper examines a different part of the course. Practise one, or draw from them all."
-              : "Practise with or without a calculator."}
+                ? "Each paper examines a different part of the course and sets whether a calculator is allowed. Practice one, or draw from them all."
+                : "Each paper examines a different part of the course. Practice one, or draw from them all."
+              : "Practice with or without a calculator."}
           </p>
           {showParts ? (
             <OptionSwitch

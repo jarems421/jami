@@ -254,7 +254,7 @@ const OFFER = {
   reason: "weak",
   target: { kind: "topic", topicKey: "topic:enzymes", label: "Enzymes", source: "student-topic" },
   scope: { folderId: "folder-1" },
-  title: "Practise enzymes",
+  title: "Practice enzymes",
   description: "Five questions on enzymes.",
   label: "Start practice",
   href: "/dashboard/practice/enzymes",

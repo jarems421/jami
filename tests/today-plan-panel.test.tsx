@@ -99,7 +99,7 @@ describe("today's plan", () => {
     expect(text).toContain("Homeostasis");
     expect(text).toContain("Jami’s pick");
     expect(text).toContain("Up next");
-    expect(container.querySelector('a[href="/dashboard/practice/questions/new?folderId=biology"]')?.textContent).toBe("Practise");
+    expect(container.querySelector('a[href="/dashboard/practice/questions/new?folderId=biology"]')?.textContent).toBe("Practice");
     expect(text).toContain("Free · Chemistry");
     expect(text).toContain("Let Jami pick");
   });
