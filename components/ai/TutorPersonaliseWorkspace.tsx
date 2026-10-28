@@ -19,6 +19,7 @@ import {
 import { useTutorMemory } from "@/hooks/useTutorMemory";
 import { useTutorPersonalisation } from "@/hooks/useTutorPersonalisation";
 import { featureFlags } from "@/lib/app/feature-flags";
+import { TUTOR_TITLE, TUTOR_VIEWS } from "@/lib/app/tutor-views";
 import {
   GENERAL_NOTE_SUGGESTIONS,
   MAX_TUTOR_GENERAL_NOTES,
@@ -65,12 +66,13 @@ function Step({
 }
 
 /**
- * Personalising Jami, as one account of how you like to be taught.
+ * Your Jami: what Jami remembers about you, and how it teaches you.
  *
- * Four steps from the broadest to the most specific -- who you are, how Jami
- * teaches, what it should always keep in mind, what one subject needs -- then
- * what Jami has remembered from your chats, with
- * a running read-back beside them of what that adds up to. Everything but the
+ * A view of the Jami page of its own, not a settings screen. The memory
+ * galaxy comes first -- it is the student's, and the part worth coming back
+ * to -- then four steps from the broadest to the most specific: who you are,
+ * how Jami teaches, what it should always keep in mind, what one subject
+ * needs. Everything but the
  * study level saves as it changes, so the page has no Save buttons to find and
  * nothing to lose by leaving.
  *
@@ -104,9 +106,11 @@ export default function TutorPersonaliseWorkspace() {
 
   return (
     <AppPage
-      title="Personalise Jami"
-      backHref="/dashboard/tutor"
-      backLabel="Jami"
+      title={TUTOR_TITLE}
+      views={TUTOR_VIEWS}
+      viewsLabel="Jami views"
+      backHref="/dashboard"
+      backLabel="Today"
       width="2xl"
       contentClassName="space-y-4"
     >
@@ -119,9 +123,13 @@ export default function TutorPersonaliseWorkspace() {
       ) : null}
 
       <PageHero
-        eyebrow="Personalise"
-        title="How Jami teaches you"
-        description="Tell Jami what you study, how you like to learn, and what each subject needs. All optional. Anything you leave, Jami decides for you."
+        eyebrow="Your Jami"
+        title={featureFlags.enableTutorMemory ? "What Jami knows about you" : "Jami, made for you"}
+        description={
+          featureFlags.enableTutorMemory
+            ? "Jami remembers what you get wrong and what you're working on, and teaches the way you ask it to. All of it is yours to see and change."
+            : "Tell Jami what you study, how you like to learn, and what each subject needs. All optional. Anything you leave, Jami decides for you."
+        }
       />
 
       {loading ? (
@@ -149,7 +157,25 @@ export default function TutorPersonaliseWorkspace() {
       ) : (
         <div className="space-y-4">
           {/* A summary of what was just filled in told the student nothing new; the save state is all it needs. */}
-          <div className="flex justify-end">
+          {featureFlags.enableTutorMemory ? (
+            <Card padding="lg">
+              <SectionHeader
+                eyebrow="Memory"
+                title="What Jami remembers"
+                description="Jami carries short notes from one chat to the next, so it knows what you get wrong and what you're working on. Each subject is a galaxy: tap one to fly in, and tap a note to correct or forget it."
+              />
+              <div className="mt-5">
+                <TutorMemoryPanel memory={memory} folders={data?.folders ?? []} />
+              </div>
+            </Card>
+          ) : null}
+
+          <div className="flex flex-wrap items-end justify-between gap-3 pt-4">
+            <SectionHeader
+              eyebrow="Teaching"
+              title="How Jami teaches you"
+              description="All optional. Anything you leave, Jami decides for you."
+            />
             <TutorSaveIndicator status={saveStatus} />
           </div>
           <div>
@@ -214,17 +240,6 @@ export default function TutorPersonaliseWorkspace() {
                   onChange={saveFolderNotes}
                 />
               </Step>
-
-              {featureFlags.enableTutorMemory ? (
-                <Step
-                  number={5}
-                  eyebrow="Memory"
-                  title="What Jami remembers"
-                  description="Jami carries short notes from one chat to the next, so it knows what you get wrong and what you're working on. Each subject is a galaxy: tap one to fly in, and tap a note to correct or forget it."
-                >
-                  <TutorMemoryPanel memory={memory} folders={data?.folders ?? []} />
-                </Step>
-              ) : null}
             </div>
 
           </div>

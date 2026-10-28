@@ -38,7 +38,7 @@ const STATIC_DESTINATIONS: readonly JamiDestination[] = [
   { key: "jami", label: "Jami", href: "/dashboard/tutor" },
   { key: "revision_plan", label: "Revision plan", href: "/dashboard/tutor/plan" },
   { key: "revision_session", label: "Start a revision session", href: "/dashboard/revision/start" },
-  { key: "personalise_jami", label: "Personalise Jami", href: "/dashboard/tutor/personalise" },
+  { key: "personalise_jami", label: "Your Jami", href: "/dashboard/tutor/personalise" },
   { key: "topics", label: "Topics", href: "/dashboard/topics" },
   { key: "goals", label: "Goals", href: "/dashboard/goals" },
   { key: "stars", label: "Stars", href: "/dashboard/constellation" },
@@ -99,7 +99,7 @@ Sidebar: Study -- Today, Learn, Practice, Jami. Workspace -- Flashcards, Topics,
 - A folder page has tabs "Notebooks", "Practice", "Decks", "Sources"; "Create notebook" makes a notebook (blank, or from a PDF or image); "Edit folder" sets the level and exam course.
 - Notebook: write by pen or text. Toolbar: Pen, Highlighter, Eraser, Text box, Add image, Add graph, Undo, Redo. "New page" (+) at the bottom right on the last page, or in "Pages" (top), which also has "Import PDF or image" and page deletion. "Ask Jami" opens this chat; "Check my working" finds the first step that goes wrong; "Mark my work" gets feedback; answers and graphs can be put on the page with "Add to page".
 - Sources (in Jami): "Add source" (text, link or upload: PDF, image, Word, PowerPoint). Select one for "Ask Jami about this" or "Create from this" (flashcards, or a practice set saved to Practice).
-- Jami page: ask about your material, drafts "Waiting for your OK", "Revision plan" (Jami plans revision around exam dates), and "Personalise Jami" (what you study, how Jami teaches, notes for every subject, what Jami remembers -- memory can be corrected, forgotten or switched off).
+- Jami page: ask about your material, drafts "Waiting for your OK", "Revision plan" (Jami plans revision around exam dates), and "Your Jami", a tab of its own (first what Jami remembers, as a galaxy per subject -- memory can be corrected, forgotten or switched off; then what you study, how Jami teaches, and notes for every subject).
 - Revision sessions: Jami teaches one topic step by step, with short exercises. Start from Today, a topic page, or "Revision session" in a folder.
 - Topics: concepts that connect cards, notebooks and sources. Goals: "New goal" -- review flashcards, answer practice questions Jami marks, or get a topic to strong; as a total or a daily amount, optionally by a date or before an exam in the plan, with suggested goals to start from. Stars: finishing goals earns stars in your sky. Progress: what needs attention, deck health, practice results.
 - Account: name, reminders, sign-in and data. "Personalise" (appearance): colour theme, background photo, typeface.

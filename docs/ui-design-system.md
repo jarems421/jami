@@ -125,7 +125,7 @@ Tutor is contextual, not a generic chatbot.
 - Tutor messages should be easy to scan.
 - "Make flashcard draft" should feel like a study action, not content spam.
 - Tutor UI should reinforce support without shame.
-- What Tutor remembers is always visible and editable: students see it as a memory map in Personalise Jami (`components/ai/memory-map/`), and can correct, delete or turn it off there.
+- What Tutor remembers is always visible and editable: students see it as a memory map at the top of Your Jami, a view of the Jami page (`components/ai/memory-map/`), and can correct, delete or turn it off there.
 
 ### Progress
 

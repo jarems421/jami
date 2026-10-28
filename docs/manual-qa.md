@@ -213,7 +213,7 @@ it can be judged from a screenshot taken at the right moment.
    may search the web, and one search is used.
 4. Ask Tutor to make flashcards from the conversation. They arrive as drafts to
    accept or discard.
-5. In Personalise Jami (`/dashboard/tutor/personalise`), open the memory map.
+5. In Your Jami (`/dashboard/tutor/personalise`), the memory map is at the top.
    Correct a note, delete one, then turn memory off and confirm Tutor stops
    using it.
 6. Revision planner (`/dashboard/tutor/plan`, design in

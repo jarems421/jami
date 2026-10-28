@@ -87,7 +87,7 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * Tutor's memory across chats: what a student likes, finds hard, is aiming
    * for and said they would do next, plus their other recent chats. On by the
    * owner's decision on 30 September 2026, and on for every student until they
-   * turn it off in Personalise Jami. Off here removes it from every prompt and
+   * turn it off in Your Jami. Off here removes it from every prompt and
    * stops every write, without deleting what is stored.
    */
   enableTutorMemory: true,

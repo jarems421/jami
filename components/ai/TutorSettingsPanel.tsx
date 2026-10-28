@@ -120,7 +120,7 @@ export default function TutorSettingsPanel({
     >
       <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-4">
         <h2 className="min-w-0 truncate text-base font-medium tracking-tight text-text-primary">
-          Personalise Jami
+          Your Jami
         </h2>
         {onBack ? (
           <Button type="button" variant="ghost" size="sm" onClick={onBack}>

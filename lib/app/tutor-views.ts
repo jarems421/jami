@@ -43,6 +43,20 @@ export const TUTOR_VIEWS: TutorView[] = [
         },
       ]
     : []),
+  /*
+   * What Jami remembers about the student and how it teaches them, as a view
+   * of its own rather than a settings button in the corner: the memory galaxy
+   * is the student's, and it should be as easy to find as asking.
+   */
+  ...(featureFlags.enableTutorPersonalisation
+    ? [
+        {
+          href: "/dashboard/tutor/personalise",
+          label: "Your Jami",
+          detail: "What Jami remembers and how it teaches you",
+        },
+      ]
+    : []),
   {
     href: "/dashboard/library",
     label: "Sources",

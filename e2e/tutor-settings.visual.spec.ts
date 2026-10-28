@@ -5,7 +5,7 @@ import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./fixtures";
 const screenshotDirectory = "test-results/tutor-settings";
 
 /**
- * Personalise Jami, at the three widths the design system asks about.
+ * Your Jami (memory and how Jami teaches), at the three widths the design system asks about.
  *
  * Tutor's settings were a drawer on the Tutor page; they are a page of their
  * own now, opened from it. This runs whenever Tutor personalisation is enabled
@@ -30,7 +30,7 @@ async function signIn(page: Page) {
   await page.waitForURL(/\/dashboard$/, { timeout: 45_000 });
 }
 
-test("Personalise Jami holds up at every width", async ({ page }) => {
+test("Your Jami holds up at every width", async ({ page }) => {
   mkdirSync(screenshotDirectory, { recursive: true });
 
   const errors: Error[] = [];
@@ -42,7 +42,7 @@ test("Personalise Jami holds up at every width", async ({ page }) => {
     page.getByRole("heading", { name: "Jami", level: 1 })
   ).toBeVisible({ timeout: 45_000 });
 
-  await page.getByRole("link", { name: "Personalise Jami" }).click();
+  await page.getByRole("link", { name: /Your Jami/ }).first().click();
   await page.waitForURL(/\/dashboard\/tutor\/personalise$/, { timeout: 45_000 });
   await expect(page.getByText("How Jami teaches you")).toBeVisible({ timeout: 45_000 });
 

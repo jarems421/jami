@@ -116,6 +116,16 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
     }
     expect(TUTOR_TITLE).toBe("Jami");
   });
+
+  it("gives Your Jami a tab of its own, with memory at the top", () => {
+    const personalise = read("components/ai/TutorPersonaliseWorkspace.tsx");
+    expect(personalise).toContain("views={TUTOR_VIEWS}");
+    expect(personalise.indexOf("<TutorMemoryPanel")).toBeLessThan(
+      personalise.indexOf("<TutorStudyProfileForm")
+    );
+    // A tab, not a settings button in the corner of the ask page.
+    expect(tutorPage).not.toContain('href="/dashboard/tutor/personalise"');
+  });
 });
 
 /**

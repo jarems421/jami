@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
-import { SettingsIcon } from "@/components/ai/JamiAssistantIcons";
 import TutorAskPanel from "@/components/ai/TutorAskPanel";
 import TutorDoor from "@/components/ai/TutorDoor";
 import TutorSourcePicker from "@/components/ai/TutorSourcePicker";
@@ -15,7 +14,6 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { useUser } from "@/components/providers/UserProvider";
 import {
   Button,
-  ButtonLink,
   EmptyState,
   FeedbackBanner,
   JamiTutorIcon,
@@ -195,16 +193,6 @@ export default function TutorPage() {
       backLabel="Today"
       width="xl"
       contentClassName="space-y-5"
-      action={
-        featureFlags.enableTutorPersonalisation ? (
-          <ButtonLink href="/dashboard/tutor/personalise" variant="surface" size="sm">
-            <span className="mr-2 inline-grid place-items-center text-text-muted">
-              <SettingsIcon />
-            </span>
-            Personalise Jami
-          </ButtonLink>
-        ) : undefined
-      }
     >
       {feedback ? (
         <FeedbackBanner

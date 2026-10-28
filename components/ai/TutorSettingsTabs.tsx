@@ -174,7 +174,7 @@ export default function TutorSettingsTabs({
   return (
     <div
       role="tablist"
-      aria-label="Personalise Jami"
+      aria-label="Your Jami"
       // Two by two for four: four tiles in a row left each too narrow to say anything.
       className={`grid ${VIEWS.length === 4 ? "grid-cols-2" : "grid-cols-3"} gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1`}
     >
