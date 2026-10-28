@@ -14,7 +14,7 @@
 <p align="center">
   <a href="https://jami.study"><strong>Open Jami</strong></a>
   &middot;
-  <a href="https://github.com/jarems421/jami-flashcards"><strong>Source</strong></a>
+  <a href="https://github.com/jarems421/jami"><strong>Source</strong></a>
 </p>
 
 <p align="center">
@@ -391,8 +391,8 @@ it). Everything else is in `docs/`:
 ### Setup
 
 ```bash
-git clone https://github.com/jarems421/jami-flashcards.git
-cd jami-flashcards
+git clone https://github.com/jarems421/jami.git
+cd jami
 npm ci
 cp .env.example .env.local   # then fill in your own values
 npm run dev

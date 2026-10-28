@@ -74,7 +74,7 @@ async function seedData() {
 describe("Firestore security rules", () => {
   beforeAll(async () => {
     testEnv = await initializeTestEnvironment({
-      projectId: "demo-jami-flashcards",
+      projectId: "demo-jami",
       firestore: { rules },
     });
   });

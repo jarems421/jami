@@ -22,7 +22,7 @@ function blob(type: string, content = "notebook-file") {
 describe("Storage security rules", () => {
   beforeAll(async () => {
     testEnv = await initializeTestEnvironment({
-      projectId: "demo-jami-flashcards-storage",
+      projectId: "demo-jami-storage",
       storage: { rules: storageRules },
     });
   });
