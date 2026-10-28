@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import type { DocumentReference, Transaction } from "firebase-admin/firestore";
 import {
   checkStoredEmailCode,
   decideEmailCodeSend,
@@ -17,9 +18,10 @@ import {
 import { getAdminDb } from "@/services/firebase/admin";
 
 /**
- * Where emailed sign-up codes live between being sent and being typed back.
+ * Where emailed sign-up codes live between being sent and being typed back,
+ * and the sending limits for them and for password-reset emails.
  *
- * One document per address, keyed by a hash, so the collection
+ * One document per address and purpose, keyed by a hash, so the collection
  * never holds an email address in the clear -- and never the code either, only
  * a salted hash of it. Both collections are server-only in the rules; the
  * Admin SDK is the only thing that reads or writes them.
@@ -65,6 +67,81 @@ function readStoredCode(data: Record<string, unknown> | undefined): StoredEmailC
   };
 }
 
+type SendClaim =
+  | { allowed: false; retryAfterSeconds: number }
+  | {
+      allowed: true;
+      /** The address document's new sending history, for the caller to write. */
+      address: { lastSentAt: number; windowStartedAt: number; sendsInWindow: number };
+    };
+
+/**
+ * Whether one more email may go to an address, read and counted inside the
+ * caller's transaction.
+ *
+ * `senderRef` is where the request came from (its IP), so one visitor cannot
+ * send mail to a hundred different inboxes; sign-up codes and reset links
+ * share that ceiling. The sender's count is written here, the address's is
+ * handed back so the caller can write it with whatever else that document
+ * holds.
+ */
+async function claimSend(
+  transaction: Transaction,
+  addressRef: DocumentReference,
+  senderRef: DocumentReference | null,
+  now: number
+): Promise<SendClaim> {
+  const addressSnapshot = await transaction.get(addressRef);
+  const senderSnapshot = senderRef ? await transaction.get(senderRef) : null;
+
+  const toAddress = decideEmailCodeSend(
+    readHistory(addressSnapshot.data()),
+    now,
+    EMAIL_CODE_MAX_SENDS_PER_HOUR
+  );
+  if (!toAddress.allowed) {
+    return { allowed: false, retryAfterSeconds: toAddress.retryAfterSeconds };
+  }
+
+  // No cooldown per sender: one household can reasonably sign up two people
+  // a minute apart. The hourly ceiling is what matters there.
+  const fromSender = senderRef
+    ? decideEmailCodeSend(
+        readHistory(senderSnapshot?.data()),
+        now,
+        EMAIL_CODE_MAX_SENDS_PER_SENDER_PER_HOUR,
+        0
+      )
+    : null;
+  if (fromSender && !fromSender.allowed) {
+    return { allowed: false, retryAfterSeconds: fromSender.retryAfterSeconds };
+  }
+
+  if (senderRef && fromSender?.allowed) {
+    transaction.set(senderRef, {
+      lastSentAt: now,
+      windowStartedAt: fromSender.windowStartedAt,
+      sendsInWindow: fromSender.sendsInWindow,
+      updatedAt: now,
+    });
+  }
+
+  return {
+    allowed: true,
+    address: {
+      lastSentAt: now,
+      windowStartedAt: toAddress.windowStartedAt,
+      sendsInWindow: toAddress.sendsInWindow,
+    },
+  };
+}
+
+function senderRefFor(senderKey: string | null) {
+  return senderKey
+    ? getAdminDb().collection(SENDERS).doc(sha256(`sender:${senderKey}`))
+    : null;
+}
+
 export type EmailCodeIssue =
   | { issued: true; code: string }
   | { issued: false; retryAfterSeconds: number };
@@ -73,9 +150,8 @@ export type EmailCodeIssue =
  * Makes a new code for an address, replacing any earlier one, if the limits
  * allow another to be sent.
  *
- * `senderKey` identifies where the request came from (its IP), so one visitor
- * cannot send codes to a hundred different inboxes. The caller sends the mail;
- * if that fails it hands the send back with `withdrawEmailCode`.
+ * The caller sends the mail; if that fails it hands the send back with
+ * `withdrawEmailCode`.
  */
 export async function issueEmailCode(input: {
   email: string;
@@ -83,42 +159,18 @@ export async function issueEmailCode(input: {
   now?: number;
 }): Promise<EmailCodeIssue> {
   const now = input.now ?? Date.now();
-  const db = getAdminDb();
   const addressRef = codeRef(input.email);
-  const senderRef = input.senderKey
-    ? db.collection(SENDERS).doc(sha256(`sender:${input.senderKey}`))
-    : null;
+  const senderRef = senderRefFor(input.senderKey);
   const code = String(randomInt(0, 10 ** EMAIL_CODE_LENGTH)).padStart(
     EMAIL_CODE_LENGTH,
     "0"
   );
   const salt = randomBytes(16).toString("hex");
 
-  return db.runTransaction(async (transaction) => {
-    const addressSnapshot = await transaction.get(addressRef);
-    const senderSnapshot = senderRef ? await transaction.get(senderRef) : null;
-
-    const toAddress = decideEmailCodeSend(
-      readHistory(addressSnapshot.data()),
-      now,
-      EMAIL_CODE_MAX_SENDS_PER_HOUR
-    );
-    if (!toAddress.allowed) {
-      return { issued: false, retryAfterSeconds: toAddress.retryAfterSeconds };
-    }
-
-    // No cooldown per sender: one household can reasonably sign up two people
-    // a minute apart. The hourly ceiling is what matters there.
-    const fromSender = senderRef
-      ? decideEmailCodeSend(
-          readHistory(senderSnapshot?.data()),
-          now,
-          EMAIL_CODE_MAX_SENDS_PER_SENDER_PER_HOUR,
-          0
-        )
-      : null;
-    if (fromSender && !fromSender.allowed) {
-      return { issued: false, retryAfterSeconds: fromSender.retryAfterSeconds };
+  return getAdminDb().runTransaction(async (transaction) => {
+    const claim = await claimSend(transaction, addressRef, senderRef, now);
+    if (!claim.allowed) {
+      return { issued: false, retryAfterSeconds: claim.retryAfterSeconds };
     }
 
     transaction.set(addressRef, {
@@ -126,21 +178,35 @@ export async function issueEmailCode(input: {
       salt,
       expiresAt: now + EMAIL_CODE_TTL_MS,
       attempts: 0,
-      lastSentAt: now,
-      windowStartedAt: toAddress.windowStartedAt,
-      sendsInWindow: toAddress.sendsInWindow,
+      ...claim.address,
       updatedAt: now,
     });
-    if (senderRef && fromSender?.allowed) {
-      transaction.set(senderRef, {
-        lastSentAt: now,
-        windowStartedAt: fromSender.windowStartedAt,
-        sendsInWindow: fromSender.sendsInWindow,
-        updatedAt: now,
-      });
-    }
-
     return { issued: true, code };
+  });
+}
+
+/**
+ * Counts a password-reset email against the same limits as a sign-up code,
+ * before anything is known about whether the address has an account -- so
+ * the answer says nothing about that either. Nothing secret is stored: the
+ * reset link itself is Firebase's.
+ */
+export async function claimPasswordResetSend(input: {
+  email: string;
+  senderKey: string | null;
+  now?: number;
+}): Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }> {
+  const now = input.now ?? Date.now();
+  const addressRef = getAdminDb()
+    .collection(CODES)
+    .doc(sha256(`password-reset:${normaliseEmail(input.email)}`));
+  const senderRef = senderRefFor(input.senderKey);
+
+  return getAdminDb().runTransaction(async (transaction) => {
+    const claim = await claimSend(transaction, addressRef, senderRef, now);
+    if (!claim.allowed) return claim;
+    transaction.set(addressRef, { ...claim.address, updatedAt: now });
+    return { allowed: true };
   });
 }
 

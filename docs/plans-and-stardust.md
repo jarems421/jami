@@ -527,7 +527,11 @@ item 2:
   payment.
 - **HMRC:** register as self-employed once trading income passes £1,000 a year.
   VAT registration applies at £90,000 turnover.
-- **Email:** Jami's own mail goes through Resend from `jami.study`. Check the
+- **Email:** Jami's own mail -- sign-up codes and password-reset links
+  (`/api/auth/password-reset`) -- goes through Resend from `jami.study`, in
+  the frame in `lib/auth/email-layout.ts`. Firebase still sends its own mail
+  for an email change, so its templates (Authentication > Templates) need
+  "Jami" as the sender name and the project's public-facing name. Check the
   plan's daily and monthly sending limits before growth. Stripe sends receipts
   itself.
 - **UK subscription rules (DMCC Act) from Spring 2027:** renewal reminders,

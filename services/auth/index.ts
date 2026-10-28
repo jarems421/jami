@@ -9,7 +9,6 @@ import {
   verifyPasswordResetCode,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
-  sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -317,9 +316,13 @@ export const signInWithEmail = async (email: string, password: string) => {
   return result.user;
 };
 
+/**
+ * Asks Jami to email a reset link. Jami's server sends it from jami.study
+ * rather than leaving it to Firebase's mailer, whose generic sender and
+ * signature ended up in junk folders.
+ */
 export const sendPasswordReset = async (email: string) => {
-  await initAuth();
-  await withAuthTimeout(sendPasswordResetEmail(auth, email.trim()));
+  await postAuthRoute("/api/auth/password-reset", { email: email.trim() });
 };
 
 export class AccountDeletionError extends Error {

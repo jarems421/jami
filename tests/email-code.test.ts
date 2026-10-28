@@ -15,6 +15,10 @@ import {
 } from "@/lib/auth/email-code";
 import { suggestEmailCorrection } from "@/lib/auth/email-typos";
 import { buildCodeEmail } from "@/lib/auth/code-email";
+import {
+  buildPasswordResetEmail,
+  buildPasswordResetUrl,
+} from "@/lib/auth/password-reset-email";
 
 const HOUR_MS = 60 * 60_000;
 const NOW = 1_800_000_000_000;
@@ -180,5 +184,31 @@ describe("the code email", () => {
     const email = buildCodeEmail({ code: "111111" });
     expect(email.html).not.toMatch(/<img|<a\s|href=|src=|https?:\/\//i);
     expect(email.text).not.toMatch(/https?:\/\//i);
+  });
+
+  it("is signed by the Jami team", () => {
+    const email = buildCodeEmail({ code: "111111" });
+    expect(email.html).toContain("The Jami team");
+    expect(email.text).toContain("The Jami team");
+  });
+});
+
+describe("the password reset email", () => {
+  const resetUrl = buildPasswordResetUrl("https://jami.study", "a&b=c");
+
+  it("links only to Jami's own reset page, with the code safely encoded", () => {
+    expect(resetUrl).toBe("https://jami.study/auth/action?mode=resetPassword&oobCode=a%26b%3Dc");
+    const email = buildPasswordResetEmail({ resetUrl, email: "sam@example.com" });
+    const links = [...email.html.matchAll(/https?:\/\/[^"<\s]+/g)].map(([link]) => link);
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) expect(link.startsWith("https://jami.study/")).toBe(true);
+    expect(email.text).toContain(resetUrl);
+  });
+
+  it("carries no image and is signed by the Jami team", () => {
+    const email = buildPasswordResetEmail({ resetUrl, email: "sam@example.com" });
+    expect(email.html).not.toMatch(/<img|src=/i);
+    expect(email.subject).toBe("Reset your Jami password");
+    expect(email.text).toContain("The Jami team");
   });
 });

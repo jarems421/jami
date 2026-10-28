@@ -45,7 +45,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/services/firebase/admin", () => ({ getAdminDb: () => mocks.db }));
 
-const { issueEmailCode, redeemEmailCode, withdrawEmailCode } = await import(
+const { claimPasswordResetSend, issueEmailCode, redeemEmailCode, withdrawEmailCode } = await import(
   "@/services/auth/email-code.server"
 );
 const { EMAIL_CODE_MAX_ATTEMPTS, EMAIL_CODE_TTL_MS } = await import("@/lib/auth/email-code");
@@ -143,5 +143,29 @@ describe("email code store", () => {
     await expect(
       issueEmailCode({ email: EMAIL, senderKey: null, now: NOW + 1_000 })
     ).resolves.toMatchObject({ issued: true });
+  });
+
+  it("holds reset emails to the cooldown without touching a sign-up code", async () => {
+    const code = await issue();
+    await expect(
+      claimPasswordResetSend({ email: EMAIL, senderKey: null, now: NOW + 1_000 })
+    ).resolves.toEqual({ allowed: true });
+    await expect(
+      claimPasswordResetSend({ email: EMAIL, senderKey: null, now: NOW + 5_000 })
+    ).resolves.toMatchObject({ allowed: false });
+    await expect(
+      redeemEmailCode({ email: EMAIL, code, now: NOW + 6_000 })
+    ).resolves.toEqual({ redeemed: true });
+    expect([...mocks.store.keys()].join(" ")).not.toContain(EMAIL);
+  });
+
+  it("counts reset emails and sign-up codes from one sender together", async () => {
+    for (let index = 0; index < 10; index += 1) {
+      await issueEmailCode({ email: `a${index}@example.com`, senderKey: "198.51.100.2", now: NOW + index });
+      await claimPasswordResetSend({ email: `b${index}@example.com`, senderKey: "198.51.100.2", now: NOW + index });
+    }
+    await expect(
+      claimPasswordResetSend({ email: "c@example.com", senderKey: "198.51.100.2", now: NOW + 20 })
+    ).resolves.toMatchObject({ allowed: false });
   });
 });

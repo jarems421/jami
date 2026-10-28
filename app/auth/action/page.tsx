@@ -26,6 +26,9 @@ import { Button } from "@/components/ui";
 
 type Status = "checking" | "ready" | "working" | "done" | "failed";
 
+const PASSWORD_MISMATCH_MESSAGE =
+  "The two passwords don't match. Type the same new password in both boxes.";
+
 /**
  * The badge at the top of the card: a spinner while the link is checked, a
  * key while a new password is wanted, and a tick or a warning once it is over.
@@ -101,6 +104,7 @@ function AuthActionContent() {
   );
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -144,6 +148,12 @@ function AuthActionContent() {
       setMessage(problem);
       return;
     }
+    // Typed blind, a slip here locks the student out with a password they
+    // never meant -- so it is typed twice, and nothing is sent until they agree.
+    if (password !== confirmation) {
+      setMessage(PASSWORD_MISMATCH_MESSAGE);
+      return;
+    }
 
     setStatus("working");
     setMessage(null);
@@ -160,9 +170,12 @@ function AuthActionContent() {
           : getAuthActionErrorMessage(getAuthErrorCode(error))
       );
     }
-  }, [accountEmail, code, password]);
+  }, [accountEmail, code, confirmation, password]);
 
   const assessment = assessPassword(password, accountEmail ?? "");
+  // Said as soon as the second box is as long as the first, not on every key.
+  const visiblyMismatched =
+    confirmation.length >= password.length && confirmation.length > 0 && confirmation !== password;
   const showResetForm = mode === "resetPassword" && (status === "ready" || status === "working");
 
   return (
@@ -211,6 +224,25 @@ function AuthActionContent() {
               }}
             />
             {password ? <PasswordStrength assessment={assessment} /> : null}
+          </div>
+          <div>
+            <PasswordField
+              label="Confirm new password"
+              placeholder="Type it again"
+              value={confirmation}
+              autoComplete="new-password"
+              aria-invalid={visiblyMismatched || undefined}
+              aria-describedby={visiblyMismatched ? "password-mismatch" : undefined}
+              onChange={(event) => {
+                setConfirmation(event.target.value);
+                setMessage(null);
+              }}
+            />
+            {visiblyMismatched ? (
+              <p id="password-mismatch" className="mt-2 text-xs text-[var(--color-error-mark)]">
+                These don&apos;t match yet.
+              </p>
+            ) : null}
           </div>
           <Button
             type="submit"

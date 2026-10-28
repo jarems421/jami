@@ -20,7 +20,10 @@ import {
 } from "@/services/email/send-email.server";
 import { getAdminAuth } from "@/services/firebase/admin";
 
-/** What the two sign-up routes -- send a code, redeem it -- have in common. */
+/**
+ * What the auth routes that send mail -- sign-up codes, password resets --
+ * have in common.
+ */
 
 const log = createLogger({ area: "auth.email-code" });
 
@@ -62,7 +65,7 @@ export function invalidRequestResponse() {
 }
 
 /** The first address in the proxy chain: the visitor, on Vercel. */
-function getSenderKey(request: NextRequest) {
+export function getSenderKey(request: NextRequest) {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   return forwarded || request.headers.get("x-real-ip")?.trim() || null;
 }

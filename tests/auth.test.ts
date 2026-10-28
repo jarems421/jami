@@ -149,14 +149,25 @@ describe("account recovery and deletion", () => {
     authMocks.signOut.mockResolvedValue(undefined);
   });
 
-  it("sends a Firebase password reset email", async () => {
+  it("asks Jami's server to send the password reset email", async () => {
     const { sendPasswordReset } = await import("@/services/auth");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ ok: true }));
 
-    await expect(sendPasswordReset(" student@example.com ")).resolves.toBeUndefined();
-    expect(authMocks.sendPasswordResetEmail).toHaveBeenCalledWith(
-      authMocks.auth,
-      "student@example.com"
-    );
+    try {
+      await expect(sendPasswordReset(" student@example.com ")).resolves.toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/password-reset",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ email: "student@example.com" }),
+        })
+      );
+      expect(authMocks.sendPasswordResetEmail).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it("reauthenticates password accounts before retrying deletion", async () => {

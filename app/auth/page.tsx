@@ -164,16 +164,10 @@ export default function AuthPage() {
     try {
       await sendPasswordReset(trimmedEmail);
       setNotice(
-        "If an account exists for that email, a link to reset its password is on its way."
+        "If an account exists for that email, a link to reset its password is on its way. It comes from noreply@jami.study; check junk if it hasn't arrived in a minute."
       );
     } catch (nextError) {
-      if (getAuthErrorCode(nextError) === "auth/user-not-found") {
-        setNotice(
-          "If an account exists for that email, a link to reset its password is on its way."
-        );
-      } else {
-        setError(getFriendlyAuthError(getAuthErrorCode(nextError)));
-      }
+      setError(getAuthErrorMessage(nextError));
     } finally {
       setResetLoading(false);
     }

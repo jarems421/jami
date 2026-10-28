@@ -146,13 +146,13 @@ export function decideEmailCodeSend(
   return { allowed: true, windowStartedAt, sendsInWindow: sendsInWindow + 1 };
 }
 
-/** "Wait 45 seconds" / "Wait 12 minutes", for a code asked for too soon. */
-export function describeEmailCodeWait(retryAfterSeconds: number) {
+/** "Wait 45 seconds" / "Wait 12 minutes", for a code or email asked for too soon. */
+export function describeEmailCodeWait(retryAfterSeconds: number, thing = "code") {
   const seconds = Math.max(1, Math.ceil(retryAfterSeconds));
   if (seconds < 90) {
-    return `Wait ${seconds} ${seconds === 1 ? "second" : "seconds"} before asking for another code.`;
+    return `Wait ${seconds} ${seconds === 1 ? "second" : "seconds"} before asking for another ${thing}.`;
   }
-  return `Wait ${Math.ceil(seconds / 60)} minutes before asking for another code.`;
+  return `Wait ${Math.ceil(seconds / 60)} minutes before asking for another ${thing}.`;
 }
 
 /** The live code for an address, as stored: never the code itself. */
