@@ -9,9 +9,9 @@ import OfflineBanner from "@/components/layout/OfflineBanner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Jami Flashcards",
+  title: "Jami",
   description: "Practice real GCSE and A-level exam questions, keep what you learn as flashcards, and know what to revise next.",
-  applicationName: "Jami Flashcards",
+  applicationName: "Jami",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Jami Flashcards",
+    name: "Jami",
     short_name: "Jami",
     description: "Practice real GCSE and A-level exam questions, keep what you learn as flashcards, and know what to revise next.",
     start_url: "/",

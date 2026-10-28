@@ -191,13 +191,13 @@ self.addEventListener("push", (event) => {
       return event.data ? event.data.json() : {};
     } catch {
       return {
-        title: "Jami Flashcards",
+        title: "Jami",
         body: event.data ? event.data.text() : "Your daily study digest is ready.",
       };
     }
   })();
 
-  const title = payload.title || "Jami Flashcards";
+  const title = payload.title || "Jami";
   const options = {
     body: payload.body || "Your daily study digest is ready.",
     icon: payload.icon || "/icons/notification-icon-192.png",

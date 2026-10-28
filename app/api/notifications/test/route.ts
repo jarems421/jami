@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         await sendPushNotification(
           subscription,
           {
-            title: "Jami Flashcards",
+            title: "Jami",
             body: "Test notification from this device.",
             url: "/dashboard/profile",
             tag: "notification-test",
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
         await sendPushNotification(
           subscription,
           {
-            title: "Jami Flashcards",
+            title: "Jami",
             body: "Test notification from your installed app.",
             url: "/dashboard/profile",
             tag: "notification-test",
