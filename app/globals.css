@@ -1485,10 +1485,14 @@
 
   /* Light that follows the pointer across the demo card. */
   .landing-spotlight::after {
+    /* Several stops, each fainter, so the light thins out with no edge. */
     background: radial-gradient(
-      6rem circle at var(--landing-spot-x, 50%) var(--landing-spot-y, 0%),
-      rgba(200, 185, 255, 0.12),
-      transparent 70%
+      circle 14rem at var(--landing-spot-x, 50%) var(--landing-spot-y, 0%),
+      rgba(200, 185, 255, 0.11) 0%,
+      rgba(200, 185, 255, 0.07) 22%,
+      rgba(200, 185, 255, 0.035) 45%,
+      rgba(200, 185, 255, 0.012) 70%,
+      transparent 100%
     );
     border-radius: inherit;
     content: "";

@@ -653,8 +653,14 @@ export default function LandingPreview() {
     const rect = stage.getBoundingClientRect();
     const x = (event.clientX - rect.left) / rect.width;
     const y = (event.clientY - rect.top) / rect.height;
-    stage.style.setProperty("--landing-spot-x", `${(x * 100).toFixed(1)}%`);
-    stage.style.setProperty("--landing-spot-y", `${(y * 100).toFixed(1)}%`);
+    // The light is drawn inside the card, not the whole stage (which also
+    // holds the steps below it), so it is placed from the card's own corner.
+    const card = stage.querySelector<HTMLElement>(".landing-spotlight");
+    if (card) {
+      const cardRect = card.getBoundingClientRect();
+      card.style.setProperty("--landing-spot-x", `${(event.clientX - cardRect.left).toFixed(0)}px`);
+      card.style.setProperty("--landing-spot-y", `${(event.clientY - cardRect.top).toFixed(0)}px`);
+    }
     stage.style.setProperty("--landing-lean-x", `${((0.5 - y) * 5).toFixed(2)}deg`);
     stage.style.setProperty("--landing-lean-y", `${((x - 0.5) * 7).toFixed(2)}deg`);
   };
