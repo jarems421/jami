@@ -37,18 +37,20 @@ export type NotebookObjectCardProps = {
   editorPreview?: boolean;
 };
 
-function NotebookCardInner({
-  title,
-  typeLabel,
+/**
+ * The notebook itself -- cover, spine and the page block bound into it -- in
+ * the notebook's colour and paper. Drawn on its own so an empty Practice page
+ * can show the same notebook a student is about to open.
+ */
+export function NotebookArt({
   color,
   icon,
   pageColor,
   pageStyle,
-  pageCount,
-  updatedLabel,
-  compact,
-  editorPreview,
-}: NotebookObjectCardProps) {
+  sizeClassName = "h-28 w-[6.1rem]",
+}: Pick<NotebookObjectCardProps, "color" | "icon" | "pageColor" | "pageStyle"> & {
+  sizeClassName?: string;
+}) {
   const preset = getObjectColorPreset(color);
   const paperFill = getNotebookPaperPalette(pageColor).paper;
   const paperIsDark = getNotebookPaperPalette(pageColor).isDark;
@@ -75,45 +77,68 @@ function NotebookCardInner({
           : { backgroundColor: paperFill };
 
   return (
+    <div className="flex items-center justify-center">
+      <div className={cx("relative", sizeClassName)}>
+        {/*
+          * The page block, bound into the cover. Both sheets are the notebook's
+          * own paper, centred on the cover and tucked in evenly top and bottom,
+          * so they read as its pages rather than cards sliding out from behind
+          * -- they used to sit lower than the cover and hang past its foot.
+          */}
+        <div
+          className={cx("absolute inset-y-[6%] left-[10%] right-0 rounded-r-sm border", paperEdge)}
+          style={paperStyle}
+          aria-hidden="true"
+        />
+        <div
+          className={cx("absolute inset-y-[3%] left-[10%] right-[5%] rounded-r-sm border", paperEdge)}
+          style={paperStyle}
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-y-0 left-0 h-full w-[86%] origin-left rounded-sm border border-black/15 shadow-e1 transition duration-200 group-hover/notebook:-rotate-[0.65deg]"
+          style={{
+            backgroundColor: preset.base,
+          }}
+        >
+          <div className="absolute inset-y-0 left-0 w-3 rounded-l-sm border-r border-black/15 bg-black/10" aria-hidden="true" />
+          <div className="absolute inset-y-2 right-1.5 w-px bg-white/28" aria-hidden="true" />
+          <ObjectIcon
+            icon={icon}
+            className="absolute left-[53%] top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-white/88"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotebookCardInner({
+  title,
+  typeLabel,
+  color,
+  icon,
+  pageColor,
+  pageStyle,
+  pageCount,
+  updatedLabel,
+  compact,
+  editorPreview,
+}: NotebookObjectCardProps) {
+  return (
     <div
       className={cx(
         "group/notebook mx-auto flex h-full w-full max-w-[8.35rem] cursor-pointer flex-col items-center rounded-lg border border-transparent bg-transparent px-2 py-2.5 text-center transition duration-200 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]",
         editorPreview ? "min-h-[7rem] max-w-[6rem] px-1.5 py-2" : compact ? "min-h-[9.6rem]" : "min-h-[10.9rem]",
       )}
     >
-      <div className="flex items-center justify-center">
-        <div className={cx("relative", editorPreview ? "h-[4.8rem] w-[4.6rem]" : compact ? "h-24 w-[5.45rem]" : "h-28 w-[6.1rem]")}>
-          {/*
-            * The page block, bound into the cover. Both sheets are the notebook's
-            * own paper, centred on the cover and tucked in evenly top and bottom,
-            * so they read as its pages rather than cards sliding out from behind
-            * -- they used to sit lower than the cover and hang past its foot.
-            */}
-          <div
-            className={cx("absolute inset-y-[6%] left-[10%] right-0 rounded-r-sm border", paperEdge)}
-            style={paperStyle}
-            aria-hidden="true"
-          />
-          <div
-            className={cx("absolute inset-y-[3%] left-[10%] right-[5%] rounded-r-sm border", paperEdge)}
-            style={paperStyle}
-            aria-hidden="true"
-          />
-          <div
-            className="absolute inset-y-0 left-0 h-full w-[86%] origin-left rounded-sm border border-black/15 shadow-e1 transition duration-200 group-hover/notebook:-rotate-[0.65deg]"
-            style={{
-              backgroundColor: preset.base,
-            }}
-          >
-            <div className="absolute inset-y-0 left-0 w-3 rounded-l-sm border-r border-black/15 bg-black/10" aria-hidden="true" />
-            <div className="absolute inset-y-2 right-1.5 w-px bg-white/28" aria-hidden="true" />
-            <ObjectIcon
-              icon={icon}
-              className="absolute left-[53%] top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-white/88"
-            />
-          </div>
-        </div>
-      </div>
+      <NotebookArt
+        color={color}
+        icon={icon}
+        pageColor={pageColor}
+        pageStyle={pageStyle}
+        sizeClassName={editorPreview ? "h-[4.8rem] w-[4.6rem]" : compact ? "h-24 w-[5.45rem]" : "h-28 w-[6.1rem]"}
+      />
 
       <div className={cx("w-full space-y-1", editorPreview ? "mt-1.5" : "mt-3")}>
         <div>

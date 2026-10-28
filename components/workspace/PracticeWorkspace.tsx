@@ -28,9 +28,9 @@ import { getActiveTopics } from "@/services/study/topics";
 import { deletePracticePaper } from "@/services/study/practice-papers";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import CreateFolderDialog from "./CreateFolderDialog";
-import FolderObjectCard from "./FolderObjectCard";
+import FolderObjectCard, { FolderArt } from "./FolderObjectCard";
 import NotebookEditorDialog from "./NotebookEditorDialog";
-import { NotebookObjectCard } from "./NotebookObjectCard";
+import { NotebookArt, NotebookObjectCard } from "./NotebookObjectCard";
 import PastPaperPracticeSection from "@/components/practice/PastPaperPracticeSection";
 import PracticePaperProgress from "@/components/practice/PracticePaperProgress";
 import ReadyToPractise from "@/components/practice/ReadyToPractise";
@@ -345,7 +345,7 @@ export default function PracticeWorkspace() {
               </div>
             ) : (
               <EmptyState
-                emoji="📓"
+                illustration={<NotebookArt pageStyle="lined" />}
                 title="Create a folder, then open a notebook"
                 description="Your subject folder is where notebooks and the rest of your study material live."
                 variant="compact"
@@ -414,7 +414,7 @@ export default function PracticeWorkspace() {
               </>
             ) : (
               <EmptyState
-                emoji="📁"
+                illustration={<FolderArt />}
                 title="Create your first study space"
                 description="Start with one broad subject."
                 action={
