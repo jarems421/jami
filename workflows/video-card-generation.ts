@@ -90,6 +90,8 @@ async function failVideoGeneration(uid: string, jobId: string, reason: string) {
     source_card_no_focus_match: "Jami couldn’t find enough material for that focus. Try a broader focus or leave it blank.",
     source_card_no_usable_cards: "Jami couldn’t make useful cards from this material. Try a source with more teaching detail.",
     source_card_providers_unavailable: "Jami couldn’t finish drafting cards right now. Try again in a moment.",
+    source_card_source_too_large: "This source is too large to check in one import. Split it into smaller files so Jami can cover every section.",
+    source_card_review_too_large: "This source produced more cards than fit in one review. Split it into smaller files to keep all the material covered.",
   };
   const failureMessage = sourceName === "source" && Object.hasOwn(sourceFailureMessages, reason)
     ? sourceFailureMessages[reason]

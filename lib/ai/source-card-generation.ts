@@ -2,15 +2,12 @@ import { repairModelJsonBackslashes, repairModelLatex, unwrapModelJsonObject } f
 import { CARD_TEXT_FORMAT_PROMPT } from "@/lib/ai/response-format";
 import { chunkSourcePages, type SourceTextPage } from "@/lib/ai/source-chunking";
 import { describePageRange, type SourcePageKind } from "@/lib/ai/source-outline";
-import { containment, contentTokens, dedupeNearDuplicates, overlapRatio } from "@/lib/ai/video-card-quality";
-import { VIDEO_CARD_REVIEW_CEILING, type VideoCardDraft, type VideoCardEvidence, type VideoCoverage } from "@/lib/ai/video-card-jobs";
+import { containment, contentTokens, overlapRatio } from "@/lib/ai/video-card-quality";
+import type { VideoCardDraft, VideoCardEvidence, VideoCoverage } from "@/lib/ai/video-card-jobs";
 import { getCardContentKey, getCardFacesError, normalizeCardContentInput } from "@/lib/study/cards";
 
-const MAX_SECTIONS = 9;
-const SECTION_CHARACTERS = 10_000;
-const PAGES_PER_SECTION = 8;
-const MAX_SECTION_CARDS = 18;
-const MAX_EDITOR_CHANGES = 40;
+const SECTION_CHARACTERS = 5_000;
+const PASSAGES_PER_SECTION = 4;
 export const SOURCE_CARD_MAX_VISUAL_PAGES = 80;
 
 export type SourceCardPassage = { id: string; location: string; text: string; visual?: boolean };
@@ -31,22 +28,23 @@ export function buildSourceCardSections(
   const distinctPages = pages.map((page, index) => page.pageNumber || page.heading
     ? { ...page, sectionKey: `section-${index + 1}` }
     : page);
-  const passages: SourceCardPassage[] = chunkSourcePages(distinctPages).map((chunk) => ({
+  const textPassages = chunkSourcePages(distinctPages).map((chunk): SourceCardPassage => ({
     id: `p${chunk.chunkIndex + 1}`,
     location: describePageRange(chunk.pageStart, chunk.pageEnd, pageKind) || `Passage ${chunk.chunkIndex + 1}`,
     text: chunk.text,
   }));
   const pageText = new Map(pages.map(({ pageNumber, text }) => [pageNumber, contentTokens(text)]));
-  passages.push(...visuals.filter((passage) => {
+  const visualPassages = visuals.filter((passage) => {
     const printed = pageText.get(Number(passage.id.slice(1)));
     return !printed || overlapRatio(contentTokens(passage.text), printed) < 1;
-  }));
+  });
+  const passages = [...textPassages, ...visualPassages];
   const sections: SourceCardSection[] = [];
   let section: SourceCardSection = [];
   let size = 0;
 
   for (const passage of passages) {
-    if (size + passage.text.length > SECTION_CHARACTERS || section.length >= PAGES_PER_SECTION) {
+    if (section.length && (size + passage.text.length > SECTION_CHARACTERS || section.length >= PASSAGES_PER_SECTION)) {
       sections.push(section);
       section = [];
       size = 0;
@@ -55,22 +53,18 @@ export function buildSourceCardSections(
     size += passage.text.length;
   }
   if (section.length) sections.push(section);
-  const truncated = sections.length > MAX_SECTIONS;
-  // Spread the reading budget across the document, including its final section.
-  const chosen = truncated
-    ? Array.from({ length: MAX_SECTIONS }, (_, index) => sections[Math.round(index * (sections.length - 1) / (MAX_SECTIONS - 1))])
-    : sections;
-  return { sections: chosen, truncated };
+  return sections;
 }
 
 const COVERAGE: Record<VideoCoverage, string> = {
   focused: "Key points: cover only the learning objectives, central ideas and essential discriminators. Skip ordinary examples and fine detail.",
-  standard: "Balanced: cover each core idea, plus the important definitions, mechanisms, distinctions, conditions and reusable steps of worked examples.",
-  thorough: "In-depth: systematically cover all examinable ideas in this material, including supporting facts, mechanisms, meaningful exceptions, thresholds with their qualifiers, and reusable reasoning steps.",
+  standard: "Balanced: cover every substantive teaching point in scope, including definitions, mechanisms, distinctions, conditions and reusable steps of worked examples. Skip filler and minor incidental details.",
+  thorough: "In-depth: cover every separately testable teaching point in scope, including supporting facts, individual steps, meaningful exceptions, thresholds with their qualifiers, and reusable reasoning steps.",
 };
 
 const CARD_RULES = [
   "Write self-contained active-recall flashcards, one independently gradable idea per card, with a precise cue and a short direct answer. Avoid giving away the answer, generic summaries, yes/no prompts, long lists, and references like 'on this slide'.",
+  "If the answer is a term or pair of terms, describe the relationship or situation on the front without naming the term or listing the pair as choices. Bad: 'What is the superficial/deep axis?' → 'Superficial versus deep'. Good: 'Which two anatomical terms describe positions closer to and farther from the body surface?' → 'Superficial and deep'. Naming a topic in a cue is fine when the answer is a new fact about that topic.",
   "Match the language, terminology and depth of the source or the learner's stated level. Preserve units, qualifiers and domain distinctions. Use plain language where the source is introductory.",
   "Choose the question form for the idea: definitions, why/how mechanisms, compare a meaningful distinction, or apply a rule in a short source-supported scenario. For a worked example, test the reusable decision or step. For clinical teaching, keep differentials and criteria distinct and preserve the teaching context. Never supply missing medical facts or treatment advice from memory.",
   "Copy a short exact supporting quote from the cited passage (up to 360 characters). The quote must support the answer. Use only the supplied material. Reuse a passage when it teaches several distinct things. Return zero cards for irrelevant or non-teaching material.",
@@ -85,29 +79,33 @@ function studentPreferences(coverage: VideoCoverage, focus?: string) {
 
 export function buildSourceDraftPrompt(section: SourceCardSection, coverage: VideoCoverage, focus?: string) {
   return [
-    "Read every passage in this section. Return JSON only: {\"cards\":[{\"front\":string,\"back\":string,\"passageId\":string,\"quote\":string}]}.",
+    "Work through every passage in order. Inventory each independent teaching point first, then write one card per useful point. Return JSON only: {\"items\":[{\"point\":string,\"passageId\":string,\"quote\":string,\"front\":string,\"back\":string}]}. Keep the point and quote and leave front/back empty if no good cue comes to mind.",
     studentPreferences(coverage, focus),
     ...CARD_RULES,
     CARD_TEXT_FORMAT_PROMPT,
-    `Write as many distinct cards as the material warrants, up to ${MAX_SECTION_CARDS} in this section. Skip filler and preserve important details throughout, including the end of the section.`,
+    "A slide can teach multiple useful points. Continue through its bullets, tables and worked steps after covering its main idea. The card count follows the material. Skip decorative or administrative material.",
     JSON.stringify({ learnerPreference: focus ?? "", passages: section }),
   ].join("\n\n");
 }
 
 export function buildSourceReviewPrompt(
-  cards: readonly GroundedSourceCard[],
+  items: readonly SourceCardCandidate[],
   passages: readonly SourceCardPassage[],
   coverage: VideoCoverage,
   focus?: string,
 ) {
   return [
-    "Audit these provisional flashcards independently against the original passages. Return JSON only: {\"drop\":[cardId],\"revise\":[{\"id\":cardId,\"front\":string,\"back\":string,\"passageId\":string,\"quote\":string}],\"add\":[{\"front\":string,\"back\":string,\"passageId\":string,\"quote\":string}]}. Leave sound cards out of the response.",
+    "Independently read each original passage before looking at the existing points and cards. For each slide or passage, compare each testable definition, distinction, step, condition or exception to the cards. Add a card for every worthwhile point that has no usable card, including omissions on slides with several cards already. Ignore headings that teach nothing, filler and out-of-scope material.",
+    "Return JSON only: {\"checkedPassageIds\":[passageId],\"omit\":[{\"passageId\":string,\"reason\":\"no_teaching\"|\"out_of_scope\"|\"already_covered\"}],\"keep\":[itemId],\"drop\":[itemId],\"revise\":[{\"id\":itemId,\"front\":string,\"back\":string,\"passageId\":string,\"quote\":string}],\"add\":[{\"front\":string,\"back\":string,\"passageId\":string,\"quote\":string}]}. List every checked passage. Give each existing item exactly one verdict. Use revise for a useful point with a missing or flawed card and add for a point missing from the inventory. For each passage that will have zero cards, explain why with an omit entry. Use already_covered only if another card in this batch teaches the same material.",
     studentPreferences(coverage, focus),
     ...CARD_RULES,
     CARD_TEXT_FORMAT_PROMPT,
-    "Check that claims, units and conditions are supported by the actual cited passage. Correct or drop unsupported, ambiguous, redundant, out-of-scope, multi-fact or answer-revealing cards. Compare by the fact being tested, even when the prompts use different wording or cite a visual and a text page. For omissions, look across every supplied passage, especially ones that received few or zero cards. Add only distinct, important omissions. Never add a second wording for an existing card: revise the existing card instead.",
-    `Return up to ${MAX_EDITOR_CHANGES} changes per list. Prioritise factual corrections and important omissions.`,
-    JSON.stringify({ learnerPreference: focus ?? "", cards, passages }),
+    "Mentally answer each front without looking at the back. If the required term, pair, value or result is already there, rewrite the front to test recall, even when the student could simply read the answer as a choice. Replace slide-dependent prompts with standalone questions. Correct or discard unsupported claims, misleading wording, duplicates and filler. Check units, direction and qualifiers against the original text.",
+    JSON.stringify({
+      learnerPreference: focus ?? "",
+      items: items.map(({ card, ...point }) => ({ ...point, ...(card ? { front: card.front, back: card.back } : {}) })),
+      passages,
+    }),
   ].join("\n\n");
 }
 
@@ -121,28 +119,64 @@ function normalizeQuote(text: string) {
   return text.normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
-/** Only text from a real passage can be attached as evidence. */
-function parseGroundedCard(item: unknown, id: string, passages: ReadonlyMap<string, SourceCardPassage>): GroundedSourceCard | null {
+type SourceCardCandidate = Pick<GroundedSourceCard, "id" | "passageId" | "quote"> & {
+  point: string;
+  card: GroundedSourceCard | null;
+};
+
+function cueWords(text: string) {
+  return text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+|[<>=≤≥±+−×÷-]/gu) ?? [];
+}
+
+/**
+ * Catch copied answers and short contrast pairs in either order. The judge
+ * handles semantic hints. Work on whole tokens so a short word inside another
+ * word does not erase a genuine question, and preserve mathematical operators.
+ */
+export function sourceCardNeedsRewrite(front: string, back: string) {
+  if (/\b(?:this|the (?:above|following)|above) (?:slide|source|diagram|table|figure|passage|image|page)\b/i.test(front)) return true;
+  if (/\b(?:shown|pictured|labelled|depicted) (?:in|on) the (?:slide|diagram|table|figure|image)\b/i.test(front)) return true;
+  const frontWords = ` ${cueWords(front).join(" ")} `;
+  const withoutArticle = (term: string) => cueWords(term.replace(/^(?:the|a|an)\s+/i, ""));
+  const answer = withoutArticle(back);
+  const contains = (words: string[]) => words.length > 0 && frontWords.includes(` ${words.join(" ")} `);
+  if (contains(answer)) return true;
+  if (answer.length > 8) return false;
+  const pair = back.split(/\b(?:versus|vs\.?|and|or)\b|\s*\/\s*/i);
+  return pair.length === 2 && pair.every((term) => /\p{L}/u.test(term) && contains(withoutArticle(term.trim())));
+}
+
+function parseCitation(item: unknown, passages: ReadonlyMap<string, SourceCardPassage>) {
   if (!item || typeof item !== "object") return null;
-  const { front, back, passageId, quote } = item as Record<string, unknown>;
-  if (typeof front !== "string" || typeof back !== "string" || typeof passageId !== "string" || typeof quote !== "string") return null;
+  const { passageId, quote } = item as Record<string, unknown>;
+  if (typeof passageId !== "string" || typeof quote !== "string") return null;
   const passage = passages.get(passageId);
   const excerpt = normalizeQuote(quote).replace(/^["“]|["”]$/g, "");
   if (!passage || excerpt.length < 8 || excerpt.length > 360 || !normalizeQuote(passage.text).includes(excerpt)) return null;
+  return { passageId, quote: excerpt };
+}
 
+function parseGroundedCard(item: unknown, id: string, passages: ReadonlyMap<string, SourceCardPassage>): GroundedSourceCard | null {
+  const citation = parseCitation(item, passages);
+  if (!citation) return null;
+  const { front, back } = item as Record<string, unknown>;
+  if (typeof front !== "string" || typeof back !== "string") return null;
   const question = normalizeCardContentInput(repairModelLatex(front));
   const answer = normalizeCardContentInput(repairModelLatex(back));
   if (getCardFacesError({ front: question, back: answer }) || question.toLowerCase() === answer.toLowerCase()) return null;
-  return { id, front: question, back: answer, passageId, quote: excerpt };
+  return { id, front: question, back: answer, ...citation };
 }
 
 export function parseSourceCardSection(raw: string, section: SourceCardSection, sectionIndex: number) {
-  const { cards } = readObject(raw);
-  if (!Array.isArray(cards)) throw new Error("invalid_source_card_response");
+  const { items } = readObject(raw);
+  if (!Array.isArray(items)) throw new Error("invalid_source_card_response");
   const passages = new Map(section.map((passage) => [passage.id, passage]));
-  return cards.slice(0, MAX_SECTION_CARDS).flatMap((item, index) => {
-    const card = parseGroundedCard(item, `draft-${sectionIndex}-${index + 1}`, passages);
-    return card ? [card] : [];
+  return items.flatMap((item, index): SourceCardCandidate[] => {
+    const citation = parseCitation(item, passages);
+    if (!citation) return [];
+    const id = `draft-${sectionIndex}-${index + 1}`;
+    const point = typeof item.point === "string" ? item.point.trim().slice(0, 360) : citation.quote;
+    return [{ id, ...citation, point, card: parseGroundedCard(item, id, passages) }];
   });
 }
 
@@ -164,39 +198,63 @@ export function parseSourceVisualPassages(raw: string, pageCount: number): Sourc
   }));
 }
 
-export function applySourceCardReview(raw: string, cards: readonly GroundedSourceCard[], sources: readonly SourceCardPassage[]) {
+export function applySourceCardReview(raw: string, items: readonly SourceCardCandidate[], sources: readonly SourceCardPassage[]) {
   const result = readObject(raw);
-  if (!Array.isArray(result.drop) || !Array.isArray(result.revise) || !Array.isArray(result.add)) {
+  if (!Array.isArray(result.checkedPassageIds) || !Array.isArray(result.omit) || !Array.isArray(result.keep)
+    || !Array.isArray(result.drop) || !Array.isArray(result.revise) || !Array.isArray(result.add)) {
     throw new Error("invalid_source_card_review");
   }
-  const dropped = new Set(result.drop.slice(0, MAX_EDITOR_CHANGES));
+  const checked = new Set(result.checkedPassageIds);
+  const kept = new Set(result.keep);
+  const dropped = new Set(result.drop);
+  const itemIds = new Set(items.map(({ id }) => id));
   const byId = new Map(sources.map((passage) => [passage.id, passage]));
   const edits = new Map<string, GroundedSourceCard>();
-  for (const item of result.revise.slice(0, MAX_EDITOR_CHANGES)) {
-    if (typeof item?.id !== "string") continue;
+  for (const item of result.revise) {
+    if (!itemIds.has(item?.id)) continue;
     const card = parseGroundedCard(item, item.id, byId);
-    if (card) edits.set(card.id, card);
+    if (card && !sourceCardNeedsRewrite(card.front, card.back)) edits.set(card.id, card);
   }
-  const added = result.add.slice(0, MAX_EDITOR_CHANGES).flatMap((item, index) => {
-    const card = parseGroundedCard(item, `review-${index + 1}`, byId);
-    return card ? [card] : [];
+  const reviewed = items.flatMap((item) => {
+    if (dropped.has(item.id)) return [];
+    const card = edits.get(item.id) ?? (kept.has(item.id) ? item.card : null);
+    return card && !sourceCardNeedsRewrite(card.front, card.back) ? [card] : [];
   });
-  return [...cards.filter((card) => !dropped.has(card.id)).map((card) => edits.get(card.id) ?? card), ...added];
+  const coveredIds = new Set(reviewed.map(({ id }) => id));
+  if (sources.some(({ id }) => !checked.has(id))
+    || items.some(({ id }) => !dropped.has(id) && !coveredIds.has(id))) {
+    throw new Error("incomplete_source_card_review");
+  }
+  const added = result.add.flatMap((item, index) => {
+    const card = parseGroundedCard(item, `review-${sources[0].id}-${index + 1}`, byId);
+    return card && !sourceCardNeedsRewrite(card.front, card.back) ? [card] : [];
+  });
+  const cards = [...reviewed, ...added];
+  const withCards = new Set(cards.map(({ passageId }) => passageId));
+  const omitted = new Set(result.omit.flatMap((entry) => entry
+    && ["no_teaching", "out_of_scope", "already_covered"].includes(entry.reason) ? [entry.passageId] : []));
+  if (sources.some(({ id }) => !withCards.has(id) && !omitted.has(id))) {
+    throw new Error("incomplete_source_card_review");
+  }
+  return cards;
 }
 
 export function finishSourceCardBatch(cards: readonly GroundedSourceCard[], passages: readonly SourceCardPassage[], maxCards: number | null) {
   const grouped = new Map<string, GroundedSourceCard[]>();
   for (const card of cards) {
+    if (sourceCardNeedsRewrite(card.front, card.back)) continue;
     const group = grouped.get(card.passageId) ?? [];
     group.push(card);
     grouped.set(card.passageId, group);
   }
-  // First give each passage a place, then take the next card from each.
   const groups = passages.flatMap((passage) => grouped.get(passage.id) ? [grouped.get(passage.id)!] : []);
-  const balanced = Array.from({ length: Math.max(0, ...groups.map((group) => group.length)) },
-    (_, index) => groups.flatMap((group) => group[index] ? [group[index]] : [])).flat();
+  // Keep a slide's cards together in review. An explicit smaller request
+  // gives each passage a turn before taking further cards from it.
+  const ordered = maxCards === null ? groups.flat()
+    : Array.from({ length: Math.max(0, ...groups.map((group) => group.length)) },
+      (_, index) => groups.flatMap((group) => group[index] ? [group[index]] : [])).flat();
   const byId = new Map(passages.map((passage) => [passage.id, passage]));
-  const evidence = new Map(balanced.map((card): [string, VideoCardEvidence] => {
+  const evidence = new Map(ordered.map((card): [string, VideoCardEvidence] => {
     const passage = byId.get(card.passageId)!;
     return [card.id, {
       id: card.id,
@@ -207,23 +265,26 @@ export function finishSourceCardBatch(cards: readonly GroundedSourceCard[], pass
     }];
   }));
   const seen = new Set<string>();
-  const keptFacts: Array<{ quote: Set<string>; answer: Set<string>; answerKey: string }> = [];
-  const candidates: VideoCardDraft[] = balanced.flatMap(({ id, front, back, quote }) => {
+  const keptFacts: Array<{ quote: Set<string>; answer: Set<string>; answerKey: string; qualifiers: string }> = [];
+  const kept: VideoCardDraft[] = ordered.flatMap(({ id, front, back, quote }) => {
     const key = getCardContentKey(front, back);
     if (seen.has(key)) return [];
     const quoteTokens = contentTokens(quote);
     const answer = contentTokens(back);
     const answerKey = getCardContentKey("", back);
+    const qualifiers = [quote, back].map((text) => text.toLowerCase()
+      .match(/\b(?:not|no|never|only|unless|except|without|before|after|under|over|if|lower|higher|increases?|decreases?)\b|\p{N}+(?:[.,]\p{N}+)?|[<>≤≥±]/gu)?.join(" ") ?? "").join("|");
     const repeatedFact = keptFacts.some((prior) =>
-      quoteTokens.size >= 2 && prior.quote.size >= 2 && containment(quoteTokens, prior.quote) >= 0.85
+      qualifiers === prior.qualifiers
+      && quoteTokens.size >= 2 && prior.quote.size >= 2 && containment(quoteTokens, prior.quote) >= 0.85
       && (answerKey === prior.answerKey
-        || (answer.size >= 4 && prior.answer.size >= 4 && containment(answer, prior.answer) >= 0.8)));
+        || (answer.size >= 4 && prior.answer.size >= 4
+          && overlapRatio(answer, prior.answer) >= 0.85 && overlapRatio(prior.answer, answer) >= 0.85)));
     if (repeatedFact) return [];
-    keptFacts.push({ quote: quoteTokens, answer, answerKey });
+    keptFacts.push({ quote: quoteTokens, answer, answerKey, qualifiers });
     seen.add(key);
     return [{ id, front, back, selected: true, evidenceIds: [id] }];
   });
-  const { kept } = dedupeNearDuplicates(candidates, evidence);
-  const drafts = kept.slice(0, maxCards ?? VIDEO_CARD_REVIEW_CEILING);
+  const drafts = maxCards === null ? kept : kept.slice(0, maxCards);
   return { drafts, evidence: drafts.map((card) => evidence.get(card.id)!), limited: drafts.length < kept.length };
 }

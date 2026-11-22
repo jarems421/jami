@@ -70,6 +70,7 @@ const STAGE_LABELS = {
   checking_cards: "Checking accuracy and coverage",
   ready: "Ready to review",
 } as const;
+const DRAFTS_PER_PAGE = 20;
 
 function Evidence({ entries }: { entries: VideoCardEvidence[] }) {
   if (!entries.length) return null;
@@ -106,6 +107,7 @@ export default function SourceCardCreator({
   const [coverage, setCoverage] = useState<VideoCoverage>("standard");
   const [focus, setFocus] = useState("");
   const [job, setJob] = useCardImportJob(["file", "text"], defaultDeckId);
+  const [reviewPage, setReviewPage] = useState({ jobId: "", index: 0 });
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -249,6 +251,13 @@ export default function SourceCardCreator({
 
   if (job) {
     const selectedCount = job.drafts.filter((draft) => draft.selected).length;
+    const pageCount = Math.ceil(job.drafts.length / DRAFTS_PER_PAGE);
+    const pageIndex = reviewPage.jobId === job.id ? Math.min(reviewPage.index, pageCount - 1) : 0;
+    const pageStart = pageIndex * DRAFTS_PER_PAGE;
+    const setAllSelected = (selected: boolean) => setJob((current) => current ? {
+      ...current,
+      drafts: current.drafts.map((draft) => ({ ...draft, selected })),
+    } : current);
     return (
       <div className="mt-5 space-y-4 animate-fade-in">
         <CardImportProgress
@@ -276,7 +285,22 @@ export default function SourceCardCreator({
                 ))}
               </ul>
             ) : null}
-            <div className="space-y-3">{job.drafts.map(renderDraft)}</div>
+            {pageCount > 1 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="ghost" disabled={busy || selectedCount === job.drafts.length} onClick={() => setAllSelected(true)}>Select all</Button>
+                  <Button size="sm" variant="ghost" disabled={busy || !selectedCount} onClick={() => setAllSelected(false)}>Clear selection</Button>
+                </div>
+                <nav aria-label="Draft pages" className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" disabled={busy || pageIndex === 0} onClick={() => setReviewPage({ jobId: job.id, index: pageIndex - 1 })}>Previous</Button>
+                  <span className="text-sm text-text-muted" aria-live="polite">Page {pageIndex + 1} of {pageCount}</span>
+                  <Button size="sm" variant="secondary" disabled={busy || pageIndex + 1 === pageCount} onClick={() => setReviewPage({ jobId: job.id, index: pageIndex + 1 })}>Next</Button>
+                </nav>
+              </div>
+            ) : null}
+            <div className="space-y-3">
+              {job.drafts.slice(pageStart, pageStart + DRAFTS_PER_PAGE).map((draft, index) => renderDraft(draft, pageStart + index))}
+            </div>
             <p className="text-xs leading-5 text-text-muted">
               The uploaded file and source evidence are removed after you add or discard this batch.
             </p>
