@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { mapVideoCardJobData, VIDEO_CARD_REVIEW_CEILING } from "@/lib/ai/video-card-jobs";
+import { canStoreSourceCardReview, mapVideoCardJobData, VIDEO_CARD_REVIEW_CEILING } from "@/lib/ai/video-card-jobs";
 import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import { refundAiBudget } from "@/services/ai/budgets";
 import { failVideoCardJobIfStalled } from "@/services/ai/video-card-job-stall.server";
@@ -24,15 +24,38 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401);
   const { jobId } = await params; if (!valid(jobId)) return failure("Job not found", 404);
   let body: { drafts?: unknown }; try { body = await request.json(); } catch { return failure("Invalid request", 400); }
-  if (!Array.isArray(body.drafts) || body.drafts.length > VIDEO_CARD_REVIEW_CEILING) return failure("Invalid cards", 400);
-  const ref = getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId); const snap = await ref.get();
-  if (snap.data()?.status === "approved") return Response.json(mapVideoCardJobData(jobId, snap.data() ?? {}));
-  if (!snap.exists || snap.data()?.status !== "ready") return failure("This import is not ready to edit.", 409);
-  const original = new Map(mapVideoCardJobData(jobId, snap.data() ?? {}).drafts.map((card) => [card.id, card]));
-  const drafts = body.drafts.flatMap((item) => { if (!item || typeof item !== "object") return []; const value = item as Record<string, unknown>; const prior = original.get(String(value.id)); const front = typeof value.front === "string" ? value.front.trim().slice(0, 500) : ""; const back = typeof value.back === "string" ? value.back.trim().slice(0, 4000) : ""; return prior && front && back ? [{ ...prior, front, back, selected: value.selected !== false }] : []; });
-  if (drafts.length !== body.drafts.length) return failure("One or more cards are invalid.", 400);
-  await ref.update({ drafts, updatedAt: Date.now() });
-  return Response.json(mapVideoCardJobData(jobId, { ...snap.data(), drafts }));
+  if (!Array.isArray(body?.drafts)) return failure("Invalid cards", 400);
+  const submitted = body.drafts;
+  const db = getAdminDb();
+  const ref = db.collection("users").doc(uid).collection("videoCardJobs").doc(jobId);
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const raw = snap.data();
+    if (raw?.status === "approved") return Response.json(mapVideoCardJobData(jobId, raw));
+    if (raw?.status !== "ready") return failure("This import is not ready to edit.", 409);
+    const job = mapVideoCardJobData(jobId, raw);
+    const original = new Map(job.drafts.map((card) => [card.id, card]));
+    const fromSource = job.sourceKind === "text" || job.sourceKind === "file";
+    const limit = fromSource ? original.size : VIDEO_CARD_REVIEW_CEILING;
+    if (submitted.length > limit) return failure("Invalid cards", 400);
+    const drafts = submitted.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const value = item as Record<string, unknown>;
+      const prior = original.get(String(value.id));
+      const front = typeof value.front === "string" ? value.front.trim().slice(0, 500) : "";
+      const back = typeof value.back === "string" ? value.back.trim().slice(0, 4000) : "";
+      if (!prior || !front || !back) return [];
+      original.delete(prior.id);
+      return [{ ...prior, front, back, selected: value.selected !== false }];
+    });
+    if (drafts.length !== submitted.length) return failure("One or more cards are invalid.", 400);
+    if (fromSource && !canStoreSourceCardReview(drafts, job.evidence)) {
+      return failure("These edits are too large for one review. Shorten the longest answers and try again.", 413);
+    }
+    const updatedAt = Date.now();
+    transaction.update(ref, { drafts, updatedAt });
+    return Response.json({ ...job, drafts, updatedAt });
+  });
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {

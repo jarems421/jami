@@ -216,6 +216,10 @@ test("notes creation sends coverage and focus, then reviews editable evidence an
   const drafts = [
     { id: "one", front: "What drives diffusion?", back: "A concentration gradient.", selected: true, evidenceIds: ["ref"] },
     { id: "two", front: "What is osmosis?", back: "The movement of water across a partially permeable membrane.", selected: true, evidenceIds: ["ref"] },
+    ...Array.from({ length: 63 }, (_, index) => ({
+      id: `extra-${index + 3}`, front: `Sample recall cue ${index + 3}`,
+      back: `Sample answer ${index + 3}`, selected: true, evidenceIds: [],
+    })),
   ];
   const ready = {
     id: jobId, title: "Pasted notes", deckId: deck, status: "ready", stage: "ready", sourceKind: "text",
@@ -232,10 +236,11 @@ test("notes creation sends coverage and focus, then reviews editable evidence an
   });
   await page.route("**/api/ai/video-card-jobs/*", async (route) => {
     if (route.request().method() === "PATCH") {
-      expect(route.request().postDataJSON().drafts).toMatchObject([
-        { id: "one", back: "Particles move down their concentration gradient.", selected: true },
-        { id: "two", selected: false },
-      ]);
+      const submitted = route.request().postDataJSON().drafts;
+      expect(submitted).toHaveLength(65);
+      expect(submitted[0]).toMatchObject({ id: "one", back: "Particles move down their concentration gradient.", selected: true });
+      expect(submitted[64]).toMatchObject({ id: "extra-65", selected: false, back: "Edited last answer." });
+      expect(submitted.filter((draft: { selected: boolean }) => draft.selected)).toHaveLength(1);
     }
     return route.fulfill({ json: ready });
   });
@@ -258,11 +263,17 @@ test("notes creation sends coverage and focus, then reviews editable evidence an
   }
   await page.getByRole("button", { name: "Create cards" }).click();
   await expect(page.getByText("Checking accuracy and coverage")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Review 2 drafts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review 65 drafts" })).toBeVisible();
+  await expectCardCreatorFits(page, 390);
   await page.getByText("Evidence from the source").first().click();
   await expect(page.getByText("Passage 1 · A concentration gradient drives diffusion.").first()).toBeVisible();
   await page.getByLabel("Card 1 back").fill("Particles move down their concentration gradient.");
-  await page.getByRole("checkbox", { name: "Card 2" }).uncheck();
+  await page.getByRole("button", { name: "Clear selection" }).click();
+  await page.getByRole("checkbox", { name: "Card 1", exact: true }).check();
+  const navigation = page.getByRole("navigation", { name: "Draft pages" });
+  for (let index = 0; index < 3; index += 1) await navigation.getByRole("button", { name: "Next" }).click();
+  await expect(navigation.getByText("Page 4 of 4")).toBeVisible();
+  await page.getByLabel("Card 65 back").fill("Edited last answer.");
   await page.getByRole("button", { name: "Add selected cards" }).click();
   await expect(page.getByText("Added 1 card.", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);

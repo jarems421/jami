@@ -108,6 +108,16 @@ export function getVideoCoverageSelectivity(coverage: VideoCoverage) {
  */
 export const VIDEO_CARD_REVIEW_CEILING = 60;
 
+// Approval writes every selected card and the job in one Firestore transaction.
+const SOURCE_CARD_TRANSACTION_LIMIT = 450;
+// Leave space in Firestore's 1 MiB document limit for metadata and field overhead.
+const SOURCE_CARD_REVIEW_BYTES = 750_000;
+
+export function canStoreSourceCardReview(drafts: readonly VideoCardDraft[], evidence: readonly VideoCardEvidence[]) {
+  return drafts.length <= SOURCE_CARD_TRANSACTION_LIMIT
+    && new TextEncoder().encode(JSON.stringify({ drafts, evidence })).byteLength <= SOURCE_CARD_REVIEW_BYTES;
+}
+
 /** Clamps a student's own limit, if they gave one. */
 export function parseVideoCardLimit(value: unknown): number | null {
   const limit = typeof value === "number" ? value : Number(value);

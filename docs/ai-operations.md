@@ -141,13 +141,19 @@ images and checks PDFs up to 80 pages for scans and diagram details. PowerPoint
 and Word use extracted text. PDF is the way to include their diagrams.
 
 The job uses the same bounded, private provider routing as the Tutor agent.
-It drafts independently across up to nine sections. A separate model checks the
-draft set against the original passages, revises or drops weak cards, and fills
-omissions. The juror handles this review, with the supervisor as a fallback.
-Code checks each evidence excerpt against its passage,
-deduplicates drafts, and distributes the up-to-60 review cards across the source.
-A short source can produce fewer cards. If a limit or provider failure reduces
-coverage, the student sees that in review and can edit and select the drafts.
+It sends each passage in a supported import to small drafting and review calls.
+The worker inventories individual teaching points and proposes cards. The juror
+then reads the original passages independently, accounts for each draft, rewrites
+or removes unsuitable cues and adds missing teaching points from the same slide
+as well as from slides without cards. The supervisor can replace a failed
+review. Code verifies citations and blocks cues that repeat the answer or rely
+on seeing the slide. The card count follows the material. If a section cannot
+be reviewed, its location appears in the review warning.
+
+An import above the 40-section processing budget or the size a single
+Firestore review and approval transaction can safely hold is returned with
+instructions to split the source. Jami does not sample sections or trim a
+source review to a default card count. Video keeps its existing limit.
 
 The job spends one existing card-import allowance. It runs on request, without
 web research or access to unrelated sources. Original material is read in memory
