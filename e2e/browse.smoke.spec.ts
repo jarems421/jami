@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   E2E_CARDS,
+  E2E_DECK_ID,
   E2E_DECK_NAME,
   E2E_GOAL,
   E2E_SOURCE,
@@ -50,6 +51,17 @@ async function openScreen(page: Page, path: string, heading: string) {
     timeout: 45_000,
   });
   return errors;
+}
+
+async function expectCardCreatorFits(page: Page, width: number) {
+  const panel = page.locator("#add-card");
+  // The dashboard animates its sidebar padding when the viewport changes.
+  await expect.poll(() => panel.evaluate((section, viewportWidth) => {
+    const { left, right } = section.getBoundingClientRect();
+    return section.scrollWidth <= section.clientWidth + 1
+      && right <= viewportWidth
+      && (viewportWidth >= 768 || left < 32);
+  }, width), { message: `Card creator fits the ${width}px viewport` }).toBe(true);
 }
 
 /**
@@ -151,14 +163,108 @@ test("Cards lists seeded cards and searches their fronts", async ({ page }) => {
   await expect(page.getByText(E2E_CARDS[1].front)).toHaveCount(0);
 
   await page.getByRole("button", { name: "From notes or file" }).click();
-  await expect(page.getByText("PDF, PowerPoint, Word, text or image · under 20 MB")).toBeVisible();
+  await expect(page.getByText(/PDF, PowerPoint, Word, text or image under 20 MB/)).toBeVisible();
   // How much of the material becomes cards is a choice of coverage, not a count.
   const coverage = page.getByRole("radiogroup", { name: "Coverage" });
   await expect(coverage.getByRole("radio", { name: /^Key points/ })).toBeVisible();
-  await expect(coverage.getByRole("radio", { name: /^Standard/ })).toBeChecked();
-  await expect(coverage.getByRole("radio", { name: /^Thorough/ })).toBeVisible();
+  await expect(coverage.getByRole("radio", { name: "Balanced" })).toBeChecked();
+  await expect(coverage.getByRole("radio", { name: "In-depth" })).toBeVisible();
+  await expect(page.getByLabel("Focus or study level (optional)")).toBeVisible();
   await expect(page.getByLabel("Most cards to make (optional)")).toHaveCount(0);
 
+  expect(errors).toEqual([]);
+});
+
+test("paste list validates, previews and saves cards at phone width", async ({ page }) => {
+  await signIn(page);
+  const errors = await openScreen(page, "/dashboard/decks", FLASHCARDS_TITLE);
+  const deck = "Paste list verification deck";
+  await page.getByPlaceholder("Deck name").fill(deck);
+  await page.getByRole("button", { name: "Create deck" }).click();
+  await expect(page.getByText(deck, { exact: true }).first()).toBeVisible();
+  await page.goto("/dashboard/cards");
+  await page.getByRole("button", { name: "Paste list" }).click();
+  await page.getByRole("combobox", { name: "Deck" }).selectOption({ label: deck });
+
+  const field = page.getByLabel("Paste your cards");
+  const valid = "Facilitated diffusion | Passive transport via a membrane protein";
+  await field.fill(`${valid}\nBroken row`);
+  await expect(page.getByText("Fix 1 row before adding cards.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add 1 card" })).toBeDisabled();
+  await field.fill(`${valid}\n${valid}\nActive transport | Transport requiring an energy input`);
+  await expect(page.getByText(/2 new cards.*1 duplicate/)).toBeVisible();
+
+  for (const width of [1440, 820, 390]) {
+    await page.setViewportSize({ width, height: 840 });
+    await expect(field).toBeVisible();
+    await expect(page.getByText("Preview", { exact: true })).toBeVisible();
+    await expectCardCreatorFits(page, width);
+  }
+  await page.getByRole("button", { name: "Add 2 cards" }).click();
+  await expect(page.getByText("Added 2 cards.", { exact: true })).toBeVisible();
+  await expect(field).toHaveValue("");
+  await field.fill(valid);
+  await expect(page.getByText(/1 duplicate will be skipped/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add cards", exact: true })).toBeDisabled();
+  expect(errors).toEqual([]);
+});
+
+test("notes creation sends coverage and focus, then reviews editable evidence and selections", async ({ page }) => {
+  const jobId = "sample-source-card-job";
+  const deck = E2E_DECK_ID;
+  const now = Date.now();
+  const drafts = [
+    { id: "one", front: "What drives diffusion?", back: "A concentration gradient.", selected: true, evidenceIds: ["ref"] },
+    { id: "two", front: "What is osmosis?", back: "The movement of water across a partially permeable membrane.", selected: true, evidenceIds: ["ref"] },
+  ];
+  const ready = {
+    id: jobId, title: "Pasted notes", deckId: deck, status: "ready", stage: "ready", sourceKind: "text",
+    progress: 100, createdAt: now, updatedAt: now + 1, drafts, warnings: [],
+    evidence: [{ id: "ref", kind: "concept", summary: "Passage 1 · A concentration gradient drives diffusion.", facts: [] }],
+  };
+  await page.route("**/api/ai/video-card-jobs", async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: { jobs: [] } });
+    expect(route.request().postDataJSON()).toMatchObject({
+      sourceKind: "text", coverage: "thorough", focus: "GCSE cell transport", deckId: deck,
+      contentText: "A concentration gradient drives diffusion.",
+    });
+    return route.fulfill({ json: { ...ready, id: undefined, status: "running", stage: "checking_cards", progress: 82, updatedAt: now, drafts: [] } });
+  });
+  await page.route("**/api/ai/video-card-jobs/*", async (route) => {
+    if (route.request().method() === "PATCH") {
+      expect(route.request().postDataJSON().drafts).toMatchObject([
+        { id: "one", back: "Particles move down their concentration gradient.", selected: true },
+        { id: "two", selected: false },
+      ]);
+    }
+    return route.fulfill({ json: ready });
+  });
+  await page.route("**/api/ai/video-card-jobs/*/approve", (route) => route.fulfill({
+    json: { cards: [{ id: "source-example-card", deckId: deck, front: drafts[0].front, back: "Particles move down their concentration gradient." }] },
+  }));
+
+  await signIn(page);
+  const errors = await openScreen(page, "/dashboard/cards", FLASHCARDS_TITLE);
+  await page.getByRole("button", { name: "From notes or file" }).click();
+  await page.getByRole("button", { name: "Paste text" }).click();
+  await page.getByLabel("Study text").fill("A concentration gradient drives diffusion.");
+  await page.getByRole("combobox", { name: "Deck" }).selectOption(deck);
+  await page.getByRole("radio", { name: "In-depth" }).click();
+  await page.getByLabel("Focus or study level (optional)").fill("GCSE cell transport");
+  for (const width of [1440, 820, 390]) {
+    await page.setViewportSize({ width, height: 840 });
+    await expect(page.getByLabel("Study text")).toBeVisible();
+    await expectCardCreatorFits(page, width);
+  }
+  await page.getByRole("button", { name: "Create cards" }).click();
+  await expect(page.getByText("Checking accuracy and coverage")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review 2 drafts" })).toBeVisible();
+  await page.getByText("Evidence from the source").first().click();
+  await expect(page.getByText("Passage 1 · A concentration gradient drives diffusion.").first()).toBeVisible();
+  await page.getByLabel("Card 1 back").fill("Particles move down their concentration gradient.");
+  await page.getByRole("checkbox", { name: "Card 2" }).uncheck();
+  await page.getByRole("button", { name: "Add selected cards" }).click();
+  await expect(page.getByText("Added 1 card.", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

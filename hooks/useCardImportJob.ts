@@ -12,31 +12,41 @@ const RESUMABLE_STATUSES: ReadonlyArray<VideoCardJob["status"]> = ["queued", "ru
  * for review, picked up again on opening, and followed every few seconds
  * while it is still being made.
  */
-export function useCardImportJob(sourceKinds: readonly CardImportSourceKind[]) {
+export function useCardImportJob(sourceKinds: readonly CardImportSourceKind[], deckId?: string) {
   const [job, setJob] = useState<VideoCardJob | null>(null);
   // The kinds are fixed per creator; reading them once keeps this to opening.
   const [kinds] = useState(sourceKinds);
 
   useEffect(() => {
+    let active = true;
     void getRecentVideoCardJobs()
       .then((jobs) => {
         const resumable = jobs.find(
-          (item) => kinds.includes(item.sourceKind) && RESUMABLE_STATUSES.includes(item.status)
+          (item) => kinds.includes(item.sourceKind) && (!deckId || item.deckId === deckId)
+            && RESUMABLE_STATUSES.includes(item.status)
         );
-        if (resumable) setJob(resumable);
+        if (active && resumable) setJob((current) => current ?? resumable);
       })
       .catch(() => undefined);
-  }, [kinds]);
+    return () => { active = false; };
+  }, [kinds, deckId]);
 
   const activeJobId = job?.id;
   const inProgress = job?.status === "queued" || job?.status === "running";
   useEffect(() => {
     if (!activeJobId || !inProgress) return;
+    let active = true;
     const polling = setInterval(
-      () => void getVideoCardJob(activeJobId).then(setJob).catch(() => undefined),
+      () => void getVideoCardJob(activeJobId).then((next) => {
+        if (active) setJob((current) =>
+          current?.id === next.id && next.updatedAt >= current.updatedAt ? next : current);
+      }).catch(() => undefined),
       POLL_MS
     );
-    return () => clearInterval(polling);
+    return () => {
+      active = false;
+      clearInterval(polling);
+    };
   }, [activeJobId, inProgress]);
 
   return [job, setJob] as const;

@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import TopicPicker from "@/components/topics/TopicPicker";
 import CardImportProgress from "@/components/decks/CardImportProgress";
+import JamiTutorIcon from "@/components/ui/JamiTutorIcon";
 import { useCardImportJob } from "@/hooks/useCardImportJob";
 import {
   Button,
   Card as Panel,
   FileField,
+  FormDisclosure,
   Input,
   OptionSwitch,
   Select,
@@ -20,7 +22,7 @@ import {
   type VideoCoverage,
 } from "@/lib/ai/video-card-jobs";
 import type { Topic } from "@/lib/material/topics";
-import type { Card } from "@/lib/study/cards";
+import { MAX_BACK_LENGTH, MAX_FRONT_LENGTH, type Card } from "@/lib/study/cards";
 import type { Deck } from "@/lib/study/decks";
 import { resolveSourceFileMimeType } from "@/lib/material/source-files";
 import { validateSourceUploadFile } from "@/services/study/source-files";
@@ -48,9 +50,9 @@ type Props = {
 };
 
 const COVERAGE_OPTIONS = [
-  { value: "focused" as const, label: "Key points", detail: "Core teaching only" },
-  { value: "standard" as const, label: "Standard", detail: "Core teaching and worked examples" },
-  { value: "thorough" as const, label: "Thorough", detail: "Plus definitions and detail" },
+  { value: "focused" as const, label: "Key points", detail: "The essentials for a quick review" },
+  { value: "standard" as const, label: "Balanced", detail: "Main ideas, key details and worked examples" },
+  { value: "thorough" as const, label: "In-depth", detail: "Mechanisms, exceptions and finer details" },
 ];
 
 const ACCEPTED_SOURCE_FILES = [
@@ -64,7 +66,8 @@ const ACCEPTED_SOURCE_FILES = [
 const STAGE_LABELS = {
   preparing: "Preparing source",
   reading_video: "Reading source",
-  creating_cards: "Creating cards",
+  creating_cards: "Drafting cards across the source",
+  checking_cards: "Checking accuracy and coverage",
   ready: "Ready to review",
 } as const;
 
@@ -102,7 +105,7 @@ export default function SourceCardCreator({
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [coverage, setCoverage] = useState<VideoCoverage>("standard");
   const [focus, setFocus] = useState("");
-  const [job, setJob] = useCardImportJob(["file", "text"]);
+  const [job, setJob] = useCardImportJob(["file", "text"], defaultDeckId);
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -183,7 +186,7 @@ export default function SourceCardCreator({
       await saveVideoCardDrafts(job.id, job.drafts);
       const cards = await approveVideoCardJob(job.id);
       onCardsCreated(cards);
-      onMessage(`Added ${cards.length} cards.`);
+      onMessage(`Added ${cards.length} ${cards.length === 1 ? "card" : "cards"}.`);
       setJob(null);
       setFile(null);
       setSourceText("");
@@ -200,6 +203,8 @@ export default function SourceCardCreator({
     try {
       await cancelVideoCardJob(job.id);
       setJob(null);
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Could not discard these drafts.", true);
     } finally {
       setBusy(false);
     }
@@ -224,6 +229,8 @@ export default function SourceCardCreator({
           className="mt-3"
           aria-label={`Card ${index + 1} front`}
           value={draft.front}
+          maxLength={MAX_FRONT_LENGTH}
+          disabled={busy}
           onChange={(event) => updateDraft(draft.id, "front", event.target.value)}
         />
         <Textarea
@@ -231,6 +238,8 @@ export default function SourceCardCreator({
           aria-label={`Card ${index + 1} back`}
           rows={3}
           value={draft.back}
+          maxLength={MAX_BACK_LENGTH}
+          disabled={busy}
           onChange={(event) => updateDraft(draft.id, "back", event.target.value)}
         />
         <Evidence entries={evidence} />
@@ -253,10 +262,10 @@ export default function SourceCardCreator({
           <>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-text-primary">{job.title}</p>
-                <p className="mt-1 text-xs text-text-muted">{selectedCount} of {job.drafts.length} selected</p>
+                <h4 className="text-base font-semibold text-text-primary">Review {job.drafts.length} {job.drafts.length === 1 ? "draft" : "drafts"}</h4>
+                <p className="mt-1 text-sm text-text-muted">{job.title} · {selectedCount} selected</p>
               </div>
-              <Button variant="ghost" onClick={() => void discard()}>Discard</Button>
+              <Button variant="ghost" disabled={busy} onClick={() => void discard()}>Discard</Button>
             </div>
             {job.warnings.length ? (
               <ul className="space-y-2">
@@ -281,78 +290,85 @@ export default function SourceCardCreator({
   }
 
   return (
-    <div className="mt-5 space-y-4 animate-fade-in">
-      <div className="flex gap-2">
-        <Button
-          variant={inputKind === "file" ? "secondary" : "ghost"}
-          disabled={busy}
-          onClick={() => setInputKind("file")}
-        >
-          Upload
-        </Button>
-        <Button
-          variant={inputKind === "text" ? "secondary" : "ghost"}
-          disabled={busy}
-          onClick={() => setInputKind("text")}
-        >
-          Paste text
-        </Button>
+    <div className="mt-5 space-y-5 animate-fade-in">
+      <p className="max-w-2xl text-sm leading-6 text-text-secondary">
+        Jami drafts cards section by section and checks them against your material. You can edit each draft and choose what to add.
+      </p>
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Panel tone="subtle" padding="md" className="space-y-4">
+          <div className="flex gap-2">
+            <Button
+              variant={inputKind === "file" ? "secondary" : "ghost"}
+              disabled={busy}
+              onClick={() => setInputKind("file")}
+            >
+              Upload
+            </Button>
+            <Button
+              variant={inputKind === "text" ? "secondary" : "ghost"}
+              disabled={busy}
+              onClick={() => setInputKind("text")}
+            >
+              Paste text
+            </Button>
+          </div>
+
+          {inputKind === "file" ? (
+            <FileField
+              label="Study file"
+              hint="PDF, PowerPoint, Word, text or image under 20 MB. For diagrams in slides, export as PDF."
+              accept={ACCEPTED_SOURCE_FILES}
+              file={file}
+              disabled={busy}
+              onChange={setFile}
+            />
+          ) : (
+            <Textarea
+              label="Study text"
+              placeholder="Paste the notes or transcript you want to study."
+              rows={7}
+              maxLength={CARD_SOURCE_TEXT_MAX_LENGTH}
+              value={sourceText}
+              disabled={busy}
+              onChange={(event) => setSourceText(event.target.value)}
+            />
+          )}
+
+          {!defaultDeckId ? (
+            <Select label="Deck" value={deckId} disabled={busy} onChange={(event) => setDeckId(event.target.value)}>
+              <option value="" disabled>Choose a deck</option>
+              {decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}
+            </Select>
+          ) : null}
+        </Panel>
+        <Panel tone="subtle" padding="md" className="space-y-4">
+          <OptionSwitch label="Coverage" detail="selected" value={coverage} options={COVERAGE_OPTIONS} disabled={busy} onChange={setCoverage} />
+          <div className="space-y-2">
+            <Input
+              label="Focus or study level (optional)"
+              placeholder="e.g. GCSE definitions or university-level mechanisms"
+              aria-describedby="source-card-focus-hint"
+              value={focus}
+              onChange={(event) => setFocus(event.target.value)}
+              maxLength={500}
+              disabled={busy}
+            />
+            <p id="source-card-focus-hint" className="text-xs leading-5 text-text-muted">
+              Name the topics, question types or course level you want. Leave blank to cover the material at its own level.
+            </p>
+          </div>
+          <FormDisclosure title="Topics" summary={topicIds.length ? `${topicIds.length} selected` : "Optional"}>
+            <TopicPicker
+              userId={userId}
+              topics={topics}
+              selectedTopicIds={topicIds}
+              onChange={setTopicIds}
+              onTopicsChange={onTopicsChange}
+              disabled={busy}
+            />
+          </FormDisclosure>
+        </Panel>
       </div>
-
-      {inputKind === "file" ? (
-        <FileField
-          label="Study file"
-          hint="PDF, PowerPoint, Word, text or image · under 20 MB"
-          accept={ACCEPTED_SOURCE_FILES}
-          file={file}
-          disabled={busy}
-          onChange={setFile}
-        />
-      ) : (
-        <Textarea
-          label={`Study text · ${sourceText.length.toLocaleString()} / ${CARD_SOURCE_TEXT_MAX_LENGTH.toLocaleString()} characters`}
-          placeholder="Paste lecture notes, a transcript, an article, or any study material…"
-          rows={11}
-          maxLength={CARD_SOURCE_TEXT_MAX_LENGTH}
-          value={sourceText}
-          disabled={busy}
-          onChange={(event) => setSourceText(event.target.value)}
-        />
-      )}
-
-      {!defaultDeckId ? (
-        <Select label="Deck" value={deckId} onChange={(event) => setDeckId(event.target.value)}>
-          <option value="" disabled>Choose a deck</option>
-          {decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}
-        </Select>
-      ) : null}
-
-      <OptionSwitch label="Coverage" value={coverage} options={COVERAGE_OPTIONS} disabled={busy} onChange={setCoverage} />
-
-      <Input
-        label="Focus (optional)"
-        placeholder="e.g. causes and consequences"
-        value={focus}
-        onChange={(event) => setFocus(event.target.value)}
-        maxLength={500}
-        disabled={busy}
-      />
-
-      <details className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
-        <summary className="cursor-pointer text-sm font-medium text-text-secondary">
-          Topics <span className="font-normal text-text-muted">(optional)</span>
-        </summary>
-        <div className="mt-4">
-          <TopicPicker
-            userId={userId}
-            topics={topics}
-            selectedTopicIds={topicIds}
-            onChange={setTopicIds}
-            onTopicsChange={onTopicsChange}
-            disabled={busy}
-          />
-        </div>
-      </details>
 
       <Button
         size="lg"
@@ -360,6 +376,7 @@ export default function SourceCardCreator({
         disabled={busy || !deckId || (inputKind === "file" ? !file : !sourceText.trim())}
         onClick={() => void start()}
       >
+        {!busy ? <JamiTutorIcon className="size-4" /> : null}
         {busy ? (uploadProgress ? `Uploading ${uploadProgress}%` : "Preparing…") : "Create cards"}
       </Button>
     </div>

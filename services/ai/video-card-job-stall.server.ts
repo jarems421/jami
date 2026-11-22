@@ -1,5 +1,5 @@
 import type { DocumentReference } from "firebase-admin/firestore";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import { isStalledVideoCardJob } from "@/lib/ai/video-card-jobs";
 import { refundAiBudget } from "@/services/ai/budgets";
@@ -27,6 +27,7 @@ export async function failVideoCardJobIfStalled(
     status: "failed",
     failureMessage: STALLED_IMPORT_MESSAGE,
     cancellationRequested: true,
+    contentText: FieldValue.delete(),
     budgetRefunded: refund || data.budgetRefunded === true,
     completedAt: now,
     expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000),

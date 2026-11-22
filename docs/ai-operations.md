@@ -132,6 +132,28 @@ Operators must never create a replacement job merely to resume a clarification.
 - Student-facing failures stay generic. Investigate using content-free failure
   category, workflow stage, timing, and run ID in restricted Vercel tooling.
 
+## Flashcards from notes or files
+
+From the flashcard creator, the student chooses the material, depth of coverage,
+and optionally the topics or study level to focus on. The import job preserves
+slide numbers, document headings and speaker notes. The document-vision role reads
+images and checks PDFs up to 80 pages for scans and diagram details. PowerPoint
+and Word use extracted text. PDF is the way to include their diagrams.
+
+The job uses the same bounded, private provider routing as the Tutor agent.
+It drafts independently across up to nine sections. A separate model checks the
+draft set against the original passages, revises or drops weak cards, and fills
+omissions. The juror handles this review, with the supervisor as a fallback.
+Code checks each evidence excerpt against its passage,
+deduplicates drafts, and distributes the up-to-60 review cards across the source.
+A short source can produce fewer cards. If a limit or provider failure reduces
+coverage, the student sees that in review and can edit and select the drafts.
+
+The job spends one existing card-import allowance. It runs on request, without
+web research or access to unrelated sources. Original material is read in memory
+during generation. Supporting excerpts are kept with drafts during review and
+removed with the temporary upload on approval or discard.
+
 ## Past Paper Practice marking and mark checks
 
 Both AI steps a student can trigger are durable jobs, not parts of the request

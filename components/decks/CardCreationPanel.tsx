@@ -37,6 +37,7 @@ import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import VideoCardCreator from "@/components/decks/VideoCardCreator";
 import SourceCardCreator from "@/components/decks/SourceCardCreator";
+import PastedCardCreator from "@/components/decks/PastedCardCreator";
 import DiagramEditorDialog, {
   type DiagramEditorStart,
 } from "@/components/decks/diagram/DiagramEditorDialog";
@@ -44,7 +45,7 @@ import DiagramPictureSource from "@/components/decks/diagram/DiagramPictureSourc
 import type { DiagramPicture } from "@/lib/study/diagram-image";
 import { Button, FormDisclosure, Input, SectionHeader, StudyText } from "@/components/ui";
 
-type CreationMode = "single" | "diagram" | "source" | "video";
+type CreationMode = "single" | "diagram" | "source" | "list" | "video";
 
 type CardCreationPanelProps = {
   userId: string;
@@ -78,6 +79,7 @@ function ModeButton({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`rounded-md border px-3 py-2 text-sm font-medium transition duration-fast ${
         active
@@ -94,6 +96,7 @@ export default function CardCreationPanel({
   userId,
   decks,
   decksLoading = false,
+  existingCards,
   topics,
   onTopicsChange,
   defaultDeckId,
@@ -101,6 +104,7 @@ export default function CardCreationPanel({
   onFeedback,
 }: CardCreationPanelProps) {
   const [mode, setMode] = useState<CreationMode>("single");
+  const [openedPasteList, setOpenedPasteList] = useState(false);
   const fallbackDeckId = defaultDeckId ?? decks[0]?.id ?? "";
   const deckIsFixed = Boolean(defaultDeckId);
 
@@ -237,18 +241,14 @@ export default function CardCreationPanel({
 
   return (
     <section id="add-card" className="app-panel p-4 sm:p-5">
-      <SectionHeader
-        eyebrow="Add cards"
-        title="Create a flashcard."
-        action={
-          <div className="flex flex-wrap gap-2">
-            <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
-            <ModeButton active={mode === "diagram"} onClick={() => setMode("diagram")}>Diagram</ModeButton>
-            <ModeButton active={mode === "source"} onClick={() => setMode("source")}>From notes or file</ModeButton>
-            <ModeButton active={mode === "video"} onClick={() => setMode("video")}>From video</ModeButton>
-          </div>
-        }
-      />
+      <SectionHeader title="Add cards" />
+      <div role="group" aria-label="Card creation method" className="mt-3 flex flex-wrap gap-2">
+        <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
+        <ModeButton active={mode === "diagram"} onClick={() => setMode("diagram")}>Diagram</ModeButton>
+        <ModeButton active={mode === "source"} onClick={() => setMode("source")}>From notes or file</ModeButton>
+        <ModeButton active={mode === "list"} onClick={() => { setOpenedPasteList(true); setMode("list"); }}>Paste list</ModeButton>
+        <ModeButton active={mode === "video"} onClick={() => setMode("video")}>From video</ModeButton>
+      </div>
 
       {decks.length === 0 && !decksLoading ? (
         <p className="app-subtle-panel mt-4 rounded-lg p-4 text-sm leading-6">
@@ -479,6 +479,21 @@ export default function CardCreationPanel({
           });
         }}
       />
+
+      {openedPasteList ? (
+        <div hidden={mode !== "list"}>
+          <PastedCardCreator
+            userId={userId}
+            decks={decks}
+            defaultDeckId={defaultDeckId}
+            existingCards={existingCards}
+            topics={topics}
+            onTopicsChange={onTopicsChange}
+            onCardsCreated={(cards) => onCardsCreated(cards, { source: "list", selectCreated: true })}
+            onMessage={(message, error) => onFeedback({ type: error ? "error" : "success", message })}
+          />
+        </div>
+      ) : null}
 
       {mode === "video" ? (
         <VideoCardCreator

@@ -26,6 +26,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let body: { drafts?: unknown }; try { body = await request.json(); } catch { return failure("Invalid request", 400); }
   if (!Array.isArray(body.drafts) || body.drafts.length > VIDEO_CARD_REVIEW_CEILING) return failure("Invalid cards", 400);
   const ref = getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId); const snap = await ref.get();
+  if (snap.data()?.status === "approved") return Response.json(mapVideoCardJobData(jobId, snap.data() ?? {}));
   if (!snap.exists || snap.data()?.status !== "ready") return failure("This import is not ready to edit.", 409);
   const original = new Map(mapVideoCardJobData(jobId, snap.data() ?? {}).drafts.map((card) => [card.id, card]));
   const drafts = body.drafts.flatMap((item) => { if (!item || typeof item !== "object") return []; const value = item as Record<string, unknown>; const prior = original.get(String(value.id)); const front = typeof value.front === "string" ? value.front.trim().slice(0, 500) : ""; const back = typeof value.back === "string" ? value.back.trim().slice(0, 4000) : ""; return prior && front && back ? [{ ...prior, front, back, selected: value.selected !== false }] : []; });

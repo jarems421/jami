@@ -7,7 +7,7 @@ export type VideoCoverage = "focused" | "standard" | "thorough";
 export type VideoVisualType = "diagram" | "table" | "graph" | "equation" | "slide" | "worked_example";
 export type VideoVisualClassification = "core_teaching" | "worked_example" | "practice_question" | "contextual_support" | "decorative_administrative" | "uncertain";
 export type VideoJobStatus = "queued" | "running" | "ready" | "approved" | "failed" | "cancelled";
-export type VideoJobStage = "preparing" | "reading_video" | "creating_cards" | "ready";
+export type VideoJobStage = "preparing" | "reading_video" | "creating_cards" | "checking_cards" | "ready";
 export type CardImportSourceKind = "youtube" | "upload" | "file" | "text";
 
 export type VideoCardDraft = {
@@ -204,8 +204,8 @@ export function mapVideoCardJobData(id: string, raw: Record<string, unknown>): V
   const drafts = Array.isArray(raw.drafts) ? raw.drafts.flatMap((item, index) => {
     if (!item || typeof item !== "object") return [];
     const value = item as Record<string, unknown>;
-    const front = cleanText(value.front, 500);
-    const back = cleanText(value.back, 4000);
+    const front = typeof value.front === "string" ? value.front.trim().slice(0, 500) : "";
+    const back = typeof value.back === "string" ? value.back.trim().slice(0, 4000) : "";
     if (!front || !back) return [];
     return [{
       id: typeof value.id === "string" ? value.id : `card-${index + 1}`,

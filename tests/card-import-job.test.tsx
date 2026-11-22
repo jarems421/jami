@@ -26,6 +26,7 @@ function job(overrides: Partial<VideoCardJob>): VideoCardJob {
     stage: "creating_cards",
     progress: 40,
     createdAt: Date.now(),
+    updatedAt: Date.now(),
     title: "Chapter 2",
     drafts: [],
     warnings: [],
@@ -117,6 +118,7 @@ describe("CardImportProgress", () => {
     preparing: "Preparing",
     reading_video: "Reading",
     creating_cards: "Creating cards",
+    checking_cards: "Checking cards",
     ready: "Ready",
   };
 

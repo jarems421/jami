@@ -112,9 +112,11 @@ the original file never modified. Ink runs on Jami's own engine (`lib/ink/`,
 behind `enableJamiInk`), which I am migrating to from `js-draw`; switching the
 flag off falls back to `js-draw`, and pages still save as SVG
 ([`docs/notebook-ink.md`](docs/notebook-ink.md)). Flashcards are scheduled with
-FSRS (`ts-fsrs`) plus Jami's own prioritisation. Decks can be imported from Anki
-packages, and drafted from notebooks, sources or a video. Nothing the AI drafts
-joins a student's studying until they accept it.
+FSRS (`ts-fsrs`) plus Jami's own prioritisation. Students can paste a list of
+`Front | Back` pairs into a deck or import an Anki package. Jami can also draft
+cards from notebooks, notes, files or video. From notes or a file, students can
+choose coverage and give Jami a focus or study level. Jami drafts across the
+source and checks the cards against it. AI drafts join a deck after student review.
 
 ### Past Paper Practice
 

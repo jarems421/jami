@@ -31,8 +31,8 @@ export async function generateVideoCardWorkflow(uid: string, jobId: string) {
     const read = await readVideo(uid, jobId, video);
     if (read) await finishImport(uid, jobId, video, read);
     return { status: "ready" as const };
-  } catch {
-    await failVideoGeneration(uid, jobId);
+  } catch (error) {
+    await failVideoGeneration(uid, jobId, error instanceof Error ? error.message : "");
     return { status: "failed" as const };
   } finally {
     if (video?.name) await removeVideoCopy(video);
@@ -75,15 +75,24 @@ async function removeVideoCopy(video: VideoCardSourceVideo) {
   await removeVideoCardSourceCopy(video);
 }
 
-async function failVideoGeneration(uid: string, jobId: string) {
+async function failVideoGeneration(uid: string, jobId: string, reason: string) {
   "use step";
   const [{ getAdminDb, getAdminStorageBucket }] = await Promise.all([import("@/services/firebase/admin")]);
   const ref = getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId);
   const snapshot = await ref.get();
   const data = snapshot.data();
-  if (!data || data.status === "cancelled") return;
+  if (!data || !["queued", "running"].includes(data.status)) return;
   if (typeof data.storagePath === "string") await getAdminStorageBucket().file(data.storagePath).delete({ ignoreNotFound: true }).catch(() => undefined);
   const now = Date.now();
   const sourceName = data.sourceKind === "file" || data.sourceKind === "text" ? "source" : "video";
-  await ref.update({ status: "failed", failureMessage: `Jami could not read that ${sourceName}. Check it and try again.`, contentText: FieldValue.delete(), completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
+  const sourceFailureMessages: Record<string, string> = {
+    source_card_no_readable_material: "Jami couldn’t find readable study material. Try clearer notes, a shorter file, or a PDF with selectable text.",
+    source_card_no_focus_match: "Jami couldn’t find enough material for that focus. Try a broader focus or leave it blank.",
+    source_card_no_usable_cards: "Jami couldn’t make useful cards from this material. Try a source with more teaching detail.",
+    source_card_providers_unavailable: "Jami couldn’t finish drafting cards right now. Try again in a moment.",
+  };
+  const failureMessage = sourceName === "source" && Object.hasOwn(sourceFailureMessages, reason)
+    ? sourceFailureMessages[reason]
+    : `Jami could not read that ${sourceName}. Check it and try again.`;
+  await ref.update({ status: "failed", failureMessage, contentText: FieldValue.delete(), completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
 }
