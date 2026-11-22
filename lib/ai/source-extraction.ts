@@ -120,7 +120,7 @@ export function buildPdfPageText(items: readonly PdfTextItem[]) {
   return { text: tidy(parts.join("")), heading: headingLine?.text };
 }
 
-async function extractPdfPages(bytes: Buffer) {
+export async function extractPdfPages(bytes: Buffer) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(bytes),
@@ -152,7 +152,7 @@ async function extractPdfPages(bytes: Buffer) {
     await loadingTask.destroy();
   }
   const kept = budgeted(pages);
-  return { pages: kept.pages, truncated: truncated || kept.truncated };
+  return { pages: kept.pages, truncated: truncated || kept.truncated, pageCount: document.numPages };
 }
 
 type OfficeNode = {

@@ -58,6 +58,7 @@ const STAGE = {
   preparing: "Preparing",
   reading_video: "Reading video",
   creating_cards: "Creating cards",
+  checking_cards: "Checking cards",
   ready: "Ready",
 } as const;
 
