@@ -39,6 +39,11 @@ describe("getAnswerFeedback", () => {
     expect(feedback.message).toContain("tomorrow");
   });
 
+  it("says the card is back in the queue when an answer-first miss is requeued outside Daily Review", () => {
+    expect(getAnswerFeedback("again", "custom", false, true).message).toContain("queue");
+    expect(getAnswerFeedback("hard", "daily-optional", false, true).message).toContain("queue");
+  });
+
   it("explains a parked card rather than looking like a demotion", () => {
     expect(getAnswerFeedback("again", "daily-required", true).message).toContain(
       "so you do not get stuck"

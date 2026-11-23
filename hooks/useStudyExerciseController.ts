@@ -351,12 +351,13 @@ export function useStudyExerciseController(
         starsEarned: prev.starsEarned,
         ratings: { ...prev.ratings, [attempt.rating]: prev.ratings[attempt.rating] + 1 },
       }));
-      setAnswerFeedback(getAnswerFeedback(attempt.rating, kind, Boolean(outcome.retryResult?.parked)));
       // A missed card goes to the back of the queue: seen again before the
       // session ends, but with enough cards in between to have genuinely
       // forgotten the answer it was just shown. Parking still wins -- a card
       // that has used up its Daily Review attempts stops for the day.
-      if (shouldRequeueAfterMiss({ attempt, isStruggle: outcome.isStruggle, retryResult: outcome.retryResult })) {
+      const requeued = shouldRequeueAfterMiss({ attempt, isStruggle: outcome.isStruggle, retryResult: outcome.retryResult });
+      setAnswerFeedback(getAnswerFeedback(attempt.rating, kind, Boolean(outcome.retryResult?.parked), requeued));
+      if (requeued) {
         requeueCurrentCard(outcome.nextCard);
       } else {
         goNext();

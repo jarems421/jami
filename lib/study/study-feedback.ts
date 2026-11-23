@@ -51,17 +51,23 @@ export function getSessionLabel(kind: StudySessionKind | null) {
   return "Daily Review";
 }
 
+/**
+ * `requeued` says whether the card went to the back of this session's queue.
+ * Outside Daily Review that depends on the mode: an answer-first miss comes
+ * back, so its count stays put, and the message has to say so.
+ */
 export function getAnswerFeedback(
   rating: CardRating,
   sessionKind: StudySessionKind,
-  parked: boolean
+  parked: boolean,
+  requeued = sessionKind === "daily-required" && !parked,
 ): AnswerFeedback {
   if (rating === "again") {
     return {
       tone: "error",
       message: parked
         ? "Moved to tomorrow so you do not get stuck."
-        : sessionKind === "daily-required"
+        : requeued
           ? "Back in the queue for another try."
           : "We will bring this back tomorrow.",
     };
@@ -72,7 +78,7 @@ export function getAnswerFeedback(
       tone: "warm",
       message: parked
         ? "Parked for tomorrow after a rough stretch."
-        : sessionKind === "daily-required"
+        : requeued
           ? "Back in the queue for one steadier pass."
           : "Worth another look tomorrow.",
     };

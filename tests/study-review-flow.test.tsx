@@ -807,6 +807,33 @@ describe("the answer-first modes", () => {
     expect(vi.mocked(markDailyReviewCardComplete)).toHaveBeenCalled();
     expect(currentCardId()).toBe("card-2");
   });
+
+  it.each(["Start Daily Review", "Start Simple Study"])("counts a card off once answered and keeps a missed one in the count (%s)", async (start) => {
+    vi.mocked(loadStudyAssets).mockResolvedValue({
+      "card-1": preparedAsset("card-1", [
+        "The main store of genetic information.",
+        "Where lipids are packaged for export.",
+        "The site of photosynthesis in a plant.",
+      ]),
+      "card-2": preparedAsset("card-2", [
+        "Where energy is released from glucose.",
+        "Where waste is broken down.",
+        "Where the cell is held together.",
+      ]),
+    });
+    const remaining = () => document.body.textContent?.match(/(\d+)\s*\/\s*(\d+)\s*cards remaining/)?.slice(1, 3);
+    await selectMode("Multiple Choice");
+    await click(start);
+    expect(remaining()).toEqual(["2", "2"]);
+    await chooseOption("The immediate energy carrier of the cell.");
+    await click("Next card");
+    expect(remaining()).toEqual(["1", "2"]);
+    // A miss goes to the back of the queue, so it is still to do.
+    await chooseOption("Where waste is broken down.");
+    await click("Next card");
+    expect(remaining()).toEqual(["1", "2"]);
+    expect(currentCardId()).toBe("card-2");
+  });
 });
 
 describe("a missed card comes round again", () => {
