@@ -46,7 +46,9 @@ export function buildSourceCardSections(
   let size = 0;
 
   for (const passage of passages) {
-    if (section.length && (size + passage.text.length > SECTION_CHARACTERS || section.length >= PASSAGES_PER_SECTION)) {
+    // A page's selectable text and its visual read stay side by side so each point is written once.
+    const samePage = passage.pageNumber !== undefined && passage.pageNumber === section.at(-1)?.pageNumber;
+    if (section.length && (size + passage.text.length > SECTION_CHARACTERS || (section.length >= PASSAGES_PER_SECTION && !samePage))) {
       sections.push(section);
       section = [];
       size = 0;
@@ -70,6 +72,7 @@ const CARD_RULES = [
   "Match the language, terminology and depth of the source or the learner's stated level. Preserve units, qualifiers and domain distinctions. Use plain language where the source is introductory.",
   "Choose the question form for the idea: definitions, why/how mechanisms, compare a meaningful distinction, or apply a rule in a short source-supported scenario. For a worked example, test the reusable decision or step. For clinical teaching, keep differentials and criteria distinct and preserve the teaching context. Never supply missing medical facts or treatment advice from memory.",
   "Copy a short exact supporting quote from the cited passage (up to 360 characters). The quote must support the answer. Use only the supplied material. Reuse a passage when it teaches several distinct things. Return zero cards for irrelevant or non-teaching material.",
+  "Passages with the same pageNumber come from one page: the selectable text and, marked visual, a reading of the page image that adds diagram labels and anything printed as an image. Write each point once and cite whichever passage contains it. Learning objectives and key terms on a title or overview page are teaching content.",
 ];
 
 function studentPreferences(coverage: VideoCoverage, focus?: string) {
@@ -81,7 +84,7 @@ function studentPreferences(coverage: VideoCoverage, focus?: string) {
 
 type PriorCard = Pick<VideoCardDraft, "front" | "back">;
 
-const FOLLOW_UP_GUIDANCE = "For a follow-up, the listed drafts are staying in review. Add only useful material that they do not already test. Page numbers in the request refer to pages or slides in the file. When the supplied pages have already been selected for you, cover their teaching content unless the learner also named a narrower topic.";
+const FOLLOW_UP_GUIDANCE = "The listed existing cards are staying in review. Add only useful material that they do not already test. Page numbers in the request refer to pages or slides in the file. When the supplied pages have already been selected for you, cover their teaching content unless the learner also named a narrower topic.";
 
 export function buildSourceDraftPrompt(section: SourceCardSection, coverage: VideoCoverage, focus?: string, existingCards?: readonly PriorCard[]) {
   return [
@@ -111,7 +114,7 @@ export function buildSourceReviewPrompt(
     CARD_TEXT_FORMAT_PROMPT,
     "Mentally answer each front without looking at the back. If the required term, pair, value or result is already there, rewrite the front to test recall, even when the student could simply read the answer as a choice. Replace slide-dependent prompts with standalone questions. Correct or discard unsupported claims, misleading wording, duplicates and filler. Check units, direction and qualifiers against the original text.",
     existingCards ? FOLLOW_UP_GUIDANCE : "",
-    recheck ? "This passage produced zero cards on the previous pass. Examine it on its own, including its opening lines, and write cards for any real teaching statements. Use no_teaching only for a genuinely decorative, title-only or administrative passage. Use already_covered only when a supplied existing card tests that same fact." : "",
+    recheck ? "This passage needs a separate review. Examine it on its own, including its opening lines, and fill any missing teaching statements. Use no_teaching only for a genuinely decorative, title-only or administrative passage. Use already_covered only when a supplied existing card tests that same fact." : "",
     JSON.stringify({
       learnerPreference: focus ?? "",
       items: items.map(({ card, ...point }) => ({ ...point, ...(card ? { front: card.front, back: card.back } : {}) })),
@@ -212,7 +215,13 @@ export function parseSourceVisualPassages(raw: string, pageCount: number, checke
   }));
 }
 
-export function applySourceCardReview(raw: string, items: readonly SourceCardCandidate[], sources: readonly SourceCardPassage[]) {
+export function applySourceCardReview(
+  raw: string,
+  items: readonly SourceCardCandidate[],
+  sources: readonly SourceCardPassage[],
+  // A page rechecked alone needs its own prefix: its section's review may already have used review-<id>.
+  addedIdPrefix = `review-${sources[0].id}`,
+) {
   const result = readObject(raw);
   if (!Array.isArray(result.checkedPassageIds) || !Array.isArray(result.omit) || !Array.isArray(result.keep)
     || !Array.isArray(result.drop) || !Array.isArray(result.revise) || !Array.isArray(result.add)) {
@@ -240,7 +249,7 @@ export function applySourceCardReview(raw: string, items: readonly SourceCardCan
     throw new Error("incomplete_source_card_review");
   }
   const added = result.add.flatMap((item, index) => {
-    const card = parseGroundedCard(item, `review-${sources[0].id}-${index + 1}`, byId);
+    const card = parseGroundedCard(item, `${addedIdPrefix}-${index + 1}`, byId);
     return card && !sourceCardNeedsRewrite(card.front, card.back) ? [card] : [];
   });
   const cards = [...reviewed, ...added];

@@ -120,7 +120,7 @@ export function buildPdfPageText(items: readonly PdfTextItem[]) {
   return { text: tidy(parts.join("")), heading: headingLine?.text };
 }
 
-export async function extractPdfPages(bytes: Buffer) {
+export async function extractPdfPages(bytes: Buffer, options: { toleratePageErrors?: boolean } = {}) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(bytes),
@@ -134,12 +134,19 @@ export async function extractPdfPages(bytes: Buffer) {
     const count = Math.min(document.numPages, MAX_PDF_PAGES);
     truncated = document.numPages > MAX_PDF_PAGES;
     for (let pageNumber = 1; pageNumber <= count; pageNumber += 1) {
-      const page = await document.getPage(pageNumber);
-      const content = await page.getTextContent();
+      const page = await document.getPage(pageNumber).catch((error: unknown) => {
+        if (!options.toleratePageErrors) throw error;
+        return null;
+      });
+      if (!page) continue;
+      const content = await page.getTextContent().catch((error: unknown) => {
+        if (!options.toleratePageErrors) throw error;
+        return null;
+      }).finally(() => page.cleanup());
+      if (!content) continue;
       const { text, heading } = buildPdfPageText(
         content.items.flatMap((item) => ("str" in item ? [item as PdfTextItem] : []))
       );
-      page.cleanup();
       if (!text) continue;
       pages.push({ pageNumber, ...(heading ? { heading } : {}), text });
       used += text.length;

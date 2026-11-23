@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateSourceCardBatch } from "@/services/ai/source-card-generation.server";
 import {
   applySourceCardReview,
@@ -45,6 +45,7 @@ function draft(passage: SourceCardPassage, front?: string) {
 }
 
 describe("source flashcard generation", () => {
+  beforeEach(() => { vi.resetAllMocks(); });
   it("keeps every slide in a long deck including those between the old sampled sections", () => {
     const slides = Array.from({ length: 90 }, (_, index) => ({
       pageNumber: index + 1,
@@ -159,11 +160,10 @@ describe("source flashcard generation", () => {
     expect(result?.reviewed).toBe(true);
   });
 
-  it("recovers a visual-only first PDF slide omitted by both the bulk read and the section reviewer", async () => {
+  it("reads each page of a short PDF and recovers a visual-only first slide missed by the section reviewer", async () => {
     const first = { ...passages[0], id: "v1", location: "Page 1", pageNumber: 1, visual: true };
     extractPdf.mockResolvedValue({ pages: [{ pageNumber: 2, text: passages[1].text }], pageCount: 2, truncated: false });
-    readVisuals.mockResolvedValue([]);
-    readPages.mockResolvedValue({ checked: [1], passages: [first] });
+    readPages.mockImplementation(async (_bytes, pages: number[]) => ({ checked: pages, passages: pages.includes(1) ? [first] : [] }));
     generate.mockImplementation(async (options) => {
       const prompt: string = options.request.contents[0].parts[0].text;
       const { passages: section, items } = JSON.parse(prompt.split("\n\n").at(-1)!);
@@ -178,9 +178,84 @@ describe("source flashcard generation", () => {
       source: { fileType: "application/pdf", storagePath: "fixture.pdf" } as Source,
       loadFile: async () => Buffer.from("pdf"), coverage: "standard", maxCards: null, update: async () => true,
     });
-    expect(readPages).toHaveBeenLastCalledWith(expect.any(Buffer), [1], 2, expect.any(Number));
+    expect(readVisuals).not.toHaveBeenCalled();
+    expect(readPages).toHaveBeenCalledWith(expect.any(Buffer), [1], 2, expect.any(Number));
+    expect(readPages).toHaveBeenCalledWith(expect.any(Buffer), [2], 2, expect.any(Number));
     expect(result?.evidence.map(({ pageNumber }) => pageNumber)).toEqual([1, 2]);
     expect(result?.warnings).toEqual([]);
+  });
+
+  it("does not invent missing page numbers when the PDF count is unavailable", async () => {
+    extractPdf.mockRejectedValue(new Error("PDF could not be opened"));
+    const first = { ...passages[0], id: "v1", location: "Page 1", pageNumber: 1, visual: true };
+    readVisuals.mockResolvedValue([first]);
+    generate.mockImplementation(async ({ role, request }) => {
+      const { items } = JSON.parse(request.contents[0].parts[0].text.split("\n\n").at(-1));
+      return JSON.stringify(role === "worker" ? { items: [draft(first)] } : {
+        checkedPassageIds: ["v1"], omit: [], keep: [items[0].id], drop: [], revise: [], add: [],
+      });
+    });
+    const result = await generateSourceCardBatch({
+      source: { fileType: "application/pdf", storagePath: "fixture.pdf" } as Source,
+      loadFile: async () => Buffer.from("pdf"), coverage: "standard", maxCards: null, update: async () => true,
+    });
+    expect(readPages).not.toHaveBeenCalled();
+    expect(result?.warnings.map(({ id }) => id)).toEqual(["page-count-unavailable"]);
+    expect(result?.drafts).toHaveLength(1);
+  });
+
+  it("rechecks pages with drafts after their shared review fails", async () => {
+    extract.mockResolvedValue({ pages: passages.slice(0, 2).map((passage, index) => ({ pageNumber: index + 1, text: passage.text })), pageKind: "slide" });
+    generate.mockImplementation(async ({ role, request }) => {
+      const payload = JSON.parse(request.contents[0].parts[0].text.split("\n\n").at(-1));
+      const section: SourceCardPassage[] = payload.passages;
+      if (role === "worker") return JSON.stringify({ items: section.map((passage) => draft(passage)) });
+      if (section.length > 1) return JSON.stringify({ checkedPassageIds: [] });
+      return JSON.stringify({ checkedPassageIds: [section[0].id], omit: [], keep: [],
+        drop: [payload.items[0].id], revise: [], add: [draft(section[0], `Corrected question for ${section[0].location}?`)],
+      });
+    });
+    const result = await generateSourceCardBatch({
+      source: { fileType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" } as Source,
+      loadFile: vi.fn(), coverage: "standard", maxCards: null, update: async () => true,
+    });
+    expect(result?.drafts.map(({ front }) => front)).toEqual(["Corrected question for slide 1?", "Corrected question for slide 2?"]);
+    expect(result?.warnings).toEqual([]);
+    expect(result?.reviewed).toBe(true);
+  });
+
+  it("keeps a page's text and visual read in one section", () => {
+    const pages = [1, 2, 3, 4].map((pageNumber) => ({ pageNumber, text: `Printed teaching on page ${pageNumber}.` }));
+    const visuals = [3, 4].map((page) => ({ id: `v${page}`, location: `Page ${page}`, pageNumber: page, visual: true, text: `Diagram label only on page ${page}.` }));
+    const sections = buildSourceCardSections(pages, "page", visuals);
+    expect(sections.map((section) => section.map(({ id }) => id))).toEqual([["p1", "p2", "p3", "v3"], ["p4", "v4"]]);
+  });
+
+  it("treats a page as covered by either of its passages and gives rechecked cards their own ids", async () => {
+    const visual = { id: "v1", location: "Page 1", pageNumber: 1, visual: true, text: "Superior means toward the head." };
+    extractPdf.mockResolvedValue({ pages: [1, 2].map((pageNumber) => ({ pageNumber, text: passages[pageNumber - 1].text })), pageCount: 2, truncated: false });
+    readPages.mockImplementation(async (_bytes, pages: number[]) => ({ checked: pages, passages: pages.includes(1) ? [visual] : [] }));
+    const reviews: Array<{ section: string[]; existingCards?: unknown[] }> = [];
+    generate.mockImplementation(async ({ role, request }) => {
+      const { passages: section, existingCards } = JSON.parse(request.contents[0].parts[0].text.split("\n\n").at(-1));
+      if (role === "worker") return JSON.stringify({ items: [] });
+      reviews.push({ section: section.map(({ id }: SourceCardPassage) => id), existingCards });
+      // The section review cites its addition to page 2 and lets page 1's two passages share no card.
+      if (!existingCards) {
+        return JSON.stringify({ checkedPassageIds: section.map(({ id }: SourceCardPassage) => id), keep: [], drop: [], revise: [],
+          omit: ["p1", "v1"].map((passageId) => ({ passageId, reason: "no_teaching" })), add: [draft(passages[1])] });
+      }
+      return JSON.stringify({ checkedPassageIds: section.map(({ id }: SourceCardPassage) => id), keep: [], drop: [], revise: [], add: [draft(passages[0])],
+        omit: section.slice(1).map(({ id }: SourceCardPassage) => ({ passageId: id, reason: "already_covered" })) });
+    });
+    const result = await generateSourceCardBatch({
+      source: { fileType: "application/pdf", storagePath: "fixture.pdf" } as Source,
+      loadFile: async () => Buffer.from("pdf"), coverage: "standard", maxCards: null, update: async () => true,
+    });
+    // Page 2 had a card, so only page 1 is rechecked, both its passages together, with page 2's card as context.
+    expect(reviews.slice(1)).toEqual([{ section: ["p1", "v1"], existingCards: [{ front: draft(passages[1]).front, back: draft(passages[1]).back }] }]);
+    expect(result?.drafts.map(({ id }) => id)).toEqual(["recheck-p1-1", "review-p1-1"]);
+    expect(new Set(result?.evidence.map(({ id }) => id)).size).toBe(2);
   });
 
   it("sends only the explicitly requested slide and supplies its existing drafts for comparison", async () => {

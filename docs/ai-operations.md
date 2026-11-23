@@ -156,10 +156,13 @@ keeps them available if the request fails, and inserts new drafts alongside
 the cards from the same source location. The source and evidence are temporary
 review inputs and are removed on approval, discard or after 24 hours.
 
-PDF page 1 receives a separate visual read. Pages missed by both selectable
-text extraction and the whole-document visual read are also checked as images.
-A numbered passage with no draft after its section review gets one isolated
-check. The review names pages that could not be checked.
+Short PDFs are read as explicitly numbered page images. For longer PDFs, page 1
+gets a separate visual read, as do pages missed by both selectable text
+extraction and the whole-document visual read. A page's selectable text and its
+visual read stay in one section. A page with no draft, or whose review didn't
+finish, gets an isolated check that sees the cards its section already kept, so
+it fills gaps without repeating them. Warnings name only known file pages and
+say when Jami couldn't determine the page count.
 
 From the flashcard creator, the student chooses the material, depth of coverage,
 and optionally the topics or study level to focus on. The import job preserves

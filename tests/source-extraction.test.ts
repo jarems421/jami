@@ -9,6 +9,23 @@ import {
 } from "@/lib/ai/source-extraction";
 import { detectSourceOutline } from "@/lib/ai/source-outline";
 import type { Source } from "@/lib/material/sources";
+import { renderPdfPages } from "@/services/ai/notebook-page-render.server";
+
+it("renders a PDF with a clipped vector region on the first page", async () => {
+  const document = new PDFDocument({ size: [160, 120] });
+  const bytes = await new Promise<Buffer>((resolve, reject) => {
+    const data: Buffer[] = [];
+    document.on("data", (chunk: Buffer) => data.push(chunk));
+    document.on("error", reject);
+    document.on("end", () => resolve(Buffer.concat(data)));
+    document.save().rect(10, 10, 80, 60).clip().circle(32, 32, 30).fill("black").restore();
+    document.end();
+  });
+  const pages = await renderPdfPages(bytes, [0]);
+  expect(pages).toHaveLength(1);
+  expect(pages[0]).toMatchObject({ pageIndex: 0, width: 320, height: 240 });
+  expect(pages[0].bytes.subarray(1, 4).toString()).toBe("PNG");
+});
 
 function fileSource(fileType: string): Source {
   return {

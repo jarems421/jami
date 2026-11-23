@@ -19,7 +19,7 @@ export const NOTEBOOK_RENDER_PAGE_HEIGHT = 1_550;
 /** Pages rendered when a whole PDF is asked for. */
 export const MAX_RENDERED_PDF_PAGES = 40;
 
-export async function renderPdfPages(bytes: Buffer, requestedPages?: readonly number[]) {
+export async function renderPdfPages(bytes: Buffer, requestedPages?: readonly number[], options: { toleratePageErrors?: boolean } = {}) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const task = pdfjs.getDocument({
     data: new Uint8Array(bytes),
@@ -33,23 +33,22 @@ export async function renderPdfPages(bytes: Buffer, requestedPages?: readonly nu
   const rendered: Array<{ pageIndex: number; bytes: Buffer; width: number; height: number }> = [];
   try {
     for (const pageIndex of pages) {
-      const page = await document.getPage(pageIndex + 1);
-      const baseViewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(2, NOTEBOOK_RENDER_PAGE_WIDTH / Math.max(1, baseViewport.width));
-      const viewport = page.getViewport({ scale });
-      const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-      const context = canvas.getContext("2d");
-      await page.render({
-        canvas: canvas as never,
-        canvasContext: context as never,
-        viewport,
-      }).promise;
-      rendered.push({
-        pageIndex,
-        bytes: canvas.toBuffer("image/png"),
-        width: canvas.width,
-        height: canvas.height,
-      });
+      try {
+        const page = await document.getPage(pageIndex + 1);
+        try {
+          const baseViewport = page.getViewport({ scale: 1 });
+          const scale = Math.min(2, NOTEBOOK_RENDER_PAGE_WIDTH / Math.max(1, baseViewport.width));
+          const viewport = page.getViewport({ scale });
+          const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+          const context = canvas.getContext("2d");
+          await page.render({ canvas: canvas as never, canvasContext: context as never, viewport }).promise;
+          rendered.push({ pageIndex, bytes: canvas.toBuffer("image/png"), width: canvas.width, height: canvas.height });
+        } finally {
+          page.cleanup();
+        }
+      } catch (error) {
+        if (!options.toleratePageErrors) throw error;
+      }
     }
   } finally {
     await task.destroy();

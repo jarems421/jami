@@ -13,7 +13,7 @@ const VISUAL_SCHEMA = {
   required: ["pages"],
 } as NonNullable<AiRouterOptions["generationConfig"]>["responseSchema"];
 
-const TRANSCRIPTION = "Preserve the actual labels, units, conditions and values. Include teaching statements, diagram relationships, tables and equations. Keep to 2,000 characters per page. Skip decorative and administrative material and omit anything illegible.";
+const TRANSCRIPTION = "Preserve the actual labels, units, conditions and values. Include teaching statements, diagram relationships, tables and equations. Keep to 2,000 characters per page. Keep learning objectives and key terms from title and overview pages. Skip decorative and administrative material and omit anything illegible.";
 
 export async function readSourceVisuals(bytes: Buffer, mimeType: string, pageCount: number, hasText: boolean) {
   const result = await generateAiText({
@@ -33,7 +33,7 @@ export async function readSourceVisuals(bytes: Buffer, mimeType: string, pageCou
 
 /** Supply explicit, independently labelled rasters. The model has no page numbering to infer. */
 export async function readSourcePdfPages(bytes: Buffer, requested: number[], pageCount: number, deadlineAt: number) {
-  const pages = await renderPdfPages(bytes, requested.map((page) => page - 1));
+  const pages = await renderPdfPages(bytes, requested.map((page) => page - 1), { toleratePageErrors: true });
   if (!pages.length) return { passages: [], checked: [] };
   const result = await generateAiText({
     role: "documentVision", routeReason: "visual_specialist", timeoutMs: 22_000, deadlineAt,
