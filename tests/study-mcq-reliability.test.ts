@@ -84,6 +84,11 @@ describe("rotating prepared options", () => {
     expect(mergeMcqVariants([first], [shuffled, minorChange, fresh])).toEqual([first, fresh]);
   });
 
+  it("keeps a bank of six sets and retires the oldest for a fresh one", () => {
+    const bank = Array.from({ length: 7 }, (_, index) => ({ id: `s${index}`, distractors: [`a${index}`, `b${index}`, `c${index}`] }));
+    expect(mergeMcqVariants(bank.slice(0, 6), [bank[6]]).map(({ id }) => id)).toEqual(["s1", "s2", "s3", "s4", "s5", "s6"]);
+  });
+
   it("refreshes once all options have been seen and respects the cooldown", () => {
     expect(needsFreshMcq([first.id, fresh.id], ["a"], 0, 100)).toBe(false);
     expect(needsFreshMcq([first.id, fresh.id], ["a", "d"], 0, 100)).toBe(true);

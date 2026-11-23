@@ -9,7 +9,8 @@ import { cardWithStudyAsset } from "@/services/study/study-assets";
 
 /** The longest a student waits on one card's question before it is shown as a flashcard. */
 const QUESTION_WAIT_LIMIT_MS = 20_000;
-const MULTIPLE_CHOICE_WAIT_MS = 5_000;
+/** Most questions are written and checked in three to ten seconds once a session is under way. */
+const MULTIPLE_CHOICE_WAIT_MS = 8_000;
 
 /**
  * What happens when a session locked to one mode reaches a card whose question

@@ -1,8 +1,9 @@
 import { normalizeAnswerText } from "@/lib/study/answer-marking";
 
 type Variant = { id: string; distractors: readonly string[] };
-const MAX_VARIANTS = 4;
-export const MCQ_REFRESH_COOLDOWN_MS = 6 * 60 * 60 * 1_000;
+/** A card's bank of checked option sets. A full bank drops its oldest set for a fresh one. */
+const MAX_VARIANTS = 6;
+export const MCQ_REFRESH_COOLDOWN_MS = 60 * 60 * 1_000;
 
 /** A shuffle or a single changed wrong option does not make a fresh question. */
 export function mergeMcqVariants<T extends Variant>(existing: readonly T[], proposals: readonly T[]) {

@@ -32,6 +32,11 @@ export type StudyPreparationProgress = {
 /** The visible wait for a pinned session's first card, and the only clock a student sees. */
 const PREPARATION_BUDGET_MS = 25_000;
 /**
+ * A Multiple Choice session with no question ready yet waits for the first one.
+ * Measured live on 23 Nov 2026: most cards land in three to five seconds.
+ */
+const FIRST_QUESTION_BUDGET_MS = 12_000;
+/**
  * Cards a request, in queue order.
  *
  * The server writes each on its own call, eight at a time, so a request of
@@ -107,6 +112,8 @@ export function useStudyPreparation(input: {
   const refreshRef = useRef(new Set<string>());
   /** Set once the day's allowance is spent: nothing more is sent this session. */
   const exhaustedRef = useRef(false);
+  /** Told about every asset that lands, beside the page. */
+  const listenersRef = useRef(new Set<(assets: Record<string, StudyAsset>) => void>());
   const onAssetsReadyRef = useRef(onAssetsReady);
   useEffect(() => {
     onAssetsReadyRef.current = onAssetsReady;
@@ -153,6 +160,7 @@ export function useStudyPreparation(input: {
         if (epoch !== epochRef.current || !ids.length) return;
         for (const id of ids) delivered.add(id);
         onAssetsReadyRef.current(assets);
+        for (const listener of listenersRef.current) listener(assets);
       };
       const refreshCardIds = request.cards.filter((card) => refreshRef.current.has(card.id)).map((card) => card.id);
       try {
@@ -301,12 +309,50 @@ export function useStudyPreparation(input: {
 
       // Smart Mix never waits: a card reached before its assets is asked a way
       // that needs none.
-      if (modePolicy.kind === "smart" || purpose) {
-        // Multiple Choice opens on cached material or the bounded question stage.
+      if (modePolicy.kind === "smart") return { assets: known, headStart: [], remainder: missing };
+      if (purpose) {
         // Generate cold cards before enriching ones that already have options.
         const needed = missing.filter((card) => !refreshRef.current.has(card.id));
         const refresh = missing.filter((card) => refreshRef.current.has(card.id));
-        return { assets: known, headStart: [], remainder: [...needed, ...refresh] };
+        const playable = (card: Card, assets: Record<string, StudyAsset>) =>
+          getPlayableMcqVariantIds(cardWithStudyAsset(card, assets)).length > 0;
+        // A question already ready opens the session; the stage brings it forward.
+        if (queue.some((card) => playable(card, known))) {
+          return { assets: known, headStart: [], remainder: [...needed, ...refresh] };
+        }
+        /*
+         * Nothing is ready, so the first card would only wait out its few
+         * seconds and fall back to a flashcard, and so would the next few. Wait
+         * here, visibly and briefly, for whichever question lands first.
+         */
+        const delivered: Record<string, StudyAsset> = {};
+        let listener: (assets: Record<string, StudyAsset>) => void = () => undefined;
+        const ready = new Promise<void>((resolve) => {
+          listener = (assets) => {
+            Object.assign(delivered, assets);
+            if (queue.some((card) => playable(card, delivered))) resolve();
+          };
+        });
+        listenersRef.current.add(listener);
+        setPreparation({ prepared: 0, total: 1 });
+        const background = prepareRemainingAssets([...needed, ...refresh]);
+        let expiryTimer = 0;
+        try {
+          await Promise.race([
+            ready,
+            background,
+            new Promise<void>((resolve) => { expiryTimer = window.setTimeout(resolve, FIRST_QUESTION_BUDGET_MS); }),
+            new Promise<void>((resolve) => { skipPreparationRef.current = resolve; }),
+          ]);
+        } finally {
+          window.clearTimeout(expiryTimer);
+          skipPreparationRef.current = null;
+          listenersRef.current.delete(listener);
+          setPreparation(null);
+        }
+        if (epoch !== epochRef.current) return empty;
+        // Already on their way: the caller has nothing left to start.
+        return { assets: { ...known, ...delivered }, headStart: [], remainder: [] };
       }
 
       /*

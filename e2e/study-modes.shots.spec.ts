@@ -245,6 +245,8 @@ test("checked options arrive during a cold Multiple Choice session", async ({ pa
     await builder.locator("[data-study-mode-picker] button").first().click();
     await builder.getByRole("option", { name: /^Multiple Choice/ }).click();
     await builder.getByRole("button", { name: "Start Focused Review" }).click();
+    // No question is ready, so the session holds briefly for its first one.
+    await page.getByRole("button", { name: "Start now" }).click();
     await expect(page.getByRole("heading", { name: "Writing this question" })).toBeVisible();
     const currentId = await page.locator("[data-study-current-card-id]").getAttribute("data-study-current-card-id");
     const asset = currentId ? stored.get(currentId) : undefined;

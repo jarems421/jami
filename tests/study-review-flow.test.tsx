@@ -735,6 +735,10 @@ describe("the answer-first modes", () => {
       button("Start Daily Review")?.click();
     });
     await settle();
+    // Nothing is ready yet, so the session waits briefly for its first question.
+    expect(document.body.textContent).toContain("Jami is preparing your study session");
+    await click("Start now");
+    await settle();
     expect(currentCardId()).toBe("card-1");
     expect(document.body.textContent).toContain("Writing this question");
 

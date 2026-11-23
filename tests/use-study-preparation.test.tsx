@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card } from "@/lib/study/cards";
 import type { StudyAsset } from "@/lib/ai/study-assets";
+import { getCardContentHash } from "@/lib/study/study-modes";
 
 vi.mock("@/services/study/study-assets", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/study/study-assets")>()),
@@ -74,21 +75,28 @@ afterEach(() => {
 });
 
 describe("background preparation", () => {
-  it("opens Multiple Choice without waiting on generation and publishes a question before the request finishes", async () => {
+  it("holds a cold Multiple Choice session only until its first question lands", async () => {
     let arrived: Parameters<typeof prepareStudyAssets>[1];
     vi.mocked(prepareStudyAssets).mockImplementation((_, callback) => {
       arrived = callback;
       return new Promise(() => {});
     });
-    const queue = cards(2);
-    const ready = await preparation.prepareSessionAssets(queue);
-    expect(ready.remainder).toEqual(queue);
-    expect(preparation.progress).toBeNull();
-    expect(prepareStudyAssets).not.toHaveBeenCalled();
-    await act(async () => { void preparation.prepareRemainingAssets(ready.remainder); });
-    const sample = { "card-1": exampleAsset };
-    arrived?.(sample);
+    const queue = [
+      { ...cards(1)[0], front: "Which organelle releases usable energy in a cell?", back: "The mitochondrion" },
+      ...cards(2).slice(1),
+    ];
+    let opened: Awaited<ReturnType<Preparation["prepareSessionAssets"]>> | undefined;
+    await act(async () => { void preparation.prepareSessionAssets(queue).then((value) => { opened = value; }); });
+    expect(requestedIds()).toEqual([["card-1", "card-2"]]);
+    expect(preparation.progress).not.toBeNull();
+    expect(opened).toBeUndefined();
+    const sample = { "card-1": { ...exampleAsset, sourceFingerprint: getCardContentHash(queue[0]), mcqVariants: [{
+      id: "v1", correctAnswer: "The mitochondrion", distractors: ["The ribosome", "The nucleus", "The lysosome"], explanations: {},
+    }] } };
+    await act(async () => { arrived?.(sample); });
     expect(onAssetsReady).toHaveBeenCalledWith(sample);
+    expect(opened).toMatchObject({ assets: sample, remainder: [] });
+    expect(preparation.progress).toBeNull();
     act(() => preparation.cancel());
     onAssetsReady.mockClear();
     arrived?.(sample);

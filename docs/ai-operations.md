@@ -137,15 +137,21 @@ Operators must never create a replacement job merely to resume a clarification.
 Owned study-asset queries include the active user's ID. Session startup gives
 saved questions a bounded read. The preparation response delivers each checked
 question as soon as its write commits. A ready question can move ahead of one still in
-preparation. The visible wait in Multiple Choice ends after five seconds.
+preparation. When no card in the session has a question yet, the session waits
+up to twelve seconds for the first to land, with Start now available. After
+that, a card waits up to eight seconds for its question before it is shown as
+a flashcard.
 
-Pinned Multiple Choice uses a compact draft request and checks each proposed
-set independently. The juror is preferred, with the worker available if that
-check fails. The prompt starts from a standalone stem and asks for plausible,
-distinct misconceptions. Checked sets are saved as they arrive. The session
-rotates past recently seen sets and asks for fresh ones when the current sets
-have all been seen, with a cooldown between refreshes. Existing questions stay
-available while fresh options are checked.
+Pinned Multiple Choice uses a compact draft request for up to three sets of
+options per card, then one review call for the card's sets. The juror is
+preferred, with the worker available if that check fails. The prompts ask for
+wrong options that are different ideas, not the answer with a word changed, and
+reject sets containing a subtype or synonym of the answer, or two wrong options
+that name the same thing. Each card keeps a bank of up to six checked sets. The
+session rotates past recently seen sets and asks for fresh ones once all of a
+card's sets have been seen, at most once an hour, retiring the oldest set when
+the bank is full. Existing questions stay available while fresh options are
+checked.
 
 ## Flashcards from notes or files
 
