@@ -690,6 +690,7 @@ describe("the answer-first modes", () => {
     await click("Start Daily Review");
     await settle();
     expect(currentCardId()).toBe("card-1");
+    if (button("Show it as a flashcard")) await click("Show it as a flashcard");
     expect(document.body.textContent).not.toContain("This card isn't ready for that mode");
     expect(document.body.textContent).toContain(
       "Its Multiple Choice question isn't ready yet, so here it is as a flashcard."
@@ -720,7 +721,7 @@ describe("the answer-first modes", () => {
       }
       return assets;
     });
-    // The first card's own request is slow: the session waits for it only so long.
+    // The session starts while the first card's request is still running.
     vi.mocked(prepareStudyAssets).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -733,7 +734,6 @@ describe("the answer-first modes", () => {
     await act(async () => {
       button("Start Daily Review")?.click();
     });
-    await click("Start now");
     await settle();
     expect(currentCardId()).toBe("card-1");
     expect(document.body.textContent).toContain("Writing this question");
@@ -769,7 +769,6 @@ describe("the answer-first modes", () => {
     await act(async () => {
       button("Start Daily Review")?.click();
     });
-    await click("Start now");
     await settle();
     expect(currentCardId()).toBe("card-2");
     expect(document.body.textContent).toContain("Where waste is broken down.");

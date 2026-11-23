@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseStudyAssetResponse } from "@/lib/ai/study-assets";
 import type { Card } from "@/lib/study/cards";
-import { buildMultipleChoiceQuestion } from "@/lib/study/mcq";
+import { buildMultipleChoiceQuestion, getPlayableMcqVariantIds } from "@/lib/study/mcq";
 import { condensesAnswer } from "@/lib/study/mcq-shape";
 
 /**
@@ -166,4 +166,17 @@ describe("the validator refuses a correct option that is not the card's answer",
     });
     expect(variants).toHaveLength(0);
   });
+});
+
+it("tries the next usable set and rotates away from the most recent one", () => {
+  const front = "Which unit measures force?";
+  const variants = [
+    { id: "broken", correctAnswer: "Watt", distractors: ["Joule", "Pascal", "Kelvin"], explanations: {} },
+    { id: "older", correctAnswer: "Newton", distractors: ["Joule", "Pascal", "Kelvin"], explanations: {} },
+    { id: "newer", correctAnswer: "Newton", distractors: ["Coulomb", "Hertz", "Watt"], explanations: {} },
+  ];
+  const card = cardWith("Newton", variants, front);
+  expect(getPlayableMcqVariantIds(card)).toEqual(["older", "newer"]);
+  expect(buildMultipleChoiceQuestion({ card, recentVariantIds: ["older"] })?.variantId).toBe("newer");
+  expect(buildMultipleChoiceQuestion({ card, recentVariantIds: ["older", "newer"] })?.variantId).toBe("older");
 });

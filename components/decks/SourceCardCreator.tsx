@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import TopicPicker from "@/components/topics/TopicPicker";
 import CardImportProgress from "@/components/decks/CardImportProgress";
 import JamiTutorIcon from "@/components/ui/JamiTutorIcon";
@@ -36,6 +36,7 @@ import {
   approveVideoCardJob,
   cancelVideoCardJob,
   createVideoCardJob,
+  requestMoreSourceCards,
   saveVideoCardDrafts,
 } from "@/services/ai/video-card-jobs";
 
@@ -110,6 +111,10 @@ export default function SourceCardCreator({
   const [reviewPage, setReviewPage] = useState({ jobId: "", index: 0 });
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [followUp, setFollowUp] = useState("");
+  const followUpHintId = useId();
+  const checkingMore = job?.followUp?.status === "running";
+  const reviewBusy = busy || checkingMore;
 
   useEffect(() => {
     setDeckId((current) => current || defaultDeckId || decks[0]?.id || "");
@@ -212,6 +217,19 @@ export default function SourceCardCreator({
     }
   };
 
+  const addMore = async () => {
+    if (!job || reviewBusy || !followUp.trim()) return;
+    setBusy(true);
+    try {
+      const next = await requestMoreSourceCards(job.id, followUp.trim(), job.updatedAt, job.drafts);
+      setJob(next);
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Could not ask for more cards.", true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const renderDraft = (draft: VideoCardDraft, index: number) => {
     const evidence = draft.evidenceIds
       .map((id) => evidenceById.get(id))
@@ -223,6 +241,7 @@ export default function SourceCardCreator({
             type="checkbox"
             className="accent-[var(--color-accent)]"
             checked={draft.selected}
+            disabled={reviewBusy}
             onChange={() => toggleDraft(draft.id)}
           />
           Card {index + 1}
@@ -232,7 +251,7 @@ export default function SourceCardCreator({
           aria-label={`Card ${index + 1} front`}
           value={draft.front}
           maxLength={MAX_FRONT_LENGTH}
-          disabled={busy}
+          disabled={reviewBusy}
           onChange={(event) => updateDraft(draft.id, "front", event.target.value)}
         />
         <Textarea
@@ -241,7 +260,7 @@ export default function SourceCardCreator({
           rows={3}
           value={draft.back}
           maxLength={MAX_BACK_LENGTH}
-          disabled={busy}
+          disabled={reviewBusy}
           onChange={(event) => updateDraft(draft.id, "back", event.target.value)}
         />
         <Evidence entries={evidence} />
@@ -254,6 +273,9 @@ export default function SourceCardCreator({
     const pageCount = Math.ceil(job.drafts.length / DRAFTS_PER_PAGE);
     const pageIndex = reviewPage.jobId === job.id ? Math.min(reviewPage.index, pageCount - 1) : 0;
     const pageStart = pageIndex * DRAFTS_PER_PAGE;
+    const newDraftCount = job.followUp?.added ?? 0;
+    const firstNewDraft = job.drafts.findIndex((draft) => draft.id.startsWith(`${job.followUp?.id}:`));
+    const firstNewDraftPage = Math.floor(firstNewDraft / DRAFTS_PER_PAGE);
     const setAllSelected = (selected: boolean) => setJob((current) => current ? {
       ...current,
       drafts: current.drafts.map((draft) => ({ ...draft, selected })),
@@ -274,8 +296,40 @@ export default function SourceCardCreator({
                 <h4 className="text-base font-semibold text-text-primary">Review {job.drafts.length} {job.drafts.length === 1 ? "draft" : "drafts"}</h4>
                 <p className="mt-1 text-sm text-text-muted">{job.title} · {selectedCount} selected</p>
               </div>
-              <Button variant="ghost" disabled={busy} onClick={() => void discard()}>Discard</Button>
+              <Button variant="ghost" disabled={reviewBusy} onClick={() => void discard()}>Discard</Button>
             </div>
+            {job.canRequestMore ? (
+              <Panel tone="subtle" padding="md" className="space-y-3">
+                <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void addMore(); }}>
+                  <Textarea
+                    label="Ask Jami for more cards"
+                    placeholder="e.g. Go back to the first slide and add cards for the definitions."
+                    aria-describedby={followUpHintId}
+                    rows={2}
+                    maxLength={500}
+                    value={followUp}
+                    disabled={reviewBusy}
+                    onChange={(event) => setFollowUp(event.target.value)}
+                  />
+                  <p id={followUpHintId} className="text-xs text-text-muted">Your current drafts and edits stay here.</p>
+                  <Button type="submit" variant="secondary" disabled={reviewBusy || !followUp.trim()}>
+                    <JamiTutorIcon className="size-4" />
+                    {checkingMore ? "Checking the source…" : "Find more cards"}
+                  </Button>
+                </form>
+                {job.followUp ? (
+                  <div role="status" className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
+                    {checkingMore ? "Jami is checking your request." : job.followUp.status === "failed" ? job.followUp.message : (
+                      <>
+                        <p>{newDraftCount ? `${newDraftCount} new ${newDraftCount === 1 ? "draft" : "drafts"} added.` : "Jami found no additional cards for this request."}</p>
+                        {firstNewDraft >= 0 && pageIndex !== firstNewDraftPage ? <Button size="sm" variant="ghost" onClick={() => setReviewPage({ jobId: job.id, index: firstNewDraftPage })}>Go to new drafts</Button> : null}
+                        {job.followUp.message ? <p>{job.followUp.message}</p> : null}
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </Panel>
+            ) : null}
             {job.warnings.length ? (
               <ul className="space-y-2">
                 {job.warnings.map((warning) => (
@@ -288,8 +342,8 @@ export default function SourceCardCreator({
             {pageCount > 1 ? (
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="ghost" disabled={busy || selectedCount === job.drafts.length} onClick={() => setAllSelected(true)}>Select all</Button>
-                  <Button size="sm" variant="ghost" disabled={busy || !selectedCount} onClick={() => setAllSelected(false)}>Clear selection</Button>
+                  <Button size="sm" variant="ghost" disabled={reviewBusy || selectedCount === job.drafts.length} onClick={() => setAllSelected(true)}>Select all</Button>
+                  <Button size="sm" variant="ghost" disabled={reviewBusy || !selectedCount} onClick={() => setAllSelected(false)}>Clear selection</Button>
                 </div>
                 <nav aria-label="Draft pages" className="flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="secondary" disabled={busy || pageIndex === 0} onClick={() => setReviewPage({ jobId: job.id, index: pageIndex - 1 })}>Previous</Button>
@@ -304,7 +358,7 @@ export default function SourceCardCreator({
             <p className="text-xs leading-5 text-text-muted">
               The uploaded file and source evidence are removed after you add or discard this batch.
             </p>
-            <Button size="lg" disabled={busy || !selectedCount} onClick={() => void approve()}>
+            <Button size="lg" disabled={reviewBusy || !selectedCount} onClick={() => void approve()}>
               Add selected cards
             </Button>
           </>

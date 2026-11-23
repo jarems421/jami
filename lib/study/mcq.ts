@@ -1,7 +1,7 @@
 import { getCardAcceptedAnswers, type Card } from "@/lib/study/cards";
 import { markTypedAnswer, normalizeAnswerText, parseNumericAnswer } from "@/lib/study/answer-marking";
 import { getDiagramDistractorPool } from "@/lib/study/image-occlusion";
-import { getCardContentHash } from "@/lib/study/study-modes";
+import { getCardContentHash, type StudyMcqVariant } from "@/lib/study/study-modes";
 import {
   condensesAnswer,
   optionsLookGuessable,
@@ -122,6 +122,7 @@ function usableDistractors(card: Card, correctAnswer: string, written: readonly 
     if (!trimmed || trimmed.length > MAX_OPTION_LENGTH) continue;
     const key = normalizeAnswerText(trimmed);
     if (!key || seen.has(key) || equivalentOption(trimmed, correctAnswer) ||
+      distractors.some((shown) => equivalentOption(trimmed, shown)) ||
       accepted.some((alias) => equivalentOption(trimmed, alias))) continue;
     seen.add(key);
     distractors.push(trimmed);
@@ -184,17 +185,35 @@ export function buildMultipleChoiceQuestion(input: {
   recentVariantIds?: string[];
 }): McqQuestion | null {
   const { card } = input;
+  const variants = activeMcqVariants(card);
+  const presentation = input.variantIndex ?? 0;
+  const seed = (input.seed ?? 0) ^ Math.imul(presentation, 0x9e3779b1);
+  if (variants.length === 0) return buildQuestion(card, seed);
+  const recent = input.recentVariantIds ?? [];
+  const offset = presentation % variants.length;
+  const priority = [...variants.slice(offset), ...variants.slice(0, offset)].sort(
+    (left, right) => recent.lastIndexOf(left.id) - recent.lastIndexOf(right.id),
+  );
+  for (const variant of priority) {
+    const question = buildQuestion(card, seed, variant);
+    if (question) return question;
+  }
+  return null;
+}
+
+function activeMcqVariants(card: Card) {
+  if (card.occlusion || card.studySettings?.mcqDistractors !== undefined) return [];
+  const generated = card.studySettings?.generatedStudy;
+  return (generated?.mcqVariants ?? []).filter(({ id }) => !generated?.retiredVariantIds?.includes(id));
+}
+
+export function getPlayableMcqVariantIds(card: Card): string[] {
+  return activeMcqVariants(card).filter((variant) => buildQuestion(card, 0, variant)).map(({ id }) => id);
+}
+
+function buildQuestion(card: Card, seed: number, variant?: StudyMcqVariant): McqQuestion | null {
   const answerText = card.back.trim();
   if (!answerText) return null;
-
-  const variants = (card.studySettings?.mcqDistractors !== undefined ? [] : card.studySettings?.generatedStudy?.mcqVariants ?? []).filter(
-    (variant) => !card.studySettings?.generatedStudy?.retiredVariantIds?.includes(variant.id)
-  );
-  const freshVariants = variants.filter((candidate) => !(input.recentVariantIds ?? []).slice(-2).includes(candidate.id));
-  const variantPool = freshVariants.length > 0 ? freshVariants : variants;
-  const variant = variantPool.length > 0
-    ? variantPool[(input.variantIndex ?? 0) % variantPool.length]
-    : undefined;
   /*
    * A prepared correct option is kept when it is the card's answer said
    * another way, or the card's answer said more briefly.
@@ -210,11 +229,12 @@ export function buildMultipleChoiceQuestion(input: {
    * queue to it.
    */
   const preparedCorrect = variant?.correctAnswer?.trim();
-  const correctAnswer = preparedCorrect && (
+  if (preparedCorrect && !(
     equivalentOption(preparedCorrect, answerText) ||
     condensesAnswer(preparedCorrect, answerText) ||
     getCardAcceptedAnswers(card).some((alias) => equivalentOption(preparedCorrect, alias))
-  ) ? preparedCorrect : answerText;
+  )) return null;
+  const correctAnswer = preparedCorrect || answerText;
 
   /*
    * The cap belongs to the option that is shown, not to the card.
@@ -241,7 +261,7 @@ export function buildMultipleChoiceQuestion(input: {
   if (distractors.length < REQUIRED_DISTRACTORS) return null;
 
   const random = createRandom(
-    (input.seed ?? 0) ^ seedFrom(card.id + getCardContentHash(card))
+    seed ^ seedFrom(card.id + getCardContentHash(card) + (variant?.id ?? ""))
   );
   const correctOptionId = "opt-0";
   /*

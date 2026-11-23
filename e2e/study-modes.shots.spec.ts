@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
+import { deleteDoc, doc, getDoc, setDoc, type DocumentData } from "firebase/firestore";
 import {
+  E2E_MODES_CARDS,
   E2E_MODES_DECK_ID,
+  E2E_PROJECT_ID,
   E2E_USER_EMAIL,
   E2E_USER_PASSWORD,
 } from "./fixtures";
@@ -191,4 +195,83 @@ test("study modes walkthrough", async ({ page }) => {
     (seen["Multiple Choice"] as { mcqOptions: number }).mcqOptions,
     "Multiple Choice offers four options"
   ).toBe(4);
+});
+
+type StudyAssetTestWindow = Window & {
+  testStudyAssetReceivers?: ReadableStreamDefaultController<Uint8Array>[];
+};
+
+test("checked options arrive during a cold Multiple Choice session", async ({ page }) => {
+  const emulator = await initializeTestEnvironment({ projectId: E2E_PROJECT_ID });
+  const stored = new Map<string, DocumentData>();
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch;
+    const receivers: ReadableStreamDefaultController<Uint8Array>[] = [];
+    (window as StudyAssetTestWindow).testStudyAssetReceivers = receivers;
+    window.fetch = async (request, options) => {
+      if (typeof request !== "string" || request !== "/api/ai/study-assets/jobs") return originalFetch(request, options);
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"type":"started"}\n'));
+          receivers.push(controller);
+        },
+      }), { headers: { "Content-Type": "application/x-ndjson" } });
+    };
+  });
+  const errors: Error[] = [];
+  page.on("pageerror", (error) => errors.push(error));
+  try {
+    await emulator.withSecurityRulesDisabled(async (context) => {
+      await Promise.all(E2E_MODES_CARDS.map(async ({ id }) => {
+        const asset = doc(context.firestore(), "cardStudyAssets", id);
+        const data = (await getDoc(asset)).data();
+        if (!data) throw new Error("Missing prepared test asset");
+        stored.set(id, data);
+        await deleteDoc(asset);
+      }));
+    });
+    await page.goto("/auth");
+    await page.getByLabel("Email").fill(EMAIL);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL(/\/dashboard$/);
+    await page.goto(`/dashboard/study?decks=${DECK}`);
+    const restored = page.getByRole("button", { name: "End session" });
+    if (await restored.count()) {
+      await restored.click();
+      await page.goto(`/dashboard/study?decks=${DECK}`);
+    }
+    const builder = page.locator("#focused-review-builder");
+    await builder.locator("[data-study-mode-picker] button").first().click();
+    await builder.getByRole("option", { name: /^Multiple Choice/ }).click();
+    await builder.getByRole("button", { name: "Start Focused Review" }).click();
+    await expect(page.getByRole("heading", { name: "Writing this question" })).toBeVisible();
+    const currentId = await page.locator("[data-study-current-card-id]").getAttribute("data-study-current-card-id");
+    const asset = currentId ? stored.get(currentId) : undefined;
+    expect(asset).toBeDefined();
+    await expect.poll(() => page.evaluate(() =>
+      (window as StudyAssetTestWindow).testStudyAssetReceivers?.length ?? 0
+    )).toBeGreaterThan(0);
+    await page.evaluate((storedAsset) => {
+      const { asset, ...metadata } = storedAsset;
+      const ready = new TextEncoder().encode(JSON.stringify({ type: "asset", asset: { ...asset, ...metadata } }) + "\n");
+      (window as StudyAssetTestWindow).testStudyAssetReceivers?.forEach((controller) => controller.enqueue(ready));
+    }, asset!);
+    const choices = page.getByRole("radiogroup", { name: "Answer choices" }).getByRole("radio");
+    await expect(choices).toHaveCount(4);
+    const shown = await choices.allTextContents();
+    // The response is still open. Rendering came from the first completed card.
+    for (const width of [820, 390]) {
+      await page.setViewportSize({ width, height: 840 });
+      await expect(choices.first()).toBeVisible();
+      await expect(choices).toHaveText(shown);
+    }
+    expect(errors).toEqual([]);
+    await page.getByRole("button", { name: "End session" }).click();
+  } finally {
+    await emulator.withSecurityRulesDisabled(async (context) => {
+      await Promise.all([...stored].map(([id, data]) => setDoc(doc(context.firestore(), "cardStudyAssets", id), data)));
+    });
+    await emulator.cleanup();
+  }
 });

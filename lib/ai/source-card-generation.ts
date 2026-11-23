@@ -10,7 +10,7 @@ const SECTION_CHARACTERS = 5_000;
 const PASSAGES_PER_SECTION = 4;
 export const SOURCE_CARD_MAX_VISUAL_PAGES = 80;
 
-export type SourceCardPassage = { id: string; location: string; text: string; visual?: boolean };
+export type SourceCardPassage = { id: string; location: string; text: string; pageNumber?: number; visual?: boolean };
 export type SourceCardSection = SourceCardPassage[];
 export type GroundedSourceCard = {
   id: string;
@@ -32,13 +32,15 @@ export function buildSourceCardSections(
     id: `p${chunk.chunkIndex + 1}`,
     location: describePageRange(chunk.pageStart, chunk.pageEnd, pageKind) || `Passage ${chunk.chunkIndex + 1}`,
     text: chunk.text,
+    ...(chunk.pageStart === chunk.pageEnd && chunk.pageStart !== undefined ? { pageNumber: chunk.pageStart } : {}),
   }));
   const pageText = new Map(pages.map(({ pageNumber, text }) => [pageNumber, contentTokens(text)]));
   const visualPassages = visuals.filter((passage) => {
     const printed = pageText.get(Number(passage.id.slice(1)));
     return !printed || overlapRatio(contentTokens(passage.text), printed) < 1;
   });
-  const passages = [...textPassages, ...visualPassages];
+  const passages = [...textPassages, ...visualPassages].sort((left, right) =>
+    (left.pageNumber ?? Infinity) - (right.pageNumber ?? Infinity) || 0);
   const sections: SourceCardSection[] = [];
   let section: SourceCardSection = [];
   let size = 0;
@@ -77,15 +79,20 @@ function studentPreferences(coverage: VideoCoverage, focus?: string) {
   ].filter(Boolean).join("\n");
 }
 
-export function buildSourceDraftPrompt(section: SourceCardSection, coverage: VideoCoverage, focus?: string) {
+type PriorCard = Pick<VideoCardDraft, "front" | "back">;
+
+const FOLLOW_UP_GUIDANCE = "For a follow-up, the listed drafts are staying in review. Add only useful material that they do not already test. Page numbers in the request refer to pages or slides in the file. When the supplied pages have already been selected for you, cover their teaching content unless the learner also named a narrower topic.";
+
+export function buildSourceDraftPrompt(section: SourceCardSection, coverage: VideoCoverage, focus?: string, existingCards?: readonly PriorCard[]) {
   return [
     "Work through every passage in order. Inventory each independent teaching point first, then write one card per useful point. Return JSON only: {\"items\":[{\"point\":string,\"passageId\":string,\"quote\":string,\"front\":string,\"back\":string}]}. Keep the point and quote and leave front/back empty if no good cue comes to mind.",
     studentPreferences(coverage, focus),
     ...CARD_RULES,
     CARD_TEXT_FORMAT_PROMPT,
     "A slide can teach multiple useful points. Continue through its bullets, tables and worked steps after covering its main idea. The card count follows the material. Skip decorative or administrative material.",
-    JSON.stringify({ learnerPreference: focus ?? "", passages: section }),
-  ].join("\n\n");
+    existingCards ? FOLLOW_UP_GUIDANCE : "",
+    JSON.stringify({ learnerPreference: focus ?? "", passages: section, existingCards }),
+  ].filter(Boolean).join("\n\n");
 }
 
 export function buildSourceReviewPrompt(
@@ -93,6 +100,8 @@ export function buildSourceReviewPrompt(
   passages: readonly SourceCardPassage[],
   coverage: VideoCoverage,
   focus?: string,
+  existingCards?: readonly PriorCard[],
+  recheck = false,
 ) {
   return [
     "Independently read each original passage before looking at the existing points and cards. For each slide or passage, compare each testable definition, distinction, step, condition or exception to the cards. Add a card for every worthwhile point that has no usable card, including omissions on slides with several cards already. Ignore headings that teach nothing, filler and out-of-scope material.",
@@ -101,12 +110,15 @@ export function buildSourceReviewPrompt(
     ...CARD_RULES,
     CARD_TEXT_FORMAT_PROMPT,
     "Mentally answer each front without looking at the back. If the required term, pair, value or result is already there, rewrite the front to test recall, even when the student could simply read the answer as a choice. Replace slide-dependent prompts with standalone questions. Correct or discard unsupported claims, misleading wording, duplicates and filler. Check units, direction and qualifiers against the original text.",
+    existingCards ? FOLLOW_UP_GUIDANCE : "",
+    recheck ? "This passage produced zero cards on the previous pass. Examine it on its own, including its opening lines, and write cards for any real teaching statements. Use no_teaching only for a genuinely decorative, title-only or administrative passage. Use already_covered only when a supplied existing card tests that same fact." : "",
     JSON.stringify({
       learnerPreference: focus ?? "",
       items: items.map(({ card, ...point }) => ({ ...point, ...(card ? { front: card.front, back: card.back } : {}) })),
       passages,
+      existingCards,
     }),
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }
 
 function readObject(raw: string): Record<string, unknown> {
@@ -180,7 +192,7 @@ export function parseSourceCardSection(raw: string, section: SourceCardSection, 
   });
 }
 
-export function parseSourceVisualPassages(raw: string, pageCount: number): SourceCardPassage[] {
+export function parseSourceVisualPassages(raw: string, pageCount: number, checked?: number[]): SourceCardPassage[] {
   const { pages } = readObject(raw);
   if (!Array.isArray(pages)) throw new Error("invalid_source_visual_response");
   const byPage = new Map<number, string>();
@@ -188,11 +200,13 @@ export function parseSourceVisualPassages(raw: string, pageCount: number): Sourc
     if (!entry || typeof entry !== "object") continue;
     const { page, text } = entry as Record<string, unknown>;
     if (typeof page !== "number" || !Number.isInteger(page) || page < 1 || page > pageCount || typeof text !== "string") continue;
+    checked?.push(page);
     if (text.trim() && !byPage.has(page)) byPage.set(page, text.trim().slice(0, 2_000));
   }
   return [...byPage].sort(([a], [b]) => a - b).map(([page, text]) => ({
     id: `v${page}`,
     location: `Page ${page}`,
+    pageNumber: page,
     text,
     visual: true,
   }));
@@ -254,6 +268,7 @@ export function finishSourceCardBatch(cards: readonly GroundedSourceCard[], pass
     : Array.from({ length: Math.max(0, ...groups.map((group) => group.length)) },
       (_, index) => groups.flatMap((group) => group[index] ? [group[index]] : [])).flat();
   const byId = new Map(passages.map((passage) => [passage.id, passage]));
+  const positions = new Map(passages.map((passage, index) => [passage.id, index + 1]));
   const evidence = new Map(ordered.map((card): [string, VideoCardEvidence] => {
     const passage = byId.get(card.passageId)!;
     return [card.id, {
@@ -262,6 +277,8 @@ export function finishSourceCardBatch(cards: readonly GroundedSourceCard[], pass
       kind: passage.visual ? "visual" : "concept",
       summary: `${passage.location} · ${card.quote}`,
       facts: [card.quote],
+      ...(passage.pageNumber === undefined ? {} : { pageNumber: passage.pageNumber }),
+      sourceOrder: positions.get(card.passageId)!,
     }];
   }));
   const seen = new Set<string>();

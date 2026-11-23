@@ -15,12 +15,21 @@ const PROCESSING_MAX_POLLS = 60;
  * upload, the wait for Gemini, the read, and the second look and tidy
  * (`services/ai/video-card-generation.server.ts`).
  */
-export async function generateVideoCardWorkflow(uid: string, jobId: string) {
+export async function generateVideoCardWorkflow(uid: string, jobId: string, followUpId?: string) {
   "use workflow";
   let video: VideoCardSourceVideo | null = null;
   try {
+    if (followUpId) {
+      await addSourceCards(uid, jobId, followUpId);
+      return { status: "ready" as const };
+    }
     const start = await startImport(uid, jobId);
-    if (start.kind === "stopped" || start.kind === "done") return { status: "ready" as const };
+    if (start.kind === "done") {
+      await sleep("24h");
+      await expireSourceReview(uid, jobId);
+      return { status: "ready" as const };
+    }
+    if (start.kind === "stopped") return { status: "ready" as const };
     video = start.kind === "youtube" ? start.video : await uploadVideo(uid, jobId);
     for (let polls = 0; video.state && video.state !== "ACTIVE"; polls += 1) {
       if (video.state === "FAILED") throw new Error("gemini_file_processing_failed");
@@ -32,11 +41,35 @@ export async function generateVideoCardWorkflow(uid: string, jobId: string) {
     if (read) await finishImport(uid, jobId, video, read);
     return { status: "ready" as const };
   } catch (error) {
-    await failVideoGeneration(uid, jobId, error instanceof Error ? error.message : "");
+    const reason = error instanceof Error ? error.message : "";
+    if (followUpId) await failSourceFollowUp(uid, jobId, followUpId, reason);
+    else await failVideoGeneration(uid, jobId, reason);
     return { status: "failed" as const };
   } finally {
     if (video?.name) await removeVideoCopy(video);
   }
+}
+
+async function expireSourceReview(uid: string, jobId: string) {
+  "use step";
+  const { getAdminDb } = await import("@/services/firebase/admin");
+  const { expireSourceCardReviewInput } = await import("@/services/ai/source-card-follow-up.server");
+  const snapshot = await getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId).get();
+  if (snapshot.exists) await expireSourceCardReviewInput(snapshot.ref, snapshot.data() ?? {});
+}
+
+async function addSourceCards(uid: string, jobId: string, followUpId: string) {
+  "use step";
+  const { addCardsFromSource } = await import("@/services/ai/video-card-generation.server");
+  return addCardsFromSource(uid, jobId, followUpId);
+}
+
+async function failSourceFollowUp(uid: string, jobId: string, followUpId: string, reason: string) {
+  "use step";
+  const { getAdminDb } = await import("@/services/firebase/admin");
+  const { failSourceCardFollowUp, sourceCardFollowUpError } = await import("@/services/ai/source-card-follow-up.server");
+  const ref = getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId);
+  await failSourceCardFollowUp(ref, followUpId, sourceCardFollowUpError(reason));
 }
 
 async function startImport(uid: string, jobId: string) {

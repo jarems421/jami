@@ -32,7 +32,7 @@ export function useCardImportJob(sourceKinds: readonly CardImportSourceKind[], d
   }, [kinds, deckId]);
 
   const activeJobId = job?.id;
-  const inProgress = job?.status === "queued" || job?.status === "running";
+  const inProgress = job?.status === "queued" || job?.status === "running" || job?.followUp?.status === "running";
   useEffect(() => {
     if (!activeJobId || !inProgress) return;
     let active = true;

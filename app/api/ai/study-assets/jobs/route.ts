@@ -3,6 +3,7 @@ import { normalizeCardStudySettings } from "@/lib/study/card-study-settings";
 import { getCardContentHash, type CardStudySettings } from "@/lib/study/study-modes";
 import { STUDY_ASSET_VALIDATOR_VERSION } from "@/lib/study/study-asset-versions";
 import { isStudyAssetRecordCurrent } from "@/lib/study/study-asset-cache";
+import { MCQ_REFRESH_COOLDOWN_MS, mergeMcqVariants } from "@/lib/study/mcq-rotation";
 import type { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/services/firebase/admin";
@@ -24,7 +25,7 @@ import {
   STUDY_ASSET_SCHEMA_VERSION,
   type StudyAsset,
 } from "@/lib/ai/study-assets";
-import { generateStudyAssetBatch } from "@/services/ai/study-asset-generation.server";
+import { generateMultipleChoiceBatch, generateStudyAssetBatch } from "@/services/ai/study-asset-generation.server";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 
@@ -63,15 +64,11 @@ type OwnedCard = {
 /**
  * Prepare the AI half of the study modes for one deck.
  *
- * Called when a session starts, which is what makes the cache the whole design
- * rather than an optimisation. Cards already prepared under their current
- * content are answered for free and never reach a model, so a student studying
- * a deck they have studied before spends nothing and waits for nothing; only
- * genuinely new or edited cards cost anything.
+ * Called when a session starts. Reuse current assets and generate only for new
+ * or edited cards, requested repairs and occasional Multiple Choice refreshes.
  *
- * Each card is saved the moment its own call lands, not when the whole
- * request is done, so a page reading the cache while this runs sees cards
- * arrive one at a time.
+ * Save and publish each card when its own call lands so the session can use it
+ * while the remaining cards are still being prepared.
  *
  * Nothing here runs because a card was created or edited. Preparation follows
  * the student into a session; it does not chase them around the app.
@@ -95,6 +92,7 @@ export async function POST(request: NextRequest) {
   let deckId: string;
   let cardIds: string[];
   let wantsMultipleChoice = false;
+  let refreshCardIds = new Set<string>();
   try {
     const body = (await request.json()) as Record<string, unknown>;
     deckId = typeof body.deckId === "string" ? body.deckId.trim().slice(0, 120) : "";
@@ -108,6 +106,10 @@ export async function POST(request: NextRequest) {
         ).slice(0, MAX_CARDS_PER_JOB)
       : [];
     wantsMultipleChoice = body.purpose === "multiple-choice";
+    if (wantsMultipleChoice && Array.isArray(body.refreshCardIds)) {
+      const requestedRefresh = new Set(body.refreshCardIds.filter((id): id is string => typeof id === "string"));
+      refreshCardIds = new Set(cardIds.filter((id) => requestedRefresh.has(id)));
+    }
     if (!deckId || cardIds.length === 0) {
       return apiFailure("deckId and cardIds are required", 400, "invalid_request");
     }
@@ -162,19 +164,20 @@ export async function POST(request: NextRequest) {
     ...keyed.map((entry) => db.collection("cardStudyAssets").doc(entry.card.id))
   );
   const cached = new Set<string>();
-  /** Cards being asked again for a question, because the first try had none. */
-  const multipleChoiceRetries = new Set<string>();
+  const previousMcqs = new Map<string, NonNullable<StudyAsset["mcqVariants"]>>();
   let cachedMcqVariants = 0;
   let cachedGapVariants = 0;
   existing.forEach((snapshot, position) => {
     const data = snapshot.data();
     const { card, cacheKey } = keyed[position];
-    if (isStudyAssetRecordCurrent(data, { uid, card, cacheKey, wantsMultipleChoice })) {
+    const usable = isStudyAssetRecordCurrent(data, { uid, card, cacheKey, wantsMultipleChoice });
+    const refresh = usable && Array.isArray(data?.asset?.mcqVariants) && data.asset.mcqVariants.length > 0
+      && refreshCardIds.has(card.id) && !(typeof data.mcqRefreshAfter === "number" && data.mcqRefreshAfter > Date.now());
+    if (refresh) previousMcqs.set(card.id, data.asset.mcqVariants);
+    if (usable && !refresh) {
       cached.add(card.id);
       cachedMcqVariants += Array.isArray(data?.asset?.mcqVariants) ? data.asset.mcqVariants.length : 0;
       cachedGapVariants += Array.isArray(data?.asset?.gapVariants) ? data.asset.gapVariants.length : 0;
-    } else if (isStudyAssetRecordCurrent(data, { uid, card, cacheKey, wantsMultipleChoice: false })) {
-      multipleChoiceRetries.add(card.id);
     }
   });
 
@@ -243,6 +246,12 @@ export async function POST(request: NextRequest) {
     const ref = db.collection("cardStudyAssets").doc(entry.card.id);
     return db.runTransaction(async (transaction) => {
       const data = (await transaction.get(ref)).data();
+      if (previousMcqs.has(entry.card.id)) {
+        if (typeof data?.mcqRefreshAfter === "number" && data.mcqRefreshAfter > Date.now()) return false;
+        // Two sessions arriving together share the refresh. Allow a later retry after a provider failure.
+        transaction.set(ref, { mcqRefreshAfter: Date.now() + 5 * 60_000 }, { merge: true });
+        return true;
+      }
       if (data?.repairRequested !== true) return true;
       if (data.repairAttemptedForPromptVersion === STUDY_ASSET_PROMPT_VERSION) return false;
       transaction.set(ref, { repairAttemptedForPromptVersion: STUDY_ASSET_PROMPT_VERSION }, { merge: true });
@@ -256,64 +265,84 @@ export async function POST(request: NextRequest) {
     batches.push(pending.slice(start, start + MAX_CARDS_PER_BATCH));
   }
 
-  /** Save what one batch produced, straight away, so it can be used straight away. */
+  /** Merge what finished using the current document, even if another job landed first. */
   const saveBatch = async (
     batch: typeof pending,
     assets: StudyAsset[],
-    declinedCardIds: readonly string[]
+    declinedCardIds: readonly string[],
+    publish?: (asset: StudyAsset) => void,
   ) => {
-    const writer = db.batch();
-    let writes = 0;
-    for (const entry of batch) {
-      const ref = db.collection("cardStudyAssets").doc(entry.card.id);
-      const asset = assets.find((candidate) => candidate.cardId === entry.card.id);
-      const base = {
-        userId: uid,
-        deckId,
-        cardId: entry.card.id,
-        cacheKey: entry.cacheKey,
-        schemaVersion: STUDY_ASSET_SCHEMA_VERSION,
-        promptVersion: STUDY_ASSET_PROMPT_VERSION,
-        sourceFingerprint: getCardContentHash(entry.card),
-        ...(multipleChoiceRetries.has(entry.card.id)
-          ? { mcqRetryPromptVersion: STUDY_ASSET_PROMPT_VERSION }
-          : {}),
-      };
-      if (asset) {
-        writer.set(ref, {
-          ...base,
-          asset: {
-            ...asset,
-            mcqVariants: asset.mcqVariants?.map((variant) => ({ ...variant, id: `${jobId}:${variant.id}` })) ?? [],
-            gapVariants: asset.gapVariants?.map((variant) => ({ ...variant, id: `${jobId}:${variant.id}` })) ?? [],
-          },
-          bundleRevision: jobId,
+    await Promise.all(batch.map(async ({ card, cacheKey }) => {
+      const generated = assets.find((asset) => asset.cardId === card.id);
+      if (!generated && !declinedCardIds.includes(card.id)) return;
+
+      const ref = db.collection("cardStudyAssets").doc(card.id);
+      const ready = await db.runTransaction(async (transaction) => {
+        const stored = (await transaction.get(ref)).data();
+        const sourceFingerprint = getCardContentHash(card);
+        const current = (await transaction.get(db.collection("cards").doc(card.id))).data();
+        if (!current || current.userId !== uid || current.deckId !== deckId
+          || getCardContentHash({
+            front: current.front, back: current.back, studySettings: normalizeCardStudySettings(current.studySettings),
+            frontImage: current.frontImage, backImage: current.backImage, occlusion: current.occlusion,
+          }) !== sourceFingerprint) return;
+        const matches = stored?.userId === uid && stored.cacheKey === cacheKey
+          && stored.sourceFingerprint === sourceFingerprint
+          && stored.validatorVersion === STUDY_ASSET_VALIDATOR_VERSION;
+        const prior = matches && !stored?.generationFailed ? stored?.asset as StudyAsset | undefined : undefined;
+        const retiredIds = new Set<string>(matches && Array.isArray(stored?.retiredVariantIds) ? stored.retiredVariantIds : []);
+        const previousMcqs = (prior?.mcqVariants ?? []).filter(({ id }) => !retiredIds.has(id));
+        const proposedMcqs = (generated?.mcqVariants ?? []).map((variant) => ({ ...variant, id: `${jobId}:${variant.id}` }));
+        const mcqVariants = mergeMcqVariants(previousMcqs, proposedMcqs);
+        const base = {
+          userId: uid, deckId, cardId: card.id, cacheKey, sourceFingerprint,
+          schemaVersion: STUDY_ASSET_SCHEMA_VERSION,
+          promptVersion: STUDY_ASSET_PROMPT_VERSION,
           validatorVersion: STUDY_ASSET_VALIDATOR_VERSION,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+
+        if (!generated && !prior && !wantsMultipleChoice) {
+          transaction.set(ref, { ...base, generationFailed: true, failureKind: "declined", generationAttemptedAt: FieldValue.serverTimestamp() }, { merge: true });
+          return;
+        }
+
+        const empty: StudyAsset = {
+          cardId: card.id, answerShape: "short", acceptedAliases: [], requiredConcepts: [],
+          clozeCandidates: [], distractors: [], misconceptions: {}, confidence: 0, ambiguous: false,
+          gapVariants: [],
+        };
+        const retained = wantsMultipleChoice ? prior ?? empty : generated ?? prior ?? empty;
+        const asset = {
+          ...retained,
+          mcqVariants,
+          gapVariants: !wantsMultipleChoice && generated
+            ? generated.gapVariants?.map((variant) => ({ ...variant, id: `${jobId}:${variant.id}` })) ?? []
+            : retained.gapVariants ?? [],
+        };
+        const mcqOnly = wantsMultipleChoice && (!prior || stored?.mcqOnly === true);
+        const bundleRevision = wantsMultipleChoice && prior ? stored?.bundleRevision ?? jobId : jobId;
+        const mcqRefreshAfter = wantsMultipleChoice
+          ? refreshCardIds.has(card.id) || mcqVariants.length === 0 ? Date.now() + MCQ_REFRESH_COOLDOWN_MS : 0
+          : typeof stored?.mcqRefreshAfter === "number" && matches ? stored.mcqRefreshAfter : 0;
+        transaction.set(ref, {
+          ...base, asset,
+          mcqOnly, bundleRevision, mcqRefreshAfter,
           generationFailed: false,
           failureKind: FieldValue.delete(),
           repairRequested: false,
-          updatedAt: FieldValue.serverTimestamp(),
+          ...(wantsMultipleChoice ? {
+            mcqRetryPromptVersion: STUDY_ASSET_PROMPT_VERSION,
+          } : {}),
         }, { merge: true });
-        writes += 1;
-      } else if (declinedCardIds.includes(entry.card.id) && !multipleChoiceRetries.has(entry.card.id)) {
-        // The model's considered answer about this card: kept, so it is not paid for twice.
-        writer.set(ref, {
-          ...base,
-          generationFailed: true,
-          failureKind: "declined",
-          generationAttemptedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        writes += 1;
-      } else if (declinedCardIds.includes(entry.card.id)) {
-        // A second try that was turned down keeps the first try's material,
-        // and is marked so the second try is not paid for again.
-        writer.set(ref, { mcqRetryPromptVersion: STUDY_ASSET_PROMPT_VERSION }, { merge: true });
-        writes += 1;
-      }
-      // Anything else was a failure to answer, not an answer. Nothing is
-      // written, so the card is simply asked again next time.
-    }
-    if (writes > 0) await writer.commit();
+        return {
+          ...asset, cacheKey, sourceFingerprint, bundleRevision, validatorVersion: STUDY_ASSET_VALIDATOR_VERSION,
+          retiredVariantIds: [...retiredIds], repairRequested: false, mcqOnly, mcqRefreshAfter,
+          mcqRetried: wantsMultipleChoice || stored?.mcqRetryPromptVersion === STUDY_ASSET_PROMPT_VERSION,
+        };
+      });
+      if (ready) publish?.(ready);
+    }));
   };
 
   /*
@@ -329,92 +358,122 @@ export async function POST(request: NextRequest) {
    * finish is never begun, so the job ends near its deadline instead of one
    * batch timeout past it.
    */
-  const deadlineAt = Date.now() + JOB_DEADLINE_MS;
-  const msLeft = () => deadlineAt - Date.now();
+  const generate = async (publish?: (asset: StudyAsset) => void) => {
+    const deadlineAt = Date.now() + JOB_DEADLINE_MS;
+    const msLeft = () => deadlineAt - Date.now();
 
-  let prepared = 0;
-  let producedMcqVariants = 0;
-  let producedGapVariants = 0;
-  let failedBatches = 0;
-  let skippedBatches = 0;
-  let cursor = 0;
+    let prepared = 0;
+    let producedMcqVariants = 0;
+    let producedGapVariants = 0;
+    let failedBatches = 0;
+    let skippedBatches = 0;
+    let cursor = 0;
 
-  const attempt = async (batch: typeof pending) => {
-    const result = await generateStudyAssetBatch(
-      batch.map((entry) => ({ id: entry.card.id, front: entry.card.front, back: entry.card.back })),
-      { timeoutMs: Math.min(BATCH_TIMEOUT_MS, msLeft()) }
-    );
-    await saveBatch(batch, result.assets, result.declinedCardIds);
-    prepared += result.assets.length;
-    for (const asset of result.assets) {
-      producedMcqVariants += asset.mcqVariants?.length ?? 0;
-      producedGapVariants += asset.gapVariants?.length ?? 0;
-    }
-  };
-
-  const worker = async () => {
-    for (;;) {
-      const position = cursor;
-      cursor += 1;
-      if (position >= batches.length) return;
-      const batch = batches[position];
-
-      if (msLeft() < MIN_USEFUL_MS) {
-        skippedBatches += 1;
-        continue;
+    const attempt = async (batch: typeof pending) => {
+      const cards = batch.map(({ card }) => ({
+        id: card.id, front: card.front, back: card.back, previousMcqs: previousMcqs.get(card.id),
+      }));
+      const timeoutMs = Math.min(BATCH_TIMEOUT_MS, msLeft());
+      const result = wantsMultipleChoice
+        ? await generateMultipleChoiceBatch(cards, timeoutMs)
+        : await generateStudyAssetBatch(cards, { timeoutMs });
+      await saveBatch(batch, result.assets, result.declinedCardIds, publish);
+      prepared += result.assets.length;
+      for (const asset of result.assets) {
+        producedMcqVariants += asset.mcqVariants?.length ?? 0;
+        producedGapVariants += asset.gapVariants?.length ?? 0;
       }
+    };
 
-      try {
-        await attempt(batch);
-      } catch (error) {
-        log.warn("batch.failed", { size: batch.length, error });
-        // One retry, and only if there is still time for it to land. Retrying
-        // into the deadline just spends the student's wait twice.
+    const worker = async () => {
+      for (;;) {
+        const position = cursor;
+        cursor += 1;
+        if (position >= batches.length) return;
+        const batch = batches[position];
+
         if (msLeft() < MIN_USEFUL_MS) {
-          failedBatches += 1;
+          skippedBatches += 1;
           continue;
         }
+
         try {
           await attempt(batch);
-        } catch (retryError) {
-          log.warn("batch.retry_failed", { size: batch.length, error: retryError });
-          failedBatches += 1;
+        } catch (error) {
+          log.warn("batch.failed", { size: batch.length, error });
+          // One retry, and only if there is still time for it to land. Retrying
+          // into the deadline just spends the student's wait twice.
+          if (msLeft() < MIN_USEFUL_MS) {
+            failedBatches += 1;
+            continue;
+          }
+          try {
+            await attempt(batch);
+          } catch (retryError) {
+            log.warn("batch.retry_failed", { size: batch.length, error: retryError });
+            failedBatches += 1;
+          }
         }
       }
+    };
+
+    await Promise.all(
+      Array.from(
+        { length: Math.min(MAX_CONCURRENT_BATCHES, batches.length) },
+        worker
+      )
+    );
+
+    // Nothing was produced and no provider work landed, so the request is handed
+    // back. A partial success is not refunded: work was done and kept.
+    if (prepared === 0) {
+      try {
+        await refundAiBudget(grant);
+      } catch (error) {
+        log.warn("budget.refund_failed", { error });
+      }
     }
+
+    const summary = {
+      status:
+        failedBatches + skippedBatches === batches.length ? "failed" : "completed",
+      requested: cards.length,
+      prepared,
+      reused: cached.size,
+      failed: pending.length - prepared,
+      validatedMcqVariants: cachedMcqVariants + producedMcqVariants,
+      validatedGapVariants: cachedGapVariants + producedGapVariants,
+    };
+    await jobRef.set(
+      { ...summary, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    return { jobId, ...summary };
   };
 
-  await Promise.all(
-    Array.from(
-      { length: Math.min(MAX_CONCURRENT_BATCHES, batches.length) },
-      worker
-    )
-  );
-
-  // Nothing was produced and no provider work landed, so the request is handed
-  // back. A partial success is not refunded: work was done and kept.
-  if (prepared === 0) {
-    try {
-      await refundAiBudget(grant);
-    } catch (error) {
-      log.warn("budget.refund_failed", { error });
-    }
+  if (!request.headers.get("accept")?.includes("application/x-ndjson")) {
+    return Response.json(await generate());
   }
 
-  const summary = {
-    status:
-      failedBatches + skippedBatches === batches.length ? "failed" : "completed",
-    requested: cards.length,
-    prepared,
-    reused: cached.size,
-    failed: pending.length - prepared,
-    validatedMcqVariants: cachedMcqVariants + producedMcqVariants,
-    validatedGapVariants: cachedGapVariants + producedGapVariants,
-  };
-  await jobRef.set(
-    { ...summary, updatedAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  );
-
-  return Response.json({ jobId, ...summary });
+  const encoder = new TextEncoder();
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (event: unknown) => {
+        if (!cancelled) controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      };
+      send({ type: "started" });
+      void generate((asset) => send({ type: "asset", asset })).then(
+        (summary) => send({ type: "complete", summary }),
+        (error: unknown) => log.error("stream.failed", { error }),
+      ).finally(() => {
+        if (!cancelled) controller.close();
+      });
+    },
+    cancel() { cancelled = true; },
+  });
+  return new Response(stream, {
+    headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store, no-transform" },
+  });
 }

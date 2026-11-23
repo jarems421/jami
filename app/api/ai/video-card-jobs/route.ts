@@ -13,6 +13,7 @@ import {
   parseVideoCoverage,
 } from "@/lib/ai/video-card-jobs";
 import { isSourceFileMimeType } from "@/lib/material/source-files";
+import { expireSourceCardReviewInput } from "@/services/ai/source-card-follow-up.server";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { failVideoCardJobIfStalled } from "@/services/ai/video-card-job-stall.server";
@@ -66,7 +67,11 @@ async function sweepExpiredImports(db: ReturnType<typeof getAdminDb>, uid: strin
     .get();
 
   await Promise.all(snapshot.docs.map(async (doc) => {
-    const storagePath = doc.data().storagePath;
+    const data = doc.data();
+    if (data.status === "ready" && (data.sourceKind === "file" || data.sourceKind === "text")) {
+      return expireSourceCardReviewInput(doc.ref, data);
+    }
+    const storagePath = data.storagePath;
     if (typeof storagePath !== "string" || !storagePath) return;
     await getAdminStorageBucket().file(storagePath).delete({ ignoreNotFound: true });
     await doc.ref.update({ storagePath: FieldValue.delete() });

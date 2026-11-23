@@ -132,7 +132,34 @@ Operators must never create a replacement job merely to resume a clarification.
 - Student-facing failures stay generic. Investigate using content-free failure
   category, workflow stage, timing, and run ID in restricted Vercel tooling.
 
+## Multiple Choice in Learn
+
+Owned study-asset queries include the active user's ID. Session startup gives
+saved questions a bounded read. The preparation response delivers each checked
+question as soon as its write commits. A ready question can move ahead of one still in
+preparation. The visible wait in Multiple Choice ends after five seconds.
+
+Pinned Multiple Choice uses a compact draft request and checks each proposed
+set independently. The juror is preferred, with the worker available if that
+check fails. The prompt starts from a standalone stem and asks for plausible,
+distinct misconceptions. Checked sets are saved as they arrive. The session
+rotates past recently seen sets and asks for fresh ones when the current sets
+have all been seen, with a cooldown between refreshes. Existing questions stay
+available while fresh options are checked.
+
 ## Flashcards from notes or files
+
+The review accepts follow-up requests against its original source. Numbered
+page and slide requests select those positions in the file before any card
+drafting. The job saves current edits and selection before starting a follow-up,
+keeps them available if the request fails, and inserts new drafts alongside
+the cards from the same source location. The source and evidence are temporary
+review inputs and are removed on approval, discard or after 24 hours.
+
+PDF page 1 receives a separate visual read. Pages missed by both selectable
+text extraction and the whole-document visual read are also checked as images.
+A numbered passage with no draft after its section review gets one isolated
+check. The review names pages that could not be checked.
 
 From the flashcard creator, the student chooses the material, depth of coverage,
 and optionally the topics or study level to focus on. The import job preserves

@@ -4,6 +4,7 @@ import { act, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card } from "@/lib/study/cards";
+import type { StudyAsset } from "@/lib/ai/study-assets";
 
 vi.mock("@/services/study/study-assets", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/study/study-assets")>()),
@@ -23,12 +24,13 @@ type Preparation = ReturnType<typeof useStudyPreparation>;
 let container: HTMLDivElement;
 let root: Root;
 let preparation: Preparation;
+const onAssetsReady = vi.fn();
 
 function Harness({ expose }: { expose: (value: Preparation) => void }) {
   const value = useStudyPreparation({
     enabled: true,
     modePolicy: { kind: "fixed", mode: "multiple-choice" },
-    onAssetsReady: () => {},
+    onAssetsReady,
   });
   useLayoutEffect(() => {
     expose(value);
@@ -50,8 +52,15 @@ const done = { jobId: "job", status: "completed" as const, requested: 1, prepare
 const requestedIds = () =>
   vi.mocked(prepareStudyAssets).mock.calls.map(([input]) => input.cardIds);
 
+const exampleAsset: StudyAsset = {
+  cardId: "card-1", answerShape: "short", acceptedAliases: [], requiredConcepts: [],
+  clozeCandidates: [], distractors: [], misconceptions: {}, confidence: 1, ambiguous: false,
+  mcqVariants: [{ id: "v1", correctAnswer: "a", distractors: ["b", "c", "d"], explanations: {} }],
+};
+
 beforeEach(() => {
   vi.mocked(prepareStudyAssets).mockReset();
+  onAssetsReady.mockClear();
   vi.mocked(loadStudyAssets).mockResolvedValue({});
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -65,6 +74,38 @@ afterEach(() => {
 });
 
 describe("background preparation", () => {
+  it("opens Multiple Choice without waiting on generation and publishes a question before the request finishes", async () => {
+    let arrived: Parameters<typeof prepareStudyAssets>[1];
+    vi.mocked(prepareStudyAssets).mockImplementation((_, callback) => {
+      arrived = callback;
+      return new Promise(() => {});
+    });
+    const queue = cards(2);
+    const ready = await preparation.prepareSessionAssets(queue);
+    expect(ready.remainder).toEqual(queue);
+    expect(preparation.progress).toBeNull();
+    expect(prepareStudyAssets).not.toHaveBeenCalled();
+    await act(async () => { void preparation.prepareRemainingAssets(ready.remainder); });
+    const sample = { "card-1": exampleAsset };
+    arrived?.(sample);
+    expect(onAssetsReady).toHaveBeenCalledWith(sample);
+    act(() => preparation.cancel());
+    onAssetsReady.mockClear();
+    arrived?.(sample);
+    expect(onAssetsReady).not.toHaveBeenCalled();
+  });
+
+  it("requests a fresh set behind cold cards when the available variant has been seen", async () => {
+    const queue = cards(2);
+    vi.mocked(loadStudyAssets).mockResolvedValueOnce({ "card-1": exampleAsset });
+    vi.mocked(prepareStudyAssets).mockResolvedValue(done);
+    const prepared = await preparation.prepareSessionAssets(queue, Promise.resolve({ variants: { "card-1": ["v1"] } }));
+    await preparation.prepareRemainingAssets(prepared.remainder);
+    expect(prepareStudyAssets).toHaveBeenCalledWith({
+      deckId: "deck-1", cardIds: ["card-2", "card-1"], purpose: "multiple-choice", refreshCardIds: ["card-1"],
+    }, expect.any(Function));
+  });
+
   /*
    * Being asked to slow down used to end preparation for the whole session,
    * so every card after the refusal arrived with no question.

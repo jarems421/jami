@@ -182,7 +182,13 @@ export function withoutStemEcho(front: string, answer: string, distractors: stri
  * rest do not.
  */
 export function optionsLookGuessable(front: string, answer: string, distractors: string[]) {
+  if ([answer, ...distractors].some((option) =>
+    /^(?:all|none|both|neither) of (?:the above|these|the options)\b/i.test(option.trim()))) return true;
   const shown = withoutStemEcho(front, answer, distractors);
+  const terms = (value: string) => value.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const answerTerms = terms(shown.replace(/^(?:a|an|the)\s+/i, ""));
+  if (answerTerms.length >= 1 && answerTerms.length <= 5 && /^[\p{L}\p{N}\s.'’-]+$/u.test(shown)
+    && ` ${terms(front).join(" ")} `.includes(` ${answerTerms.join(" ")} `)) return true;
   if (!optionLengthsMatch(shown, distractors)) return true;
   const echoes = [shown, ...distractors].filter((option) => stemEcho(front, option)).length;
   return echoes > 0 && echoes < distractors.length + 1;

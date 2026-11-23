@@ -21,5 +21,11 @@ export async function createVideoCardJob(input: { id: string; sourceKind: CardIm
 export async function getVideoCardJob(id: string): Promise<VideoCardJob> { return mapVideoCardJobData(id, await request(`/api/ai/video-card-jobs/${encodeURIComponent(id)}`)); }
 export async function getRecentVideoCardJobs(): Promise<VideoCardJob[]> { const data = await request("/api/ai/video-card-jobs"); return Array.isArray(data.jobs) ? data.jobs.flatMap((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>).id === "string" ? [mapVideoCardJobData(String((item as Record<string, unknown>).id), item as Record<string, unknown>)] : []) : []; }
 export async function saveVideoCardDrafts(id: string, drafts: VideoCardDraft[]) { return mapVideoCardJobData(id, await request(`/api/ai/video-card-jobs/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ drafts }) })); }
+export async function requestMoreSourceCards(id: string, focus: string, updatedAt: number, drafts: VideoCardDraft[]) {
+  const data = await request(`/api/ai/video-card-jobs/${encodeURIComponent(id)}/more`, {
+    method: "POST", body: JSON.stringify({ focus, updatedAt, drafts }),
+  });
+  return mapVideoCardJobData(id, data);
+}
 export async function cancelVideoCardJob(id: string) { return mapVideoCardJobData(id, await request(`/api/ai/video-card-jobs/${encodeURIComponent(id)}`, { method: "DELETE" })); }
 export async function approveVideoCardJob(id: string): Promise<Card[]> { const data = await request(`/api/ai/video-card-jobs/${encodeURIComponent(id)}/approve`, { method: "POST" }); return Array.isArray(data.cards) ? data.cards.flatMap((item) => item && typeof item === "object" ? [mapCardData(String((item as Record<string, unknown>).id), item as Record<string, unknown>)] : []) : []; }

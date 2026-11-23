@@ -4,6 +4,7 @@ import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import { isStalledVideoCardJob } from "@/lib/ai/video-card-jobs";
 import { refundAiBudget } from "@/services/ai/budgets";
 import { getAdminStorageBucket } from "@/services/firebase/admin";
+import { failSourceCardFollowUp } from "@/services/ai/source-card-follow-up.server";
 
 export const STALLED_IMPORT_MESSAGE = "Jami could not start that import. Please try again.";
 
@@ -21,6 +22,11 @@ export async function failVideoCardJobIfStalled(
   data: Record<string, unknown>,
   now = Date.now()
 ): Promise<Record<string, unknown>> {
+  const followUp = data.followUp as { id?: string; status?: string; requestedAt?: number; progressAt?: number } | undefined;
+  const stalledBefore = now - 6 * 60_000;
+  if (followUp?.id && followUp.status === "running" && (followUp.progressAt ?? followUp.requestedAt ?? now) <= stalledBefore) {
+    return await failSourceCardFollowUp(ref, followUp.id, "Jami couldn’t finish checking this source. Try again.", stalledBefore) ?? data;
+  }
   if (!isStalledVideoCardJob(data, now)) return data;
   const refund = data.budgetRefunded !== true && data.budgetGrant && typeof data.budgetGrant === "object";
   const update = {

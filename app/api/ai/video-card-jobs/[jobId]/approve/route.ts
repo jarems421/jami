@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return { kind: "existing" as const, ids: Array.isArray(raw.approvedCardIds) ? raw.approvedCardIds.filter((id): id is string => typeof id === "string") : [] };
     }
     const storagePath = typeof raw.storagePath === "string" ? raw.storagePath : "";
-    if (job.status !== "ready") return { kind: "not_ready" as const };
+    if (job.status !== "ready" || job.followUp?.status === "running") return { kind: "not_ready" as const };
     const selected = job.drafts.filter((draft) => draft.selected);
     if (!selected.length) return { kind: "empty" as const };
 
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // The cards carry no timestamps and no evidence, and the video the
     // timestamps referred to is deleted right after this commits. Once an
     // import is approved there is nothing left to look back at.
-    transaction.update(jobRef, { status: "approved", drafts: [], evidence: [], storagePath: FieldValue.delete(), contentText: FieldValue.delete(), approvedCardIds: cards.map((card) => card.id), completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
+    transaction.update(jobRef, { status: "approved", drafts: [], evidence: [], storagePath: FieldValue.delete(), contentText: FieldValue.delete(), followUp: FieldValue.delete(), approvedCardIds: cards.map((card) => card.id), completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
     return { kind: "created" as const, cards, storagePath };
   });
 
