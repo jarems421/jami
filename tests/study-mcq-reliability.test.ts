@@ -15,6 +15,7 @@ import {
   getMultipleChoiceEligibility,
 } from "@/lib/study/mode-eligibility";
 import type { Card } from "@/lib/study/cards";
+import { mergeMcqVariants, needsFreshMcq } from "@/lib/study/mcq-rotation";
 
 /*
  * Why a Multiple Choice session kept saying a card could not be asked.
@@ -65,6 +66,28 @@ describe("which stored preparation counts as done", () => {
   it("asks again when the card changed", () => {
     expect(current(stored({ sourceFingerprint: "something else" }))).toBe(false);
     expect(current(stored({ cacheKey: "other" }))).toBe(false);
+  });
+
+  it("uses an MCQ-only preparation while still allowing gaps and marking hints to be prepared later", () => {
+    expect(current(stored({ mcqOnly: true }), true)).toBe(true);
+    expect(current(stored({ mcqOnly: true }), false)).toBe(false);
+  });
+});
+
+describe("rotating prepared options", () => {
+  const first = { id: "a", distractors: ["Beta", "Gamma", "Delta"] };
+  const shuffled = { id: "b", distractors: ["delta", "beta", "gamma"] };
+  const minorChange = { id: "c", distractors: ["Delta", "Beta", "Epsilon"] };
+  const fresh = { id: "d", distractors: ["Gamma", "Iota", "Omega"] };
+
+  it("adds genuinely different wrong options and preserves the current variant's ID", () => {
+    expect(mergeMcqVariants([first], [shuffled, minorChange, fresh])).toEqual([first, fresh]);
+  });
+
+  it("refreshes once all options have been seen and respects the cooldown", () => {
+    expect(needsFreshMcq([first.id, fresh.id], ["a"], 0, 100)).toBe(false);
+    expect(needsFreshMcq([first.id, fresh.id], ["a", "d"], 0, 100)).toBe(true);
+    expect(needsFreshMcq([first.id, fresh.id], ["a", "d"], 150, 100)).toBe(false);
   });
 });
 

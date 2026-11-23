@@ -4,12 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { StudyAsset } from "@/lib/ai/study-assets";
 import type { Card } from "@/lib/study/cards";
 import { needsStudyAssetPreparation } from "@/lib/study/mode-eligibility";
+import { needsFreshMcq } from "@/lib/study/mcq-rotation";
 import type { StudyModePolicy } from "@/lib/study/study-modes";
 import {
+  cardWithStudyAsset,
   loadStudyAssets,
   prepareStudyAssets,
   StudyAssetPreparationError,
 } from "@/services/study/study-assets";
+import { getPlayableMcqVariantIds } from "@/lib/study/mcq";
 
 export type StudyPreparationProgress = {
   prepared: number;
@@ -22,10 +25,9 @@ export type StudyPreparationProgress = {
  * Measured on the worker (scripts/eval/study-mcq-readiness.ts, 30 Sep 2026),
  * one card takes a median of fifteen seconds to be written and checked, and
  * the slowest take forty. No batch size makes a whole session ready while
- * somebody watches, so nobody watches it: the server works on up to eight cards
- * at once and saves each as it lands, the page reads them as they arrive, and
- * the student is kept waiting for one card at most -- and only when a session
- * pinned to one mode has nothing else ready to show.
+ * somebody watches. The server saves each card as it lands, and preparation
+ * receives those updates directly. Multiple Choice opens on the bounded cache
+ * read while questions continue to arrive.
  */
 /** The visible wait for a pinned session's first card, and the only clock a student sees. */
 const PREPARATION_BUDGET_MS = 25_000;
@@ -41,8 +43,6 @@ const PREPARATION_CHUNK_SIZE = 8;
 const PREPARATION_CONCURRENCY = 2;
 /** A queue longer than this is prepared as far as it goes and no further. */
 const MAX_PREPARED_CARDS_PER_SESSION = 100;
-/** How often the page looks for cards the server has finished while it works. */
-const PUBLISH_INTERVAL_MS = 2_500;
 /** A request refused for being one too many is tried again this many times. */
 const TEMPORARY_RETRIES = 2;
 const TEMPORARY_RETRY_DELAY_MS = 8_000;
@@ -104,9 +104,7 @@ export function useStudyPreparation(input: {
   const stoppedRef = useRef(false);
   /** Cards with a request in flight, and how many requests each is in. */
   const inFlightRef = useRef(new Map<string, number>());
-  /** Cards asked for and not yet seen to land, which the reader keeps looking for. */
-  const watchedRef = useRef(new Map<string, Card>());
-  const tickerRef = useRef(0);
+  const refreshRef = useRef(new Set<string>());
   /** Set once the day's allowance is spent: nothing more is sent this session. */
   const exhaustedRef = useRef(false);
   const onAssetsReadyRef = useRef(onAssetsReady);
@@ -114,60 +112,19 @@ export function useStudyPreparation(input: {
     onAssetsReadyRef.current = onAssetsReady;
   }, [onAssetsReady]);
 
-  const stopTicker = useCallback(() => {
-    if (tickerRef.current) window.clearInterval(tickerRef.current);
-    tickerRef.current = 0;
-  }, []);
-
   const cancel = useCallback(() => {
     stoppedRef.current = true;
     epochRef.current += 1;
     for (const stop of jobsRef.current) stop.value = true;
     jobsRef.current.clear();
     inFlightRef.current.clear();
-    watchedRef.current.clear();
+    refreshRef.current.clear();
     exhaustedRef.current = false;
-    stopTicker();
     skipPreparationRef.current?.();
-  }, [stopTicker]);
+  }, []);
   useEffect(() => { stoppedRef.current = false; return cancel; }, [cancel]);
 
-  /*
-   * One reader for everything in flight.
-   *
-   * The server saves each card as its own call lands, so a request of eight is
-   * eight separate arrivals over half a minute. Reading only when a request
-   * returned left the first seven sitting prepared and unused until the eighth
-   * was done; reading every few seconds hands each over as it lands.
-   */
-  const readingRef = useRef(false);
-  const publish = useCallback(async () => {
-    const epoch = epochRef.current;
-    const watched = [...watchedRef.current.values()];
-    if (readingRef.current || watched.length === 0) return;
-    readingRef.current = true;
-    try {
-      const landed = await loadStudyAssets(watched);
-      if (epoch !== epochRef.current) return;
-      for (const id of Object.keys(landed)) {
-        if (!inFlightRef.current.has(id)) watchedRef.current.delete(id);
-      }
-      if (Object.keys(landed).length > 0) onAssetsReadyRef.current(landed);
-    } catch {
-      // The next tick reads again; a read that failed is not fatal.
-    } finally {
-      readingRef.current = false;
-      if (inFlightRef.current.size === 0) {
-        watchedRef.current.clear();
-        stopTicker();
-      }
-    }
-  }, [stopTicker]);
 
-  const startTicker = useCallback(() => {
-    if (tickerRef.current) return;
-    tickerRef.current = window.setInterval(() => void publish(), PUBLISH_INTERVAL_MS);
-  }, [publish]);
 
   const purpose =
     modePolicy.kind === "fixed" && modePolicy.mode === "multiple-choice"
@@ -189,9 +146,15 @@ export function useStudyPreparation(input: {
       const epoch = epochRef.current;
       for (const card of request.cards) {
         inFlightRef.current.set(card.id, (inFlightRef.current.get(card.id) ?? 0) + 1);
-        watchedRef.current.set(card.id, card);
       }
-      startTicker();
+      const delivered = new Set<string>();
+      const onReady = (assets: Record<string, StudyAsset>) => {
+        const ids = Object.keys(assets);
+        if (epoch !== epochRef.current || !ids.length) return;
+        for (const id of ids) delivered.add(id);
+        onAssetsReadyRef.current(assets);
+      };
+      const refreshCardIds = request.cards.filter((card) => refreshRef.current.has(card.id)).map((card) => card.id);
       try {
         for (let attempt = 0; ; attempt += 1) {
           if (stop.value || epoch !== epochRef.current) return false;
@@ -200,7 +163,8 @@ export function useStudyPreparation(input: {
               deckId: request.deckId,
               cardIds: request.cards.map((card) => card.id),
               ...(purpose ? { purpose } : {}),
-            });
+              ...(refreshCardIds.length ? { refreshCardIds } : {}),
+            }, onReady);
             return true;
           } catch (error) {
             const temporary = error instanceof StudyAssetPreparationError && error.isTemporary;
@@ -229,11 +193,12 @@ export function useStudyPreparation(input: {
             if (count <= 0) inFlightRef.current.delete(card.id);
             else inFlightRef.current.set(card.id, count);
           }
-          void publish();
+          const undelivered = request.cards.filter(({ id }) => !delivered.has(id));
+          if (undelivered.length) void loadStudyAssets(undelivered).then(onReady).catch(() => undefined);
         }
       }
     },
-    [publish, purpose, startTicker]
+    [purpose]
   );
 
   /**
@@ -272,8 +237,8 @@ export function useStudyPreparation(input: {
   }, [send]);
 
   /**
-   * Read the queue's new cards: the first one before a pinned session opens,
-   * the rest behind the student while they work.
+   * Read cached cards before the session opens and identify the cards worth
+   * preparing while the student works.
    *
    * Everything good about the non-Classic modes comes from here. Without it a
    * gap is chosen by a rule that can only see which words look important, and a
@@ -286,7 +251,8 @@ export function useStudyPreparation(input: {
    */
   const prepareSessionAssets = useCallback(
     async (
-      queue: Card[]
+      queue: Card[],
+      history?: Promise<{ variants: Record<string, string[]> }>,
     ): Promise<{
       assets: Record<string, StudyAsset>;
       /** For the caller to start behind the session with prepareRemainingAssets. */
@@ -308,12 +274,25 @@ export function useStudyPreparation(input: {
       );
       if (worthPreparing.length === 0) return empty;
 
-      const known = await loadStudyAssets(worthPreparing);
+      const [known, seen] = await Promise.all([loadStudyAssets(worthPreparing), purpose ? history : undefined]);
       if (epoch !== epochRef.current) return empty;
+      if (purpose) {
+        const now = Date.now();
+        for (const card of worthPreparing) {
+          const asset = known[card.id];
+          if (!asset?.mcqVariants?.length) continue;
+          const playable = getPlayableMcqVariantIds(cardWithStudyAsset(card, known));
+          const refreshAfter = asset.mcqRefreshAfter ?? 0;
+          if ((!playable.length && refreshAfter === 0)
+            || needsFreshMcq(playable, seen?.variants[card.id] ?? [], refreshAfter, now)) refreshRef.current.add(card.id);
+        }
+      }
       const missing = worthPreparing
         .filter((card) => {
           const asset = known[card.id];
           if (!asset || asset.repairRequested) return true;
+          if (purpose && refreshRef.current.has(card.id)) return true;
+          if (!purpose && asset.mcqOnly) return true;
           // Prepared with no question: a session that wants one asks once more.
           return purpose === "multiple-choice" && !asset.mcqVariants?.length && !asset.mcqRetried;
         })
@@ -322,7 +301,13 @@ export function useStudyPreparation(input: {
 
       // Smart Mix never waits: a card reached before its assets is asked a way
       // that needs none.
-      if (modePolicy.kind === "smart") return { assets: known, headStart: [], remainder: missing };
+      if (modePolicy.kind === "smart" || purpose) {
+        // Multiple Choice opens on cached material or the bounded question stage.
+        // Generate cold cards before enriching ones that already have options.
+        const needed = missing.filter((card) => !refreshRef.current.has(card.id));
+        const refresh = missing.filter((card) => refreshRef.current.has(card.id));
+        return { assets: known, headStart: [], remainder: [...needed, ...refresh] };
+      }
 
       /*
        * A pinned session waits for its first card, and only that one.

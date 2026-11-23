@@ -5,11 +5,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import {
   VIDEO_MAX_SECONDS,
   chooseVideoRoute,
   getVideoCoverageSelectivity,
+  mapVideoCardJobData,
   parseVideoCardLimit,
   parseVideoCoverage,
   VIDEO_CARD_REVIEW_CEILING,
@@ -36,6 +37,7 @@ import {
 } from "@/lib/ai/gemini";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { generateSourceCardBatch } from "@/services/ai/source-card-generation.server";
+import { appendSourceCardDrafts } from "@/lib/ai/source-card-follow-up";
 import type { Source } from "@/lib/material/sources";
 import { runWithAiSpendContext } from "@/lib/ai/spend-context";
 
@@ -489,10 +491,46 @@ async function generateCardsFromSource(uid: string, jobId: string, job: Record<s
     });
   if (!await update("reading_video", 25)) return;
 
+  const source = cardImportSource(uid, jobId, job);
+  const batch = await generateSourceCardBatch({
+    source,
+    loadFile: loadCardSourceFile,
+    coverage: parseVideoCoverage(job.coverage) ?? "standard",
+    focus: typeof job.focus === "string" ? job.focus : undefined,
+    maxCards: parseVideoCardLimit(job.maxCards),
+    update,
+  });
+  if (!batch) return;
+
+  await db.runTransaction(async (transaction) => {
+    const current = (await transaction.get(ref)).data();
+    if (!current || current.cancellationRequested || current.status !== "running") return;
+    const completedAt = Date.now();
+    transaction.update(ref, {
+      status: "ready",
+      stage: "ready",
+      progress: 100,
+      title: source.title,
+      drafts: batch.drafts,
+      warnings: batch.warnings,
+      evidence: batch.evidence,
+      refinePassApplied: batch.reviewed,
+      completedAt,
+      expiresAt: Timestamp.fromMillis(completedAt + 24 * 60 * 60_000),
+      updatedAt: completedAt,
+    });
+  });
+}
+
+async function loadCardSourceFile(path: string) {
+  return (await getAdminStorageBucket().file(path).download())[0];
+}
+
+function cardImportSource(uid: string, jobId: string, job: Record<string, unknown>): Source {
   const fromFile = job.sourceKind === "file";
   const title = fromFile && typeof job.fileName === "string" ? job.fileName : "Pasted notes";
   const now = Date.now();
-  const source: Source = {
+  return {
     id: jobId,
     title,
     type: fromFile ? "file" : "pasted_text",
@@ -511,33 +549,37 @@ async function generateCardsFromSource(uid: string, jobId: string, job: Record<s
     createdAt: now,
     updatedAt: now,
   };
-  const batch = await generateSourceCardBatch({
-    source,
-    loadFile: async (path) => (await getAdminStorageBucket().file(path).download())[0],
-    coverage: parseVideoCoverage(job.coverage) ?? "standard",
-    focus: typeof job.focus === "string" ? job.focus : undefined,
-    maxCards: parseVideoCardLimit(job.maxCards),
-    update,
-  });
-  if (!batch) return;
+}
 
-  await db.runTransaction(async (transaction) => {
-    const current = (await transaction.get(ref)).data();
-    if (!current || current.cancellationRequested || current.status !== "running") return;
-    const completedAt = Date.now();
-    transaction.update(ref, {
-      status: "ready",
-      stage: "ready",
-      progress: 100,
-      title,
-      drafts: batch.drafts,
-      warnings: batch.warnings,
-      evidence: batch.evidence,
-      contentText: FieldValue.delete(),
-      refinePassApplied: batch.reviewed,
-      completedAt,
-      expiresAt: Timestamp.fromMillis(completedAt + 24 * 60 * 60_000),
-      updatedAt: completedAt,
+export async function addCardsFromSource(uid: string, jobId: string, followUpId: string) {
+  return meteredForVideoImport(uid, async () => {
+    const ref = videoCardJobRef(uid, jobId);
+    const active = (job: FirebaseFirestore.DocumentData | undefined) => job?.status === "ready"
+      && job.followUp?.id === followUpId && job.followUp.status === "running";
+    const update = () => ref.firestore.runTransaction(async (transaction) => {
+      const current = (await transaction.get(ref)).data();
+      if (!active(current)) return false;
+      const now = Date.now();
+      transaction.update(ref, { "followUp.startedAt": current?.followUp.startedAt ?? now, "followUp.progressAt": now });
+      return true;
+    });
+    const job = (await ref.get()).data();
+    if (!job || !active(job) || !await update()) return;
+    const prior = mapVideoCardJobData(jobId, job);
+    const batch = await generateSourceCardBatch({
+      source: cardImportSource(uid, jobId, job), loadFile: loadCardSourceFile,
+      coverage: prior.coverage, focus: job.followUp.focus, maxCards: null, update,
+      existing: prior,
+    });
+    if (!batch) return;
+    await ref.firestore.runTransaction(async (transaction) => {
+      const current = (await transaction.get(ref)).data();
+      if (!current || !active(current)) return;
+      const { added, ...review } = appendSourceCardDrafts(mapVideoCardJobData(jobId, current), batch, followUpId);
+      transaction.update(ref, {
+        ...review, updatedAt: Date.now(),
+        followUp: { id: followUpId, status: "completed", added, ...(batch.warnings[0] ? { message: batch.warnings[0].message } : {}) },
+      });
     });
   });
 }

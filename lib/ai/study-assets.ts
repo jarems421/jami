@@ -45,6 +45,10 @@ export type StudyAsset = {
    * mode does not ask again.
    */
   mcqRetried?: boolean;
+  /** This preparation only wrote questions for a Multiple Choice session. */
+  mcqOnly?: boolean;
+  /** Attached by the loader. Back off between refresh attempts. */
+  mcqRefreshAfter?: number;
 };
 
 /**

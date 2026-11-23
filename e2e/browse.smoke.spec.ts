@@ -209,7 +209,7 @@ test("paste list validates, previews and saves cards at phone width", async ({ p
   expect(errors).toEqual([]);
 });
 
-test("notes creation sends coverage and focus, then reviews editable evidence and selections", async ({ page }) => {
+test("notes creation keeps edits and inserts newly recovered cards in source order", async ({ page }) => {
   const jobId = "sample-source-card-job";
   const deck = E2E_DECK_ID;
   const now = Date.now();
@@ -223,9 +223,12 @@ test("notes creation sends coverage and focus, then reviews editable evidence an
   ];
   const ready = {
     id: jobId, title: "Pasted notes", deckId: deck, status: "ready", stage: "ready", sourceKind: "text",
-    progress: 100, createdAt: now, updatedAt: now + 1, drafts, warnings: [],
+    progress: 100, createdAt: now, updatedAt: now + 1, drafts, warnings: [], canRequestMore: true,
     evidence: [{ id: "ref", kind: "concept", summary: "Passage 1 · A concentration gradient drives diffusion.", facts: [] }],
   };
+  const recovered = { id: "follow-up:new", front: "Which two directions are relative to the body surface?", back: "Superficial and deep.", selected: true, evidenceIds: [] };
+  let edited: typeof drafts | undefined;
+  let polled = 0;
   await page.route("**/api/ai/video-card-jobs", async (route) => {
     if (route.request().method() === "GET") return route.fulfill({ json: { jobs: [] } });
     expect(route.request().postDataJSON()).toMatchObject({
@@ -237,15 +240,27 @@ test("notes creation sends coverage and focus, then reviews editable evidence an
   await page.route("**/api/ai/video-card-jobs/*", async (route) => {
     if (route.request().method() === "PATCH") {
       const submitted = route.request().postDataJSON().drafts;
-      expect(submitted).toHaveLength(65);
-      expect(submitted[0]).toMatchObject({ id: "one", back: "Particles move down their concentration gradient.", selected: true });
-      expect(submitted[64]).toMatchObject({ id: "extra-65", selected: false, back: "Edited last answer." });
-      expect(submitted.filter((draft: { selected: boolean }) => draft.selected)).toHaveLength(1);
+      expect(submitted).toHaveLength(66);
+      expect(submitted[0]).toMatchObject(recovered);
+      expect(submitted[1]).toMatchObject({ id: "one", back: "Particles move down their concentration gradient.", selected: true });
+      expect(submitted[65]).toMatchObject({ id: "extra-65", selected: false, back: "Edited last answer." });
+      expect(submitted.filter((draft: { selected: boolean }) => draft.selected)).toHaveLength(2);
+    }
+    if (edited) {
+      polled += 1;
+      return route.fulfill({ json: { ...ready, updatedAt: now + 3, drafts: [recovered, ...edited], followUp: { id: "follow-up", status: "completed", added: 1 } } });
     }
     return route.fulfill({ json: ready });
   });
+  await page.route("**/api/ai/video-card-jobs/*/more", (route) => {
+    const body = route.request().postDataJSON();
+    expect(body).toMatchObject({ focus: "Go back to the first slide", updatedAt: now + 1 });
+    expect(body.drafts[0]).toMatchObject({ id: "one", back: "Particles move down their concentration gradient.", selected: true });
+    edited = body.drafts;
+    return route.fulfill({ json: { ...ready, drafts: edited, updatedAt: now + 2, followUp: { id: "follow-up", status: "running" } } });
+  });
   await page.route("**/api/ai/video-card-jobs/*/approve", (route) => route.fulfill({
-    json: { cards: [{ id: "source-example-card", deckId: deck, front: drafts[0].front, back: "Particles move down their concentration gradient." }] },
+    json: { cards: [recovered, { id: "source-example-card", deckId: deck, front: drafts[0].front, back: "Particles move down their concentration gradient." }] },
   }));
 
   await signIn(page);
@@ -274,8 +289,23 @@ test("notes creation sends coverage and focus, then reviews editable evidence an
   for (let index = 0; index < 3; index += 1) await navigation.getByRole("button", { name: "Next" }).click();
   await expect(navigation.getByText("Page 4 of 4")).toBeVisible();
   await page.getByLabel("Card 65 back").fill("Edited last answer.");
+  const request = page.getByLabel("Ask Jami for more cards");
+  for (const width of [1440, 820, 390]) {
+    await page.setViewportSize({ width, height: 840 });
+    await expect(request).toBeVisible();
+    await expectCardCreatorFits(page, width);
+  }
+  await request.fill("Go back to the first slide");
+  await page.getByRole("button", { name: "Find more cards" }).click();
+  await expect(page.getByLabel("Card 65 back")).toHaveValue("Edited last answer.");
+  await expect(page.getByRole("heading", { name: "Review 66 drafts" })).toBeVisible();
+  await expect(page.getByText("1 new draft added.")).toBeVisible();
+  expect(polled).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Go to new drafts" }).click();
+  await expect(page.getByLabel("Card 1 front")).toHaveValue(recovered.front);
+  await expect(page.getByLabel("Card 2 back")).toHaveValue("Particles move down their concentration gradient.");
   await page.getByRole("button", { name: "Add selected cards" }).click();
-  await expect(page.getByText("Added 1 card.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Added 2 cards.", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

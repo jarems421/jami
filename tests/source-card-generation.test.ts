@@ -11,9 +11,12 @@ import {
 } from "@/lib/ai/source-card-generation";
 import type { Source } from "@/lib/material/sources";
 
-const { generate, extract } = vi.hoisted(() => ({ generate: vi.fn(), extract: vi.fn() }));
+const { generate, extract, extractPdf, readVisuals, readPages } = vi.hoisted(() => ({
+  generate: vi.fn(), extract: vi.fn(), extractPdf: vi.fn(), readVisuals: vi.fn(), readPages: vi.fn(),
+}));
 vi.mock("@/lib/ai/provider-router", () => ({ generateAiText: generate }));
-vi.mock("@/lib/ai/source-extraction", () => ({ extractSourcePagesForIndex: extract }));
+vi.mock("@/lib/ai/source-extraction", () => ({ extractSourcePagesForIndex: extract, extractPdfPages: extractPdf }));
+vi.mock("@/services/ai/source-card-visuals.server", () => ({ readSourceVisuals: readVisuals, readSourcePdfPages: readPages }));
 
 const facts = [
   ["osmosis", "Water crosses a selectively permeable membrane."],
@@ -154,6 +157,48 @@ describe("source flashcard generation", () => {
     expect(result?.evidence.filter(({ summary }) => summary.startsWith("slide 1 ·"))).toHaveLength(2);
     expect(result?.drafts.some((card) => card.front.includes("transcription"))).toBe(true);
     expect(result?.reviewed).toBe(true);
+  });
+
+  it("recovers a visual-only first PDF slide omitted by both the bulk read and the section reviewer", async () => {
+    const first = { ...passages[0], id: "v1", location: "Page 1", pageNumber: 1, visual: true };
+    extractPdf.mockResolvedValue({ pages: [{ pageNumber: 2, text: passages[1].text }], pageCount: 2, truncated: false });
+    readVisuals.mockResolvedValue([]);
+    readPages.mockResolvedValue({ checked: [1], passages: [first] });
+    generate.mockImplementation(async (options) => {
+      const prompt: string = options.request.contents[0].parts[0].text;
+      const { passages: section, items } = JSON.parse(prompt.split("\n\n").at(-1)!);
+      if (options.role === "worker") return JSON.stringify({ items: section.filter(({ id }: SourceCardPassage) => id !== "v1").map((p: SourceCardPassage) => draft(p)) });
+      const alone = section.length === 1;
+      return JSON.stringify({
+        checkedPassageIds: section.map(({ id }: SourceCardPassage) => id), keep: items.map(({ id }: { id: string }) => id),
+        omit: alone ? [] : [{ passageId: "v1", reason: "no_teaching" }], drop: [], revise: [], add: alone ? [draft(first)] : [],
+      });
+    });
+    const result = await generateSourceCardBatch({
+      source: { fileType: "application/pdf", storagePath: "fixture.pdf" } as Source,
+      loadFile: async () => Buffer.from("pdf"), coverage: "standard", maxCards: null, update: async () => true,
+    });
+    expect(readPages).toHaveBeenLastCalledWith(expect.any(Buffer), [1], 2, expect.any(Number));
+    expect(result?.evidence.map(({ pageNumber }) => pageNumber)).toEqual([1, 2]);
+    expect(result?.warnings).toEqual([]);
+  });
+
+  it("sends only the explicitly requested slide and supplies its existing drafts for comparison", async () => {
+    extract.mockResolvedValue({ pages: passages.slice(0, 5).map((passage, index) => ({ pageNumber: index + 1, text: passage.text })), pageKind: "slide", truncated: false });
+    const existing = draft(passages[4]);
+    generate.mockImplementation(async (options) => {
+      const prompt: string = options.request.contents[0].parts[0].text;
+      const payload = JSON.parse(prompt.split("\n\n").at(-1)!);
+      expect(payload.passages.map(({ pageNumber }: SourceCardPassage) => pageNumber)).toEqual([5]);
+      expect(payload.existingCards).toEqual([{ front: existing.front, back: existing.back }]);
+      return JSON.stringify({ items: [], checkedPassageIds: ["p1"], omit: [{ passageId: "p1", reason: "already_covered" }], keep: [], drop: [], revise: [], add: [] });
+    });
+    const result = await generateSourceCardBatch({
+      source: { fileType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" } as Source,
+      loadFile: vi.fn(), coverage: "standard", focus: "go back to slide 5", maxCards: null, update: async () => true,
+      existing: { drafts: [{ ...existing, id: "saved", selected: false, evidenceIds: [] }], evidence: [] },
+    });
+    expect(result?.drafts).toEqual([]);
   });
 
   it("blocks the feedback example and lets the reviewer give the same teaching point a useful cue", () => {

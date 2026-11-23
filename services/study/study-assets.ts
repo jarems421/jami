@@ -4,6 +4,7 @@ import {
   getDocs,
   query,
   where,
+  type QuerySnapshot,
 } from "firebase/firestore";
 import { auth, db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
@@ -13,7 +14,7 @@ import { hasCurrentStudySource } from "@/lib/study/asset-freshness";
 import type { Card } from "@/lib/study/cards";
 import { STUDY_ASSET_PROMPT_VERSION, STUDY_ASSET_SCHEMA_VERSION, STUDY_ASSET_VALIDATOR_VERSION } from "@/lib/study/study-asset-versions";
 
-const LOAD_MS = 20_000;
+const LOAD_MS = 1_500;
 /** Firestore's `in` filter takes at most thirty values per query. */
 const ID_QUERY_CHUNK = 30;
 
@@ -79,18 +80,22 @@ export async function prepareStudyAssets(input: {
   cardIds: string[];
   /** A session pinned to multiple choice: cards prepared with no question get one more try. */
   purpose?: "multiple-choice";
-}): Promise<StudyAssetPreparation> {
+  refreshCardIds?: string[];
+}, onReady?: (assets: Record<string, StudyAsset>) => void): Promise<StudyAssetPreparation> {
   let response: Response;
   try {
     response = await fetch("/api/ai/study-assets/jobs", {
       method: "POST",
-      headers: await authHeaders(),
+      headers: { ...await authHeaders(), ...(onReady ? { Accept: "application/x-ndjson" } : {}) },
       body: JSON.stringify(input),
     });
   } catch {
     throw new StudyAssetPreparationError("Jami could not reach the server.", 0, null, null);
   }
 
+  if (response.ok && response.headers.get("content-type")?.includes("application/x-ndjson")) {
+    return readStudyAssetUpdates(response, onReady);
+  }
   const data = (await response.json().catch(() => null)) as
     | (StudyAssetPreparation & { error?: string; code?: string; retryAfterSeconds?: number })
     | null;
@@ -105,46 +110,102 @@ export async function prepareStudyAssets(input: {
   return data;
 }
 
+async function readStudyAssetUpdates(response: Response, onReady?: (assets: Record<string, StudyAsset>) => void) {
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let summary: StudyAssetPreparation | undefined;
+  try {
+    while (reader) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.type === "asset" && typeof event.asset?.cardId === "string") {
+          onReady?.({ [event.asset.cardId]: event.asset as StudyAsset });
+        } else if (event.type === "complete") {
+          summary = event.summary;
+        }
+      }
+    }
+  } catch {
+    // Assets already delivered are still usable. A missing summary permits a retry.
+  } finally {
+    reader?.releaseLock();
+  }
+  if (!summary) throw new StudyAssetPreparationError("Jami could not finish preparing these cards.", 503, "preparation_incomplete", null);
+  return summary;
+}
+
 /**
  * Read the prepared assets for a set of cards.
  *
  * Failure is not an error worth surfacing: without assets the modes fall back
  * to what can be built deterministically, which is most of them.
  */
-export async function loadStudyAssets(
-  cards: Card[]
-): Promise<Record<string, StudyAsset>> {
+function assetQueries(cards: Card[], uid: string) {
   const byId = new Map(cards.map((card) => [card.id, card]));
   const unique = [...byId.keys()];
-  if (unique.length === 0) return {};
-
-  const assets: Record<string, StudyAsset> = {};
+  const queries = [];
   for (let start = 0; start < unique.length; start += ID_QUERY_CHUNK) {
-    const chunk = unique.slice(start, start + ID_QUERY_CHUNK);
-    try {
-      const snapshot = await withTimeout(
-        getDocs(
-          query(
-            collection(db, "cardStudyAssets"),
-            where(documentId(), "in", chunk)
-          )
-        ),
-        LOAD_MS,
-        "Load study assets"
-      );
-      snapshot.forEach((entry) => {
-        const data = entry.data();
-        const card = byId.get(entry.id);
-        if (card && data?.asset && hasCurrentStudySource(data, card) && !data.generationFailed && data.schemaVersion === STUDY_ASSET_SCHEMA_VERSION && data.promptVersion === STUDY_ASSET_PROMPT_VERSION && data.validatorVersion === STUDY_ASSET_VALIDATOR_VERSION && typeof data.bundleRevision === "string") {
-          assets[entry.id] = { ...data.asset, retiredVariantIds: [...new Set([...(data.asset.retiredVariantIds ?? []), ...(data.retiredVariantIds ?? [])])], cacheKey: data.cacheKey, sourceFingerprint: data.sourceFingerprint, bundleRevision: data.bundleRevision, validatorVersion: data.validatorVersion, repairRequested: data.repairRequested === true && data.repairAttemptedForPromptVersion !== STUDY_ASSET_PROMPT_VERSION, mcqRetried: data.mcqRetryPromptVersion === STUDY_ASSET_PROMPT_VERSION } as StudyAsset;
-        }
-      });
-    } catch (error) {
-      console.warn("Failed to load prepared study assets.", error);
+    queries.push(query(
+      collection(db, "cardStudyAssets"),
+      where("userId", "==", uid),
+      where(documentId(), "in", unique.slice(start, start + ID_QUERY_CHUNK)),
+    ));
+  }
+  return { queries, byId };
+}
+
+function readAssets(snapshot: QuerySnapshot, cards: ReadonlyMap<string, Card>, uid: string) {
+  const assets: Record<string, StudyAsset> = {};
+  if (auth.currentUser?.uid !== uid) return assets;
+  snapshot.forEach((entry) => {
+    const data = entry.data();
+    const card = cards.get(entry.id);
+    if (card && data.asset && hasCurrentStudySource(data, card) && !data.generationFailed
+      && data.schemaVersion === STUDY_ASSET_SCHEMA_VERSION && data.promptVersion === STUDY_ASSET_PROMPT_VERSION
+      && data.validatorVersion === STUDY_ASSET_VALIDATOR_VERSION && typeof data.bundleRevision === "string") {
+      assets[entry.id] = {
+        ...data.asset,
+        retiredVariantIds: [...new Set([...(data.asset.retiredVariantIds ?? []), ...(data.retiredVariantIds ?? [])])],
+        cacheKey: data.cacheKey,
+        sourceFingerprint: data.sourceFingerprint,
+        bundleRevision: data.bundleRevision,
+        validatorVersion: data.validatorVersion,
+        repairRequested: data.repairRequested === true && data.repairAttemptedForPromptVersion !== STUDY_ASSET_PROMPT_VERSION,
+        mcqRetried: data.mcqRetryPromptVersion === STUDY_ASSET_PROMPT_VERSION,
+        mcqOnly: data.mcqOnly === true,
+        mcqRefreshAfter: typeof data.mcqRefreshAfter === "number" ? data.mcqRefreshAfter : 0,
+      } as StudyAsset;
     }
+  });
+  return assets;
+}
+
+export async function loadStudyAssets(cards: Card[]): Promise<Record<string, StudyAsset>> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return {};
+  const { queries, byId } = assetQueries(cards, uid);
+  const deadline = Date.now() + LOAD_MS;
+  const assets: Record<string, StudyAsset> = {};
+  for (let index = 0; index < queries.length && Date.now() < deadline; index += 4) {
+    await Promise.all(queries.slice(index, index + 4).map(async (request) => {
+      try {
+        const snapshot = await withTimeout(getDocs(request), Math.max(1, deadline - Date.now()), "Load study assets");
+        Object.assign(assets, readAssets(snapshot, byId, uid));
+      } catch {
+        // The bounded startup read is best effort; preparation streams new assets.
+      }
+    }));
   }
   return assets;
 }
+
 
 /**
  * Ask a marker to judge prose that local marking could not decide.

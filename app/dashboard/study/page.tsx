@@ -304,14 +304,15 @@ export default function StudyPage() {
                 : focusedCards;
         const seed = Math.floor(Math.random() * 0x7fffffff) || 1;
         const wantsPreparation = studyModesEnabled && nextCards.length > 0;
+        const loadingHistory = loadPresentationHistory(userId, nextCards);
         // Started beside the history read rather than after it: neither needs the other.
         const preparing = wantsPreparation
-          ? prepareSessionAssets(nextCards).catch((error: unknown) => {
+          ? prepareSessionAssets(nextCards, loadingHistory).catch((error: unknown) => {
               console.warn("Study preparation failed; starting unprepared.", error);
               return null;
             })
           : Promise.resolve(null);
-        const history = await loadPresentationHistory(userId, nextCards);
+        const history = await loadingHistory;
 
         let assets = studyAssets;
         let headStart: Card[] = [];
@@ -340,6 +341,7 @@ export default function StudyPage() {
           studyModesEnabled &&
           modePolicy.kind === "fixed" &&
           nextCards.length > 0 &&
+          !(modePolicy.mode === "multiple-choice" && remainder.length > 0) &&
           !nextCards.some((card) => canCarryModeEventually(askedCard(card, assets), modePolicy.mode, { seed }))
         ) {
           showError(

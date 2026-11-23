@@ -79,6 +79,20 @@ describe("resolveCurrentExercise", () => {
     expect(second.pin).toBeUndefined();
   });
 
+  it("replaces a waiting placeholder with the arrived options and preserves its presentation ID", () => {
+    const policy = { kind: "fixed", mode: "multiple-choice" } as const;
+    const first = resolveCurrentExercise(input({ policy }));
+    expect(first.pin?.waitingForQuestion).toBe(true);
+    const asked = card({
+      studySettings: { mcqDistractors: ["Berlin", "Rome", "Madrid"] },
+    });
+    const arrived = resolveCurrentExercise(input({ policy, pinned: first.pin!, asked }));
+    expect(arrived.exercise?.mcq?.options).toHaveLength(4);
+    expect(arrived.pin?.presentationId).toBe(first.pin?.presentationId);
+    expect(arrived.pin?.waitingForQuestion).toBeUndefined();
+    expect(resolveCurrentExercise(input({ policy, pinned: arrived.pin! })).exercise).toBe(arrived.exercise);
+  });
+
   it("does not hand back a variant reported while it was on screen", () => {
     const subject = card();
     const key = exercisePinKey({ cardId: subject.id, index: 0, presentation: 0, policy: { kind: "fixed", mode: "classic" } });

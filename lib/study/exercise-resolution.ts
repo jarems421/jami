@@ -1,6 +1,8 @@
 import type { Card } from "@/lib/study/cards";
 import {
   buildDeterministicExercise,
+  getModeEligibility,
+  isAwaitingPreparation,
   resolveExerciseMode,
   type ModeResolutionContext,
 } from "@/lib/study/mode-eligibility";
@@ -33,6 +35,8 @@ export type ExercisePin = {
   /** Absent only for a resumed draft saved before presentations carried ids. */
   presentationId?: string;
   exercise: ResolvedExercise | null;
+  /** A placeholder can become an exercise until the student starts the fallback. */
+  waitingForQuestion?: boolean;
   recoveryNotice?: string;
 };
 
@@ -97,8 +101,10 @@ export function resolveCurrentExercise(input: {
   }
 
   // The sticky answer: same key, same question, unless the card itself changed.
-  if (pinned?.key === key && (!pinned.exercise || pinned.exercise.cardContentHash === getCardContentHash(card))) {
-    return { exercise: pinned.exercise };
+  const currentPin = pinned?.key === key ? pinned : null;
+  if (currentPin && !currentPin.waitingForQuestion
+    && (!currentPin.exercise || currentPin.exercise.cardContentHash === getCardContentHash(card))) {
+    return { exercise: currentPin.exercise };
   }
 
   if (input.reportedPresentations.has(`${card.id}:${presentation}`)) return fresh(null);
@@ -135,7 +141,11 @@ export function resolveCurrentExercise(input: {
     return { exercise, pin: { key, presentationId: exercise.presentationId, exercise } };
   }
 
-  const presentationId = `${input.sessionId}:${index}:${card.id}:${input.newId()}`;
+  const waitingForQuestion = input.policy.kind === "fixed"
+    && isAwaitingPreparation(getModeEligibility(asked, input.policy.mode, { seed: input.seed }));
+  if (waitingForQuestion && currentPin?.waitingForQuestion) return { exercise: null };
+  const presentationId = (currentPin?.waitingForQuestion ? currentPin.presentationId : undefined)
+    ?? `${input.sessionId}:${index}:${card.id}:${input.newId()}`;
   const context = {
     seed: input.seed,
     modeCounts: input.modeCounts,
@@ -148,5 +158,5 @@ export function resolveCurrentExercise(input: {
   const mode = resolveExerciseMode(asked, input.policy, index, context);
   const exercise =
     !mode || mode === "classic" ? null : buildDeterministicExercise(asked, mode, sourceHash, context);
-  return { exercise, pin: { key, presentationId, exercise } };
+  return { exercise, pin: { key, presentationId, exercise, ...(waitingForQuestion ? { waitingForQuestion } : {}) } };
 }

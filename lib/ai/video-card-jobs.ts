@@ -40,6 +40,8 @@ export type VideoCardEvidence = {
   classification?: VideoVisualClassification;
   summary: string;
   facts: string[];
+  pageNumber?: number;
+  sourceOrder?: number;
 };
 
 export type VideoCardJob = {
@@ -71,6 +73,8 @@ export type VideoCardJob = {
   createdAt: number;
   updatedAt: number;
   failureMessage?: string;
+  canRequestMore?: boolean;
+  followUp?: { id: string; status: "running" | "completed" | "failed"; message?: string; added?: number };
 };
 
 /**
@@ -116,6 +120,23 @@ const SOURCE_CARD_REVIEW_BYTES = 750_000;
 export function canStoreSourceCardReview(drafts: readonly VideoCardDraft[], evidence: readonly VideoCardEvidence[]) {
   return drafts.length <= SOURCE_CARD_TRANSACTION_LIMIT
     && new TextEncoder().encode(JSON.stringify({ drafts, evidence })).byteLength <= SOURCE_CARD_REVIEW_BYTES;
+}
+
+export function readCardReviewEdits(job: VideoCardJob, submitted: unknown[]) {
+  const original = new Map(job.drafts.map((card) => [card.id, card]));
+  const limit = job.sourceKind === "text" || job.sourceKind === "file" ? original.size : VIDEO_CARD_REVIEW_CEILING;
+  if (submitted.length > limit) return null;
+  const drafts = submitted.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const value = item as Record<string, unknown>;
+    const prior = original.get(String(value.id));
+    const front = typeof value.front === "string" ? value.front.trim().slice(0, 500) : "";
+    const back = typeof value.back === "string" ? value.back.trim().slice(0, 4000) : "";
+    if (!prior || !front || !back) return [];
+    original.delete(prior.id);
+    return [{ ...prior, front, back, selected: value.selected !== false }];
+  });
+  return drafts.length === submitted.length ? drafts : null;
 }
 
 /** Clamps a student's own limit, if they gave one. */
@@ -211,6 +232,7 @@ function cleanText(value: unknown, limit: number) {
 }
 
 export function mapVideoCardJobData(id: string, raw: Record<string, unknown>): VideoCardJob {
+  const followUp = raw.followUp as VideoCardJob["followUp"] | undefined;
   const drafts = Array.isArray(raw.drafts) ? raw.drafts.flatMap((item, index) => {
     if (!item || typeof item !== "object") return [];
     const value = item as Record<string, unknown>;
@@ -249,6 +271,8 @@ export function mapVideoCardJobData(id: string, raw: Record<string, unknown>): V
       ...(typeof value.classification === "string" ? { classification: value.classification as VideoVisualClassification } : {}),
       summary,
       facts: Array.isArray(value.facts) ? value.facts.map((fact) => cleanText(fact, 500)).filter(Boolean).slice(0, 12) : [],
+      ...(typeof value.pageNumber === "number" ? { pageNumber: value.pageNumber } : {}),
+      ...(typeof value.sourceOrder === "number" ? { sourceOrder: value.sourceOrder } : {}),
     }];
   }) : [];
   return {
@@ -280,6 +304,14 @@ export function mapVideoCardJobData(id: string, raw: Record<string, unknown>): V
     createdAt: typeof raw.createdAt === "number" ? raw.createdAt : 0,
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : 0,
     ...(typeof raw.failureMessage === "string" ? { failureMessage: raw.failureMessage } : {}),
+    ...((raw.sourceKind === "text" || raw.sourceKind === "file") ? {
+      canRequestMore: raw.canRequestMore === true || (raw.sourceKind === "file" ? Boolean(raw.storagePath) : typeof raw.contentText === "string"),
+    } : {}),
+    ...(followUp && typeof followUp.id === "string" ? { followUp: {
+      id: followUp.id, status: followUp.status,
+      ...(typeof followUp.message === "string" ? { message: followUp.message } : {}),
+      ...(typeof followUp.added === "number" ? { added: followUp.added } : {}),
+    } } : {}),
   };
 }
 

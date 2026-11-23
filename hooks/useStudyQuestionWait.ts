@@ -9,6 +9,7 @@ import { cardWithStudyAsset } from "@/services/study/study-assets";
 
 /** The longest a student waits on one card's question before it is shown as a flashcard. */
 const QUESTION_WAIT_LIMIT_MS = 20_000;
+const MULTIPLE_CHOICE_WAIT_MS = 5_000;
 
 /**
  * What happens when a session locked to one mode reaches a card whose question
@@ -126,9 +127,11 @@ export function useStudyQuestionWait({
     if (!waitingForQuestion || !current) return;
     const cardId = current.id;
     const shownAt = presentation;
-    const timer = window.setTimeout(() => showAsFlashcard(cardId, shownAt), QUESTION_WAIT_LIMIT_MS);
+    const limit = modePolicy.kind === "fixed" && modePolicy.mode === "multiple-choice"
+      ? MULTIPLE_CHOICE_WAIT_MS : QUESTION_WAIT_LIMIT_MS;
+    const timer = window.setTimeout(() => showAsFlashcard(cardId, shownAt), limit);
     return () => window.clearTimeout(timer);
-  }, [current, presentation, showAsFlashcard, waitingForQuestion]);
+  }, [current, modePolicy, presentation, showAsFlashcard, waitingForQuestion]);
 
   /** A new session prepares its own cards afresh. */
   const reset = useCallback(() => justInTimePreparedRef.current.clear(), []);

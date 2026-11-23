@@ -184,7 +184,7 @@ export function StudyQuestionWriting({
       <div className="max-w-lg space-y-2">
         <h2 className="text-xl font-semibold text-text-primary">Writing this question</h2>
         <p role="status" className="text-sm leading-relaxed text-text-secondary">
-          Jami is writing the options for this card. It takes a few seconds, and only the first time.
+          Jami is preparing the answer choices for this card.
         </p>
       </div>
       <Button type="button" variant="secondary" onClick={onShowAsFlashcard}>

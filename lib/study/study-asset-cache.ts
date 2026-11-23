@@ -14,6 +14,7 @@ type StoredStudyAsset = {
   failureKind?: unknown;
   validatorVersion?: unknown;
   mcqRetryPromptVersion?: unknown;
+  mcqOnly?: unknown;
   asset?: { mcqVariants?: unknown };
 };
 
@@ -53,6 +54,7 @@ export function isStudyAssetRecordCurrent(
     return false;
   }
   if (data.generationFailed) return data.failureKind === "declined";
+  if (!input.wantsMultipleChoice && data.mcqOnly === true) return false;
   if (data.validatorVersion !== STUDY_ASSET_VALIDATOR_VERSION) return false;
   const hasQuestion =
     Array.isArray(data.asset?.mcqVariants) && data.asset.mcqVariants.length > 0;
