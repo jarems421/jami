@@ -110,11 +110,12 @@ const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 /**
  * The picture being labelled, and every box on it.
  *
- * Five tools, one gesture each, so a drag always does exactly one thing:
+ * Five tools. In every tool but Line, a box already there is picked up by
+ * pressing on it: drag to move it, tap to select it and show its corners. The
+ * tool decides only what a press on empty picture does:
  *
  * - **Box** and **Oval**: drag to draw. A tap drops a label-sized box where it
- *   landed -- on a phone that is the quickest way to cover a word -- unless it
- *   lands on a box that is already there, which it selects instead.
+ *   landed -- on a phone that is the quickest way to cover a word.
  * - **Outline**: trace round an irregular part; lifting closes the shape.
  * - **Line**: drag from a box to the part it names. With a label selected, a
  *   tap anywhere points its line there -- the way to do it on a phone.
@@ -192,8 +193,11 @@ export default function DiagramCanvas({
         : { kind: "draw", pointerId: event.pointerId, start, startClient, dragging: false };
   };
 
+  // A box can be dragged in any tool but Line, whose drag from a box draws the box's line.
+  const boxesMove = tool !== "pointer";
   const beginMove = (event: PointerEvent<HTMLElement>, labelId: string, shapeIndex: number, shape: OcclusionShape) => {
-    if (event.button !== 0 || drawing || gestureRef.current) return;
+    if (event.button !== 0 || !boxesMove || gestureRef.current) return;
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -380,7 +384,7 @@ export default function DiagramCanvas({
                   onPointerDown={(event) => beginMove(event, label.id, shapeIndex, shape)}
                   className={`absolute grid place-items-center ${
                     selected ? "occlusion-edit-shape occlusion-edit-shape--selected" : "occlusion-edit-shape"
-                  } ${shape.kind === "polygon" ? "is-polygon" : ""} ${drawing ? "pointer-events-none" : "cursor-move touch-none"}`}
+                  } ${shape.kind === "polygon" ? "is-polygon" : ""} ${boxesMove ? "cursor-move touch-none" : "pointer-events-none"}`}
                   style={occlusionShapeStyle(shape)}
                 >
                   <OcclusionPolygon shape={shape} />

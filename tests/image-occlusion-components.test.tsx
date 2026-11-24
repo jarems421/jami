@@ -357,6 +357,19 @@ describe("drawing on the diagram", () => {
     expect(onChangeShape.mock.calls.at(-1)?.[2]).toMatchObject({ x: 0.5, y: 0.1 });
   });
 
+  it("moves a box dragged while drawing, without switching to Move", async () => {
+    const { onChangeShape, onDrawShape, onSelect } = await renderCanvas({ tool: "rect", labels: [label("a", "Aorta", 0.4)] });
+    const box = host.querySelector<HTMLElement>(".occlusion-edit-shape")!;
+    await act(async () => {
+      pointer("pointerdown", box, 225, 45);
+      pointer("pointermove", box, 275, 45);
+      pointer("pointerup", box, 275, 45);
+    });
+    expect(onSelect).toHaveBeenCalledWith({ labelId: "a", shapeIndex: 0 });
+    expect(onChangeShape.mock.calls.at(-1)?.[2]).toMatchObject({ x: 0.5, y: 0.1 });
+    expect(onDrawShape).not.toHaveBeenCalled();
+  });
+
   it("draws a line from a box to the part it names", async () => {
     const { stage, onSetPointer, onSelect } = await renderCanvas({ tool: "pointer", labels: [label("a", "Aorta", 0.4)] });
     await act(async () => {

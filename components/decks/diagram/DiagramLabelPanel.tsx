@@ -263,6 +263,19 @@ export default function DiagramLabelPanel({ editor, userId, topics, onTopicsChan
         </p>
       ) : null}
 
+      {/* Topics belong to the whole diagram, the way they do to a flashcard, so they stay in view. */}
+      <section aria-label="Diagram topics" className="space-y-1.5 border-t border-[var(--color-border)] pt-4">
+        <TopicPicker
+          userId={userId}
+          topics={topics}
+          selectedTopicIds={editor.topicIds}
+          onChange={editor.setTopicIds}
+          onTopicsChange={onTopicsChange}
+          disabled={busy}
+        />
+        <p className="text-xs text-text-muted">For the whole diagram, not a single label.</p>
+      </section>
+
       <details className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
         <summary className="cursor-pointer text-sm font-medium text-text-secondary">
           More options
@@ -277,14 +290,6 @@ export default function DiagramLabelPanel({ editor, userId, topics, onTopicsChan
               { value: "cover", label: "Yes, cover them" },
               { value: "name", label: "No, name the parts" },
             ]}
-          />
-          <TopicPicker
-            userId={userId}
-            topics={topics}
-            selectedTopicIds={editor.topicIds}
-            onChange={editor.setTopicIds}
-            onTopicsChange={onTopicsChange}
-            disabled={busy}
           />
         </div>
       </details>

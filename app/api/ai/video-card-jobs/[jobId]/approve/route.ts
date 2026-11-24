@@ -38,7 +38,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const now = Date.now();
     const cards = selected.map((draft, index) => {
       const cardRef = db.collection("cards").doc();
-      const data = { deckId: job.deckId, userId: uid, front: draft.front, back: draft.back, tags: [], topicIds: job.topicIds, createdAt: now - index };
+      // Study takes new cards oldest first, so the first slide's cards are the oldest and a session follows the lecture.
+      const data = { deckId: job.deckId, userId: uid, front: draft.front, back: draft.back, tags: [], topicIds: job.topicIds, createdAt: now - (selected.length - 1 - index) };
       transaction.create(cardRef, data);
       return mapCardData(cardRef.id, data);
     });
