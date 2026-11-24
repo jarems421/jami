@@ -248,7 +248,6 @@ function DiagramEditorSession({
         f: () => current.setTool("outline"),
         // A line from a name to its part is for pictures without printed labels.
         ...(current.labelMode === "name" ? { l: () => current.setTool("pointer") } : {}),
-        v: () => current.setTool("select"),
         "+": () => current.setZoom(current.zoom + 0.5),
         "=": () => current.setZoom(current.zoom + 0.5),
         "-": () => current.setZoom(current.zoom - 0.5),
@@ -734,14 +733,6 @@ function DiagramToolbar({
           onClick={() => editor.setTool("pointer")}
         />
       ) : null}
-      <ToolbarIconButton
-        label="Move and resize (V)"
-        icon="move"
-        active={editor.tool === "select"}
-        pressed={editor.tool === "select"}
-        disabled={drawingDisabled}
-        onClick={() => editor.setTool("select")}
-      />
       <ToolbarDivider />
       <ToolbarIconButton label="Undo" icon="undo" disabled={drawingDisabled || !editor.canUndo} onClick={editor.undo} />
       <ToolbarIconButton label="Redo" icon="redo" disabled={drawingDisabled || !editor.canRedo} onClick={editor.redo} />

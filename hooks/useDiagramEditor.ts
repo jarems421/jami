@@ -35,7 +35,7 @@ import {
  * `rect` and `ellipse` draw boxes, `outline` traces round a part freehand,
  * `pointer` draws a label's line, and `select` moves and resizes.
  */
-export type DiagramTool = "select" | "rect" | "ellipse" | "outline" | "pointer";
+export type DiagramTool = "rect" | "ellipse" | "outline" | "pointer";
 export type DiagramSelection = { labelId: string; shapeIndex: number } | null;
 /**
  * The picture being labelled, with its size in pixels. A new one carries a

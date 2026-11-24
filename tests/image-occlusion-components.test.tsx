@@ -343,8 +343,8 @@ describe("drawing on the diagram", () => {
     expect(onSelect).toHaveBeenCalledWith({ labelId: "a", shapeIndex: 0 });
   });
 
-  it("moves a box in Move, as one gesture", async () => {
-    const { onChangeShape } = await renderCanvas({ tool: "select", labels: [label("a", "Aorta", 0.4)] });
+  it("moves a box as one gesture", async () => {
+    const { onChangeShape } = await renderCanvas({ tool: "ellipse", labels: [label("a", "Aorta", 0.4)] });
     const box = host.querySelector<HTMLElement>(".occlusion-edit-shape")!;
     await act(async () => {
       pointer("pointerdown", box, 225, 45);

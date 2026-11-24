@@ -110,7 +110,7 @@ const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 /**
  * The picture being labelled, and every box on it.
  *
- * Five tools. In every tool but Line, a box already there is picked up by
+ * Four tools. In every tool but Line, a box already there is picked up by
  * pressing on it: drag to move it, tap to select it and show its corners. The
  * tool decides only what a press on empty picture does:
  *
@@ -119,7 +119,6 @@ const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
  * - **Outline**: trace round an irregular part; lifting closes the shape.
  * - **Line**: drag from a box to the part it names. With a label selected, a
  *   tap anywhere points its line there -- the way to do it on a phone.
- * - **Move**: drag a box to move it; empty picture pans when zoomed in.
  *
  * The selected label has handles in every tool: its box's corners, the end of
  * its line, and the middle of the line, which bends it (a double-click there
@@ -147,7 +146,6 @@ export default function DiagramCanvas({
   const [preview, setPreview] = useState<OcclusionShape | null>(null);
   const [tracePreview, setTracePreview] = useState<OcclusionPoint[] | null>(null);
   const [pointerPreview, setPointerPreview] = useState<{ labelId: string; tip: OcclusionPoint } | null>(null);
-  const drawing = tool !== "select";
   const aspect = width / height;
   const selectedLabel = selection ? labels.find((label) => label.id === selection.labelId) : undefined;
 
@@ -168,11 +166,6 @@ export default function DiagramCanvas({
     if (event.button !== 0 || gestureRef.current) return;
     // Leave any label field, so the keyboard acts on the picture again.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    if (!drawing) {
-      // Empty picture in Move: let go of the selection, and let a finger pan.
-      onSelect(null);
-      return;
-    }
     const start = toPoint(event);
     const startClient = { x: event.clientX, y: event.clientY };
     if (tool === "pointer") {
@@ -350,9 +343,7 @@ export default function DiagramCanvas({
           onPointerMove={onPointerMove}
           onPointerUp={(event) => finish(event, false)}
           onPointerCancel={(event) => finish(event, true)}
-          className={`relative select-none overflow-visible rounded-lg bg-white shadow-card ${
-            drawing ? "cursor-crosshair touch-none" : "touch-pan-x touch-pan-y touch-pinch-zoom"
-          }`}
+          className="relative cursor-crosshair touch-none select-none overflow-visible rounded-lg bg-white shadow-card"
           style={{
             aspectRatio: `${width} / ${height}`,
             width: `calc(${zoom} * min(100cqw - 2rem, (100cqh - 2rem) * ${aspect}))`,
